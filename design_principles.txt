@@ -1,0 +1,92 @@
+# Purpose
+
+A collection of games for children aged 6–8 implemented in a lightweight stack.
+
+
+Gameplay is easy to get into and enjoy.
+Interaction with the child should be visual and transcend written language. 
+Elements should be self-describing through shape, color, emoji, or simple icons.
+
+Humane first software: no tracking, spyware, addictive feedback loops or requirement of being online. These games should be enjoyed no matter device or platform.
+
+
+
+
+# Design principles
+
+## 1. Visual-First, Text-Light Interface
+
+- Prefer icons, color, and animation over words.
+- Avoid instructional text, labels or status hints. Use symbols (🔄, 🎉) and visual states instead.
+- Keep typography playful but minimal. Use rounded, friendly fonts for numbers and essential labels only.
+
+
+## 2. Direct Manipulation
+
+- **Tap the target, then the action** - the child selects a destination first, then chooses the tool.
+- **Avoid latent selection.** After an action completes, no tile or tool should remain pre-selected. The board returns to a neutral state, preventing accidental repeated actions.
+- **Immediate feedback.** Every tap produces a visible or audible response: color change, animation with a sound.
+
+
+## 3. Mistakes Are Playful, Not Punitive
+
+- **Illegal moves should explain themselves visually.** Use red flashes, shakes, or animated rejection instead of error messages.
+- **Let children experiment.** Offer a toggle between:
+  - **Reject mode:** illegal numbers are rejected automatically and may animate back to their source.
+  - **Keep mode:** illegal numbers remain on the board, highlighted red, until the child fixes them.
+- **Reversal is easy.** Provide multiple, discoverable ways to undo: long-press, tool-based erase, or automatic replacement.
+
+---
+
+## 4. Chunky Touch Targets
+
+- **Minimum 60×60 px for grid cells, 64×64 px for tools.** Larger is better.
+- **Generous spacing** between interactive elements to reduce mis-taps.
+- **Avoid tiny icons or thin borders** that are hard to hit on small screens.
+
+---
+
+## 5. Progress Should Be Visible and Celebratory
+
+- **Completion deserves a party.** Use confetti, bouncing emojis, ascending sounds, and bright overlays.
+
+---
+
+## 6. Sound as Feedback, Not Distraction
+
+- **Every meaningful action has a sound:** pop for placement, buzz for conflict, swoosh for clearing, win fanfare for success.
+- **Generate sounds with Web Audio API** so the app stays self-contained and offline-capable.
+- **Sounds should be short, pleasant, and non-jarring.** Avoid long musical loops during regular play.
+
+---
+
+## 7. Offline-First, Single-File Architecture
+
+- **Deliver as one self-contained HTML file** with inline CSS, JS, and embedded assets.
+- **Use data URIs / Blob URLs for the manifest and service worker** so the game works offline after first load.
+- **No external runtime dependencies** beyond fonts or strictly optional resources.
+
+---
+
+## 8. Accessibility Without Complexity
+
+- **Use `aria-label` on icon-only buttons** so screen readers can describe actions.
+- **Maintain keyboard/touch parity:** support both mouse and touch interactions.
+- **Provide visual focus states** (selection outlines, active tool highlights) without relying on color alone.
+
+---
+
+## 9. Settings Should Be Simple and Safe
+
+- **Expose only one or two meaningful toggles.** In this game: illegal-number behavior.
+- **Use clear visual controls** like switches with immediate effect.
+- **Changing a setting should not break the current game state unexpectedly.** If switching modes clears illegal cells, do so visibly.
+
+---
+
+## 10. Animations Must Communicate Meaning
+
+- **Use motion to show cause and effect.** A rejected number flies back to the pad it came from; a long-press fills a circle to show progress; a cleared cell shrinks away.
+- **Prefer one-shot animations** over looping ones for feedback, so the child knows the action is finished.
+- **Animations should not block input.** Children tap quickly; the UI must stay responsive.
+

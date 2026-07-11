@@ -1,0 +1,876 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
+  <title>Child Sudoku</title>
+  <link href="https://fonts.googleapis.com/css2?family=Fredoka+One&family=Nunito:wght@700&display=swap" rel="stylesheet" />
+  <link rel="manifest" id="manifest-link" />
+  <meta name="theme-color" content="#FF69B4" />
+  <style>
+    :root {
+      --bg1: #FFF8E7;
+      --bg2: #FFE4B5;
+      --c1: #FF6B6B;
+      --c2: #4ECDC4;
+      --c3: #FFE66D;
+      --c4: #A8E6CF;
+      --eraser: #FFB6C1;
+      --given: #E8E8E8;
+      --cell: #FFFFFF;
+      --border: #B0C4DE;
+      --text: #4A4A4A;
+    }
+
+    * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+    html, body { margin: 0; padding: 0; height: 100%; }
+    body {
+      font-family: 'Fredoka One', 'Nunito', 'Varela Round', sans-serif;
+      background: linear-gradient(180deg, var(--bg1), var(--bg2));
+      color: var(--text);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: flex-start;
+      overflow-x: hidden;
+      user-select: none;
+      -webkit-user-select: none;
+      touch-action: manipulation;
+    }
+
+    header {
+      width: 100%;
+      max-width: 420px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 14px 16px 6px;
+    }
+    .logo { display: flex; align-items: center; }
+    .top-btns { display: flex; gap: 8px; }
+    .top-btn {
+      background: #fff;
+      border: 2px solid var(--border);
+      border-radius: 12px;
+      padding: 6px 10px;
+      font-family: inherit;
+      font-size: 1.3rem;
+      cursor: pointer;
+      box-shadow: 0 3px 0 #dbe3ef;
+      transition: transform .05s;
+      min-width: 48px;
+      min-height: 48px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .top-btn:active { transform: translateY(2px); box-shadow: 0 1px 0 #dbe3ef; }
+
+    main { width: 100%; max-width: 420px; padding: 8px 16px 18px; display: flex; flex-direction: column; align-items: center; gap: 16px; }
+
+    .grid-wrap {
+      width: min(92vw, 360px);
+      aspect-ratio: 1 / 1;
+      background: #fff;
+      border: 4px solid #7A8BA6;
+      border-radius: 14px;
+      padding: 6px;
+      box-shadow: 0 8px 22px rgba(0,0,0,0.12);
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      grid-template-rows: repeat(4, 1fr);
+      gap: 2px;
+    }
+
+    .cell {
+      position: relative;
+      background: var(--cell);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      overflow: hidden;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: clamp(1.5rem, 7vw, 2rem);
+      cursor: pointer;
+      transition: background .15s, transform .1s;
+      min-height: 60px;
+      min-width: 60px;
+    }
+    .cell.given { background: var(--given); font-weight: bold; cursor: default; }
+    .cell.selected { outline: 4px dashed #32CD32; outline-offset: -4px; z-index: 2; }
+    .cell.conflict { background: #FFCDD2; color: #C62828; animation: flashShake .5s ease-in-out; }
+    .cell.just-placed { animation: pop .25s ease-out; }
+    .cell.cleared { animation: suction .22s ease-in; }
+    .cell.bonk { animation: bonk .25s ease-in-out; }
+
+    /* thick borders between 2x2 blocks */
+    .cell:nth-child(4n+2) { border-left-width: 3px; border-left-color: #7A8BA6; }
+    .cell:nth-child(4n+3) { border-right-width: 3px; border-right-color: #7A8BA6; }
+    .cell:nth-child(n+5):nth-child(-n+8),
+    .cell:nth-child(n+13):nth-child(-n+16) { border-top-width: 3px; border-top-color: #7A8BA6; }
+    .cell:nth-child(n+9):nth-child(-n+12) { border-bottom-width: 3px; border-bottom-color: #7A8BA6; }
+
+    .pad {
+      display: flex;
+      justify-content: center;
+      gap: 10px;
+      flex-wrap: wrap;
+      width: 100%;
+    }
+    .tool {
+      width: 64px;
+      height: 64px;
+      border: none;
+      border-radius: 16px;
+      font-family: inherit;
+      font-size: 1.8rem;
+      color: #fff;
+      text-shadow: 1px 1px 0 rgba(0,0,0,0.15);
+      cursor: pointer;
+      box-shadow: 0 5px 0 rgba(0,0,0,0.15);
+      transition: transform .05s, box-shadow .05s;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .tool:active { transform: translateY(3px); box-shadow: 0 2px 0 rgba(0,0,0,0.15); }
+    .tool.active { box-shadow: 0 0 0 4px gold, 0 5px 0 rgba(0,0,0,0.15); }
+    .tool.t1 { background: var(--c1); }
+    .tool.t2 { background: var(--c2); }
+    .tool.t3 { background: var(--c3); color: #5d5d5d; }
+    .tool.t4 { background: var(--c4); color: #3d6b55; }
+
+    .status { font-size: 0; height: 0; overflow: hidden; }
+
+    .press-progress { position: absolute; inset: 6px; border-radius: 50%; pointer-events: none; opacity: 0; transform: scale(0.85); transition: opacity .1s; }
+    .cell.pressing .press-progress { opacity: 1; }
+
+    @keyframes pop { 0% { transform: scale(1); } 50% { transform: scale(1.18); } 100% { transform: scale(1); } }
+    @keyframes shake { 0%,100% { transform: translateX(0); } 20%,60% { transform: translateX(-5px); } 40%,80% { transform: translateX(5px); } }
+    @keyframes suction { 0% { transform: scale(1); opacity: 1; } 100% { transform: scale(0.1); opacity: 0; } }
+    @keyframes bonk { 0%,100% { transform: rotate(0); } 25% { transform: rotate(-6deg); } 75% { transform: rotate(6deg); } }
+    @keyframes fall { 0% { transform: translateY(-10vh) rotate(0deg); opacity: 1; } 100% { transform: translateY(110vh) rotate(720deg); opacity: 0; } }
+    @keyframes bounce { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-18px); } }
+
+    .overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(255,255,255,0.92);
+      display: none;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      z-index: 100;
+      text-align: center;
+      padding: 20px;
+    }
+    .overlay.show { display: flex; }
+    .emoji-row { font-size: 4.5rem; display: flex; gap: 18px; margin-bottom: 22px; }
+
+    .ghost-digit {
+      position: fixed;
+      left: var(--gx);
+      top: var(--gy);
+      font-family: 'Fredoka One', 'Nunito', sans-serif;
+      font-size: 2rem;
+      color: var(--text);
+      text-shadow: 0 2px 4px rgba(0,0,0,0.2);
+      pointer-events: none;
+      z-index: 200;
+      animation: ghostFly 500ms ease-in forwards;
+    }
+
+    .settings-card {
+      background: #fff;
+      border: 3px solid var(--border);
+      border-radius: 18px;
+      padding: 22px 26px;
+      box-shadow: 0 10px 28px rgba(0,0,0,0.15);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 14px;
+      min-width: 260px;
+    }
+    .settings-card h2 { margin: 0; font-size: 2rem; }
+    .setting-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      width: 100%;
+      font-size: 1.1rem;
+      gap: 16px;
+    }
+    .toggle-btn {
+      width: 56px;
+      height: 30px;
+      border-radius: 15px;
+      border: none;
+      background: #ccc;
+      position: relative;
+      cursor: pointer;
+      transition: background .2s;
+    }
+    .toggle-btn.active { background: #FF69B4; }
+    .toggle-thumb {
+      position: absolute;
+      top: 3px;
+      left: 3px;
+      width: 24px;
+      height: 24px;
+      border-radius: 50%;
+      background: #fff;
+      transition: transform .2s;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+    }
+    .toggle-btn.active .toggle-thumb { transform: translateX(26px); }
+    .setting-hint { margin: 0; font-size: 0.9rem; color: #888; font-family: 'Nunito', sans-serif; }
+    @keyframes ghostFly {
+      0% { left: var(--gx); top: var(--gy); transform: translate(-50%, -50%) scale(1); opacity: 1; }
+      100% { left: var(--tx); top: var(--ty); transform: translate(-50%, -50%) scale(0.3); opacity: 0; }
+    }
+    @keyframes flashShake {
+      0%, 100% { background: var(--cell); transform: translateX(0); }
+      20% { background: #FFCDD2; transform: translateX(-5px); }
+      40% { background: #FFCDD2; transform: translateX(5px); }
+      60% { background: #FFCDD2; transform: translateX(-5px); }
+      80% { background: #FFCDD2; transform: translateX(5px); }
+    }
+    .emoji-row span { animation: pop .6s ease-out forwards; }
+    .emoji-row span:nth-child(2) { animation-delay: .15s; }
+    .emoji-row span:nth-child(3) { animation-delay: .3s; }
+    .emoji-row span:nth-child(4) { animation-delay: .45s; }
+    .confetti { position: fixed; top: 0; left: 0; width: 10px; height: 10px; pointer-events: none; z-index: 101; animation: fall linear forwards; }
+
+    .hidden { display: none; }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="logo" aria-label="Child Sudoku" title="Child Sudoku">
+      <svg viewBox="0 0 48 48" width="40" height="40" aria-hidden="true">
+        <rect x="4" y="4" width="40" height="40" rx="8" fill="#FF69B4"/>
+        <rect x="10" y="10" width="28" height="28" rx="4" fill="none" stroke="#fff" stroke-width="2.5"/>
+        <line x1="24" y1="10" x2="24" y2="38" stroke="#fff" stroke-width="2"/>
+        <line x1="10" y1="24" x2="38" y2="24" stroke="#fff" stroke-width="2"/>
+        <text x="24" y="31" text-anchor="middle" font-family="Fredoka One, sans-serif" font-size="14" fill="#fff">4</text>
+      </svg>
+    </div>
+    <div class="top-btns">
+      <button class="top-btn" id="new-game" aria-label="New Game">🔄</button>
+      <button class="top-btn" id="settings-btn" aria-label="Settings">⚙️</button>
+    </div>
+  </header>
+
+  <main>
+    <div class="status" id="status" aria-live="polite"></div>
+    <div class="grid-wrap" id="grid" role="grid" aria-label="Sudoku grid"></div>
+    <div class="pad" id="pad" role="toolbar" aria-label="Number pad">
+      <button class="tool t1" data-tool="1" aria-label="Number 1">1</button>
+      <button class="tool t2" data-tool="2" aria-label="Number 2">2</button>
+      <button class="tool t3" data-tool="3" aria-label="Number 3">3</button>
+      <button class="tool t4" data-tool="4" aria-label="Number 4">4</button>
+    </div>
+  </main>
+
+  <div class="overlay" id="win-overlay">
+    <div class="emoji-row" id="emoji-row"></div>
+    <button class="top-btn" id="play-again" aria-label="Play Again">🔄</button>
+  </div>
+
+  <div class="overlay" id="settings-overlay">
+    <div class="settings-card">
+      <h2>⚙️</h2>
+      <div class="setting-row">
+        <span>Wrong numbers</span>
+        <button class="toggle-btn" id="mode-toggle" aria-label="Toggle wrong number behavior">
+          <span class="toggle-thumb"></span>
+        </button>
+      </div>
+      <p class="setting-hint" id="mode-hint">Fly back to the number pad</p>
+      <button class="top-btn" id="close-settings" aria-label="Close">✕</button>
+    </div>
+  </div>
+
+  <script>
+    const App = {
+      solution: [],
+      puzzle: [],
+      playGrid: [],
+      givenMask: [],
+      selected: null,
+      activeTool: null,
+      won: false,
+      audioCtx: null,
+      lastTapTime: 0,
+      longPressTimer: null,
+      longPressTarget: null,
+      longPressStart: null,
+      pressProgressCell: null,
+      pressProgressStart: 0,
+      pressProgressRAF: null,
+      keepIllegal: false,
+      emojiSets: [
+        ['🎉', '🌟', '🏆'],
+        ['🎈', '🌈', '🎊'],
+        ['🥳', '✨', '🍭']
+      ],
+
+      init() {
+        this.cacheDOM();
+        this.bindEvents();
+        this.newGame();
+        this.setupPWA();
+      },
+
+      cacheDOM() {
+        this.grid = document.getElementById('grid');
+        this.pad = document.getElementById('pad');
+        this.status = document.getElementById('status');
+        this.overlay = document.getElementById('win-overlay');
+        this.newGameBtn = document.getElementById('new-game');
+        this.playAgainBtn = document.getElementById('play-again');
+        this.settingsOverlay = document.getElementById('settings-overlay');
+        this.settingsBtn = document.getElementById('settings-btn');
+        this.closeSettingsBtn = document.getElementById('close-settings');
+        this.modeToggle = document.getElementById('mode-toggle');
+        this.modeHint = document.getElementById('mode-hint');
+      },
+
+      bindEvents() {
+        this.newGameBtn.addEventListener('click', () => this.newGame());
+        this.playAgainBtn.addEventListener('click', () => this.newGame());
+        this.settingsBtn.addEventListener('click', () => this.openSettings());
+        this.closeSettingsBtn.addEventListener('click', () => this.closeSettings());
+        this.modeToggle.addEventListener('click', () => this.toggleMode());
+        this.settingsOverlay.addEventListener('click', (e) => {
+          if (e.target === this.settingsOverlay) this.closeSettings();
+        });
+
+        this.pad.addEventListener('click', (e) => {
+          const t = e.target.closest('.tool');
+          if (!t) return;
+          this.setTool(t.dataset.tool);
+          if (this.selected) {
+            this.tryPlace(this.selected.r, this.selected.c, parseInt(this.activeTool, 10));
+            this.deselect();
+          }
+        });
+
+        const start = (e) => {
+          const cell = e.target.closest('.cell');
+          if (!cell) return;
+          const r = parseInt(cell.dataset.r, 10);
+          const c = parseInt(cell.dataset.c, 10);
+          this.longPressTarget = { r, c, el: cell };
+          this.longPressStart = this.getPointer(e);
+          if (!this.givenMask[r][c] && this.playGrid[r][c] !== 0) {
+            this.showPressProgress(cell);
+          }
+          this.longPressTimer = setTimeout(() => {
+            if (this.longPressTarget && !this.givenMask[r][c] && this.playGrid[r][c] !== 0) {
+              this.hidePressProgress();
+              this.clearCell(r, c);
+              if (navigator.vibrate) navigator.vibrate(40);
+            }
+            this.longPressTarget = null;
+          }, 500);
+        };
+
+        const move = (e) => {
+          if (!this.longPressTarget || !this.longPressStart) return;
+          const p = this.getPointer(e);
+          if (Math.hypot(p.x - this.longPressStart.x, p.y - this.longPressStart.y) > 10) {
+            clearTimeout(this.longPressTimer);
+            this.hidePressProgress();
+            this.longPressTarget = null;
+          }
+        };
+
+        const end = (e) => {
+          clearTimeout(this.longPressTimer);
+          this.hidePressProgress();
+          if (!this.longPressTarget) return;
+          const cell = this.longPressTarget.el;
+          const r = this.longPressTarget.r;
+          const c = this.longPressTarget.c;
+          this.longPressTarget = null;
+
+          // Prevent default context menu for long press
+          if (e.type === 'touchend') {
+            // normal tap handling
+          }
+
+          // Debounce rapid taps
+          const now = Date.now();
+          const key = `${r},${c}`;
+          if (this.lastTapTime && now - this.lastTapTime < 150 && this.lastTapCell === key) return;
+          this.lastTapTime = now;
+          this.lastTapCell = key;
+
+          if (this.givenMask[r][c]) return;
+
+          if (!this.activeTool) {
+            this.selectCell(r, c);
+            this.updateStatus('');
+            return;
+          }
+
+          this.tryPlace(r, c, parseInt(this.activeTool, 10));
+        };
+
+        this.grid.addEventListener('touchstart', start, { passive: true });
+        this.grid.addEventListener('touchmove', move, { passive: true });
+        this.grid.addEventListener('touchend', end);
+        this.grid.addEventListener('mousedown', start);
+        this.grid.addEventListener('mousemove', move);
+        this.grid.addEventListener('mouseup', end);
+        this.grid.addEventListener('contextmenu', (e) => e.preventDefault());
+      },
+
+      getPointer(e) {
+        if (e.touches && e.touches.length) return { x: e.touches[0].clientX, y: e.touches[0].clientY };
+        if (e.changedTouches && e.changedTouches.length) return { x: e.changedTouches[0].clientX, y: e.changedTouches[0].clientY };
+        return { x: e.clientX, y: e.clientY };
+      },
+
+      showPressProgress(cell) {
+        let prog = cell.querySelector('.press-progress');
+        if (!prog) {
+          prog = document.createElement('div');
+          prog.className = 'press-progress';
+          cell.appendChild(prog);
+        }
+        cell.classList.add('pressing');
+        this.pressProgressCell = cell;
+        this.pressProgressStart = performance.now();
+        this.animatePressProgress();
+      },
+
+      animatePressProgress() {
+        if (!this.pressProgressCell) return;
+        const elapsed = performance.now() - this.pressProgressStart;
+        const pct = Math.min(100, (elapsed / 500) * 100);
+        const prog = this.pressProgressCell.querySelector('.press-progress');
+        if (prog) prog.style.background = `conic-gradient(rgba(255,105,180,0.85) ${pct}%, transparent ${pct}%)`;
+        if (pct < 100 && this.pressProgressCell) {
+          this.pressProgressRAF = requestAnimationFrame(() => this.animatePressProgress());
+        }
+      },
+
+      hidePressProgress() {
+        if (this.pressProgressRAF) cancelAnimationFrame(this.pressProgressRAF);
+        this.pressProgressRAF = null;
+        if (this.pressProgressCell) {
+          this.pressProgressCell.classList.remove('pressing');
+          const prog = this.pressProgressCell.querySelector('.press-progress');
+          if (prog) prog.style.background = '';
+        }
+        this.pressProgressCell = null;
+      },
+
+      setTool(tool) {
+        this.activeTool = tool;
+        this.pad.querySelectorAll('.tool').forEach(t => t.classList.toggle('active', t.dataset.tool === tool));
+        this.updateStatus('');
+      },
+
+      selectCell(r, c) {
+        this.selected = { r, c };
+        this.renderGrid();
+      },
+
+      deselect() {
+        this.selected = null;
+        this.renderGrid();
+      },
+
+      tryPlace(r, c, val) {
+        if (this.won) return;
+        if (this.givenMask[r][c]) return;
+        const oldVal = this.playGrid[r][c];
+        this.playGrid[r][c] = val;
+        if (this.hasConflict(r, c, val)) {
+          this.audioBuzz();
+          this.renderGrid();
+          const el = this.getCellEl(r, c);
+          if (el) {
+            el.classList.remove('conflict');
+            void el.offsetWidth;
+            el.classList.add('conflict');
+          }
+          if (this.keepIllegal) return;
+          this.animateGhost(r, c, val, () => {
+            this.playGrid[r][c] = oldVal;
+            this.renderGrid();
+          });
+          return;
+        }
+        this.audioPop();
+        this.deselect();
+        this.markJustPlaced(r, c);
+        this.renderGrid();
+        if (this.checkWin()) this.celebrate();
+      },
+
+      tryClear(r, c) {
+        if (this.won) return;
+        if (this.givenMask[r][c] || this.playGrid[r][c] === 0) return;
+        this.clearCell(r, c);
+      },
+
+      clearCell(r, c) {
+        if (this.givenMask[r][c]) return;
+        this.playGrid[r][c] = 0;
+        this.audioSwoosh();
+        this.markCleared(r, c);
+        this.renderGrid();
+      },
+
+      bonkCell(r, c) {
+        const el = this.getCellEl(r, c);
+        if (el) {
+          el.classList.remove('bonk');
+          void el.offsetWidth;
+          el.classList.add('bonk');
+        }
+        this.audioBonk();
+      },
+
+      markJustPlaced(r, c) {
+        const el = this.getCellEl(r, c);
+        if (!el) return;
+        el.classList.remove('just-placed');
+        void el.offsetWidth;
+        el.classList.add('just-placed');
+        setTimeout(() => el.classList.remove('just-placed'), 260);
+      },
+
+      markCleared(r, c) {
+        const el = this.getCellEl(r, c);
+        if (!el) return;
+        el.classList.remove('cleared');
+        void el.offsetWidth;
+        el.classList.add('cleared');
+        setTimeout(() => el.classList.remove('cleared'), 230);
+      },
+
+      getCellEl(r, c) {
+        return this.grid.querySelector(`.cell[data-r="${r}"][data-c="${c}"]`);
+      },
+
+      animateGhost(r, c, val, onDone) {
+        const cell = this.getCellEl(r, c);
+        const tool = this.pad.querySelector(`.tool[data-tool="${val}"]`);
+        if (!cell || !tool) {
+          if (onDone) onDone();
+          return;
+        }
+        const from = cell.getBoundingClientRect();
+        const to = tool.getBoundingClientRect();
+        const ghost = document.createElement('div');
+        ghost.className = 'ghost-digit';
+        ghost.textContent = val;
+        ghost.style.setProperty('--gx', `${from.left + from.width / 2}px`);
+        ghost.style.setProperty('--gy', `${from.top + from.height / 2}px`);
+        ghost.style.setProperty('--tx', `${to.left + to.width / 2}px`);
+        ghost.style.setProperty('--ty', `${to.top + to.height / 2}px`);
+        document.body.appendChild(ghost);
+        ghost.addEventListener('animationend', () => {
+          ghost.remove();
+          if (onDone) onDone();
+        });
+      },
+
+      hasConflict(r, c, val) {
+        // row
+        for (let cc = 0; cc < 4; cc++) if (cc !== c && this.playGrid[r][cc] === val) return true;
+        // col
+        for (let rr = 0; rr < 4; rr++) if (rr !== r && this.playGrid[rr][c] === val) return true;
+        // block
+        const br = Math.floor(r / 2) * 2, bc = Math.floor(c / 2) * 2;
+        for (let rr = br; rr < br + 2; rr++) {
+          for (let cc = bc; cc < bc + 2; cc++) {
+            if ((rr !== r || cc !== c) && this.playGrid[rr][cc] === val) return true;
+          }
+        }
+        return false;
+      },
+
+      checkWin() {
+        for (let r = 0; r < 4; r++) for (let c = 0; c < 4; c++) if (this.playGrid[r][c] === 0) return false;
+        return true;
+      },
+
+      celebrate() {
+        this.won = true;
+        this.audioWin();
+        this.renderWinEmojis();
+        this.overlay.classList.add('show');
+        for (let i = 0; i < 60; i++) {
+          const conf = document.createElement('div');
+          conf.className = 'confetti';
+          conf.style.left = Math.random() * 100 + 'vw';
+          conf.style.background = ['#FF6B6B','#4ECDC4','#FFE66D','#A8E6CF','#FFB6C1','#FF69B4'][Math.floor(Math.random()*6)];
+          conf.style.width = (6 + Math.random()*8) + 'px';
+          conf.style.height = (6 + Math.random()*8) + 'px';
+          conf.style.animationDuration = (1.5 + Math.random()*2) + 's';
+          conf.style.animationDelay = (Math.random()*0.8) + 's';
+          document.body.appendChild(conf);
+          setTimeout(() => conf.remove(), 4500);
+        }
+      },
+
+      newGame() {
+        this.overlay.classList.remove('show');
+        this.selected = null;
+        this.activeTool = null;
+        this.won = false;
+        this.pad.querySelectorAll('.tool').forEach(t => t.classList.remove('active'));
+        this.generatePuzzle();
+        this.renderGrid();
+        this.updateStatus('');
+      },
+
+      generatePuzzle() {
+        // generate a full valid solution
+        const solution = Array.from({ length: 4 }, () => Array(4).fill(0));
+        this.solve(solution);
+        this.solution = solution.map(row => row.slice());
+
+        // remove cells while keeping unique solution, target 8-10 givens
+        const puzzle = solution.map(row => row.slice());
+        const givenMask = Array.from({ length: 4 }, () => Array(4).fill(true));
+        const positions = [];
+        for (let r = 0; r < 4; r++) for (let c = 0; c < 4; c++) positions.push([r, c]);
+        this.shuffle(positions);
+
+        let givens = 16;
+        for (const [r, c] of positions) {
+          if (givens <= 8) break;
+          const backup = puzzle[r][c];
+          puzzle[r][c] = 0;
+          givenMask[r][c] = false;
+          const copy = puzzle.map(row => row.slice());
+          let count = 0;
+          this.countSolutions(copy, () => { count++; }, () => count > 1);
+          if (count !== 1) {
+            puzzle[r][c] = backup;
+            givenMask[r][c] = true;
+          } else {
+            givens--;
+          }
+        }
+
+        this.puzzle = puzzle;
+        this.playGrid = puzzle.map(row => row.slice());
+        this.givenMask = givenMask;
+      },
+
+      solve(grid) {
+        for (let r = 0; r < 4; r++) {
+          for (let c = 0; c < 4; c++) {
+            if (grid[r][c] === 0) {
+              const nums = [1, 2, 3, 4];
+              this.shuffle(nums);
+              for (const n of nums) {
+                if (this.isValid(grid, r, c, n)) {
+                  grid[r][c] = n;
+                  if (this.solve(grid)) return true;
+                  grid[r][c] = 0;
+                }
+              }
+              return false;
+            }
+          }
+        }
+        return true;
+      },
+
+      countSolutions(grid, cb, stop) {
+        for (let r = 0; r < 4; r++) {
+          for (let c = 0; c < 4; c++) {
+            if (grid[r][c] === 0) {
+              for (let n = 1; n <= 4; n++) {
+                if (this.isValid(grid, r, c, n)) {
+                  grid[r][c] = n;
+                  this.countSolutions(grid, cb, stop);
+                  grid[r][c] = 0;
+                  if (stop && stop()) return;
+                }
+              }
+              return;
+            }
+          }
+        }
+        cb();
+      },
+
+      isValid(grid, r, c, n) {
+        for (let i = 0; i < 4; i++) if (grid[r][i] === n) return false;
+        for (let i = 0; i < 4; i++) if (grid[i][c] === n) return false;
+        const br = Math.floor(r / 2) * 2, bc = Math.floor(c / 2) * 2;
+        for (let i = br; i < br + 2; i++) for (let j = bc; j < bc + 2; j++) if (grid[i][j] === n) return false;
+        return true;
+      },
+
+      shuffle(arr) {
+        for (let i = arr.length - 1; i > 0; i--) {
+          const j = Math.floor(Math.random() * (i + 1));
+          [arr[i], arr[j]] = [arr[j], arr[i]];
+        }
+      },
+
+      renderGrid() {
+        this.grid.innerHTML = '';
+        for (let r = 0; r < 4; r++) {
+          for (let c = 0; c < 4; c++) {
+            const cell = document.createElement('div');
+            cell.className = 'cell';
+            cell.dataset.r = r;
+            cell.dataset.c = c;
+            cell.setAttribute('role', 'gridcell');
+            if (this.givenMask[r][c]) cell.classList.add('given');
+            if (this.selected && this.selected.r === r && this.selected.c === c) cell.classList.add('selected');
+            if (this.playGrid[r][c] !== 0 && this.hasConflict(r, c, this.playGrid[r][c])) cell.classList.add('conflict');
+            if (this.playGrid[r][c] !== 0) cell.textContent = this.playGrid[r][c];
+            this.grid.appendChild(cell);
+          }
+        }
+      },
+
+      updateStatus(msg) {
+        this.status.textContent = msg;
+      },
+
+      openSettings() {
+        this.settingsOverlay.classList.add('show');
+        this.updateModeToggle();
+      },
+
+      closeSettings() {
+        this.settingsOverlay.classList.remove('show');
+      },
+
+      toggleMode() {
+        this.keepIllegal = !this.keepIllegal;
+        this.updateModeToggle();
+        if (!this.keepIllegal) {
+          this.removeIllegalCells();
+        }
+      },
+
+      updateModeToggle() {
+        this.modeToggle.classList.toggle('active', this.keepIllegal);
+        this.modeHint.textContent = this.keepIllegal ? 'Stay red until fixed' : 'Fly back to the number pad';
+      },
+
+      removeIllegalCells() {
+        for (let r = 0; r < 4; r++) {
+          for (let c = 0; c < 4; c++) {
+            if (!this.givenMask[r][c] && this.playGrid[r][c] !== 0 && this.hasConflict(r, c, this.playGrid[r][c])) {
+              this.playGrid[r][c] = 0;
+            }
+          }
+        }
+        this.renderGrid();
+      },
+
+      setupPWA() {
+        const manifest = {
+          name: 'Child Sudoku',
+          short_name: 'Sudoku',
+          start_url: '.',
+          display: 'standalone',
+          background_color: '#FFE4B5',
+          theme_color: '#FF69B4',
+          icons: [
+            { src: this.makeIcon(192), sizes: '192x192', type: 'image/png' },
+            { src: this.makeIcon(512), sizes: '512x512', type: 'image/png' }
+          ]
+        };
+        const blob = new Blob([JSON.stringify(manifest)], { type: 'application/json' });
+        document.getElementById('manifest-link').href = URL.createObjectURL(blob);
+
+        if ('serviceWorker' in navigator) {
+          const swCode = `
+            self.addEventListener('install', e => {
+              e.waitUntil(caches.open('child-sudoku-v1').then(cache => cache.add('.')));
+              self.skipWaiting();
+            });
+            self.addEventListener('fetch', e => {
+              e.respondWith(caches.match(e.request).then(r => r || fetch(e.request).catch(() => caches.match('.'))));
+            });
+          `;
+          const swBlob = new Blob([swCode], { type: 'application/javascript' });
+          navigator.serviceWorker.register(URL.createObjectURL(swBlob)).catch(() => {});
+        }
+      },
+
+      renderWinEmojis() {
+        const row = document.getElementById('emoji-row');
+        const set = this.emojiSets[Math.floor(Math.random() * this.emojiSets.length)];
+        row.innerHTML = set.map(e => `<span>${e}</span>`).join('');
+      },
+
+      makeIcon(size) {
+        const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 100 100">
+          <rect width="100" height="100" fill="#FFE4B5" rx="18"/>
+          <rect x="18" y="18" width="64" height="64" fill="none" stroke="#FF69B4" stroke-width="4" rx="8"/>
+          <line x1="50" y1="18" x2="50" y2="82" stroke="#FF69B4" stroke-width="3"/>
+          <line x1="18" y1="50" x2="82" y2="50" stroke="#FF69B4" stroke-width="3"/>
+          <text x="50" y="66" text-anchor="middle" font-family="Fredoka One, sans-serif" font-size="38" fill="#4A4A4A">4</text>
+        </svg>`;
+        return 'data:image/svg+xml;base64,' + btoa(unescape(encodeURIComponent(svg)));
+      },
+
+      ensureAudio() {
+        if (!this.audioCtx) this.audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        if (this.audioCtx.state === 'suspended') this.audioCtx.resume();
+      },
+
+      playTone({ type = 'sine', freq = 440, duration = 100, startGain = 0.0001, peakGain = 0.15 }) {
+        this.ensureAudio();
+        const ctx = this.audioCtx;
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = type;
+        osc.frequency.setValueAtTime(freq, ctx.currentTime);
+        gain.gain.setValueAtTime(startGain, ctx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(peakGain, ctx.currentTime + 0.01);
+        gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + duration / 1000);
+        osc.connect(gain).connect(ctx.destination);
+        osc.start();
+        osc.stop(ctx.currentTime + duration / 1000 + 0.02);
+      },
+
+      audioPop() { this.playTone({ type: 'sine', freq: 800, duration: 80, peakGain: 0.18 }); },
+      audioBuzz() { this.playTone({ type: 'sawtooth', freq: 150, duration: 200, peakGain: 0.12 }); },
+      audioBonk() { this.playTone({ type: 'triangle', freq: 220, duration: 90, peakGain: 0.12 }); },
+      audioSwoosh() {
+        this.ensureAudio();
+        const ctx = this.audioCtx;
+        const bufferSize = ctx.sampleRate * 0.1;
+        const buffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
+        const data = buffer.getChannelData(0);
+        for (let i = 0; i < bufferSize; i++) data[i] = (Math.random() * 2 - 1) * (1 - i / bufferSize);
+        const src = ctx.createBufferSource();
+        src.buffer = buffer;
+        const gain = ctx.createGain();
+        gain.gain.setValueAtTime(0.12, ctx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.1);
+        src.connect(gain).connect(ctx.destination);
+        src.start();
+      },
+      audioWin() {
+        [523.25, 659.25, 783.99].forEach((freq, i) => {
+          setTimeout(() => this.playTone({ type: 'sine', freq, duration: 220, peakGain: 0.18 }), i * 180);
+        });
+      }
+    };
+
+    App.init();
+  </script>
+</body>
+</html>
