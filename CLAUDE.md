@@ -12,6 +12,9 @@ LibreToybox/
 ├── exquisite-corpse/
 │   ├── index.html            — Exquisite Corpse drawing game (ships as "Combination Man")
 │   └── sw.js                 — offline cache worker
+├── .github/workflows/
+│   └── deploy-pages.yml      — auto-deploy to GitHub Pages on push to main
+├── index.html                — game hub / landing page (links to both games)
 ├── design_principles.txt     — authoritative design rules (read before any change)
 ├── plan.md                   — pending work (single source of truth)
 ├── AUDIT.md                  — repository audit (2026-07-12 snapshot)
@@ -29,6 +32,7 @@ LibreToybox/
 - Web Audio API for procedural sound (both games)
 - PWA: local `sw.js` service worker (registered only over http/https — browsers reject blob-URL workers) + runtime Blob-URL manifest (both games)
 - Zero external dependencies — system font stack, procedural audio, inline SVG icons
+- Hosting: GitHub Pages, deployed automatically by `.github/workflows/deploy-pages.yml` on every push to `main` — no external hosting account, no build step, the whole repo is served as-is
 
 ## Design Rules (non-negotiable)
 
@@ -87,7 +91,7 @@ See `plan.md` — it is the **single source of truth** for open bugs and feature
 
 ## Adding a New Game
 
-1. Copy the PWA boilerplate from either existing game: `setupPWA()` **and** the sibling `sw.js`. Register the worker with a relative path (`navigator.serviceWorker.register('sw.js')`) — blob-/data-URL worker scripts are rejected by browsers. Bump the cache name per game.
+1. Copy the PWA boilerplate from either existing game: `setupPWA()` **and** the sibling `sw.js`. Register the worker with a relative path (`navigator.serviceWorker.register('sw.js')`) — blob-/data-URL worker scripts are rejected by browsers. Give each game its own cache name, and **bump that name in every release that changes the game** — the worker serves cache-first, so returning players keep the old version until the name changes (see plan.md "Service-worker update strategy" for the pending long-term fix).
 2. Copy `playTone()` and audio helpers — don't use external audio files
 3. No external fonts or CDNs — use the system font stack from the existing games
 4. Follow all 10 design principles in `design_principles.txt`

@@ -1,5 +1,7 @@
 # LibreToybox
 
+**Play now: https://khaal.github.io/LibreToybox/**
+
 A collection of small, self-contained HTML5 games for children aged 6–8, built for touchscreens.
 
 Every game is a single `index.html` (plus a tiny `sw.js` for offline caching) — **no build step, no frameworks, no accounts, no ads, and no tracking**. Open the file and play.
@@ -14,7 +16,7 @@ Every game is a single `index.html` (plus a tiny `sw.js` for offline caching) �
 ## Playing & hosting
 
 - **Locally:** open any game's `index.html` directly in a browser — everything works at `file://` with no server.
-- **Hosted:** serve the repository as static files. Each game then installs as a PWA and works offline after the first load (via its `sw.js`).
+- **Hosted:** live at [khaal.github.io/LibreToybox](https://khaal.github.io/LibreToybox/), auto-deployed to GitHub Pages by [`.github/workflows/deploy-pages.yml`](.github/workflows/deploy-pages.yml) on every push to `main`. Each game installs as a PWA and works offline after the first load (via its `sw.js`).
 
 ## Philosophy
 
