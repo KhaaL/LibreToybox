@@ -1,10 +1,10 @@
 <!DOCTYPE html>
+<!-- LibreToybox — Combination Man (Exquisite Corpse) · Licensed under the GNU GPL v3.0; see ../LICENSE -->
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
   <title>Combination Man</title>
-  <link href="https://fonts.googleapis.com/css2?family=Fredoka+One&family=Nunito:wght@700&display=swap" rel="stylesheet" />
   <link rel="manifest" id="manifest-link" />
   <meta name="theme-color" content="#7C4DFF" />
   <style>
@@ -20,7 +20,7 @@
     * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
     html, body { margin: 0; padding: 0; height: 100%; overflow: hidden; }
     body {
-      font-family: 'Fredoka One', 'Nunito', 'Varela Round', sans-serif;
+      font-family: ui-rounded, 'Hiragino Maru Gothic ProN', Quicksand, Comfortaa, 'Arial Rounded MT Bold', 'Varela Round', Calibri, sans-serif;
       background: linear-gradient(180deg, var(--bg1), var(--bg2));
       color: var(--text);
       display: flex;
@@ -858,19 +858,11 @@ const App = {
     const blob = new Blob([JSON.stringify(manifest)], { type: 'application/json' });
     document.getElementById('manifest-link').href = URL.createObjectURL(blob);
 
-    if ('serviceWorker' in navigator) {
-      const sw = `
-        self.addEventListener('install',e=>{
-          e.waitUntil(caches.open('combo-man-v1').then(c=>c.add('.')));
-          self.skipWaiting();
-        });
-        self.addEventListener('fetch',e=>{
-          e.respondWith(caches.match(e.request).then(r=>r||fetch(e.request).catch(()=>caches.match('.'))));
-        });
-      `;
-      navigator.serviceWorker
-        .register(URL.createObjectURL(new Blob([sw], { type: 'application/javascript' })))
-        .catch(() => {});
+    // Service workers must be registered from a real http(s) URL —
+    // browsers reject blob:/data: worker scripts. sw.js lives next to
+    // this file; at file:// there is no service worker support anyway.
+    if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
+      navigator.serviceWorker.register('sw.js').catch(() => {});
     }
   },
 

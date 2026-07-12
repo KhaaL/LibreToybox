@@ -1,10 +1,10 @@
 <!DOCTYPE html>
+<!-- LibreToybox — Child Sudoku · Licensed under the GNU GPL v3.0; see ../LICENSE -->
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
   <title>Child Sudoku</title>
-  <link href="https://fonts.googleapis.com/css2?family=Fredoka+One&family=Nunito:wght@700&display=swap" rel="stylesheet" />
   <link rel="manifest" id="manifest-link" />
   <meta name="theme-color" content="#FF69B4" />
   <style>
@@ -25,7 +25,7 @@
     * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
     html, body { margin: 0; padding: 0; height: 100%; }
     body {
-      font-family: 'Fredoka One', 'Nunito', 'Varela Round', sans-serif;
+      font-family: ui-rounded, 'Hiragino Maru Gothic ProN', Quicksand, Comfortaa, 'Arial Rounded MT Bold', 'Varela Round', Calibri, sans-serif;
       background: linear-gradient(180deg, var(--bg1), var(--bg2));
       color: var(--text);
       display: flex;
@@ -69,6 +69,7 @@
     main { width: 100%; max-width: 420px; padding: 8px 16px 18px; display: flex; flex-direction: column; align-items: center; gap: 16px; }
 
     .grid-wrap {
+      touch-action: none; /* keep pointer events flowing during long-press */
       width: min(92vw, 360px);
       aspect-ratio: 1 / 1;
       background: #fff;
@@ -172,7 +173,6 @@
       position: fixed;
       left: var(--gx);
       top: var(--gy);
-      font-family: 'Fredoka One', 'Nunito', sans-serif;
       font-size: 2rem;
       color: var(--text);
       text-shadow: 0 2px 4px rgba(0,0,0,0.2);
@@ -225,7 +225,7 @@
       box-shadow: 0 1px 3px rgba(0,0,0,0.2);
     }
     .toggle-btn.active .toggle-thumb { transform: translateX(26px); }
-    .setting-hint { margin: 0; font-size: 0.9rem; color: #888; font-family: 'Nunito', sans-serif; }
+    .setting-hint { margin: 0; font-size: 0.9rem; color: #888; }
     @keyframes ghostFly {
       0% { left: var(--gx); top: var(--gy); transform: translate(-50%, -50%) scale(1); opacity: 1; }
       100% { left: var(--tx); top: var(--ty); transform: translate(-50%, -50%) scale(0.3); opacity: 0; }
@@ -254,7 +254,7 @@
         <rect x="10" y="10" width="28" height="28" rx="4" fill="none" stroke="#fff" stroke-width="2.5"/>
         <line x1="24" y1="10" x2="24" y2="38" stroke="#fff" stroke-width="2"/>
         <line x1="10" y1="24" x2="38" y2="24" stroke="#fff" stroke-width="2"/>
-        <text x="24" y="31" text-anchor="middle" font-family="Fredoka One, sans-serif" font-size="14" fill="#fff">4</text>
+        <text x="24" y="31" text-anchor="middle" font-family="Arial Rounded MT Bold, Arial, sans-serif" font-size="14" fill="#fff">4</text>
       </svg>
     </div>
     <div class="top-btns">
@@ -358,13 +358,15 @@
           }
         });
 
+        // Pointer Events cover mouse, touch and pen with a single stream —
+        // no synthetic-mouse-event double firing after taps.
         const start = (e) => {
           const cell = e.target.closest('.cell');
           if (!cell) return;
           const r = parseInt(cell.dataset.r, 10);
           const c = parseInt(cell.dataset.c, 10);
           this.longPressTarget = { r, c, el: cell };
-          this.longPressStart = this.getPointer(e);
+          this.longPressStart = { x: e.clientX, y: e.clientY };
           if (!this.givenMask[r][c] && this.playGrid[r][c] !== 0) {
             this.showPressProgress(cell);
           }
@@ -380,27 +382,20 @@
 
         const move = (e) => {
           if (!this.longPressTarget || !this.longPressStart) return;
-          const p = this.getPointer(e);
-          if (Math.hypot(p.x - this.longPressStart.x, p.y - this.longPressStart.y) > 10) {
+          if (Math.hypot(e.clientX - this.longPressStart.x, e.clientY - this.longPressStart.y) > 10) {
             clearTimeout(this.longPressTimer);
             this.hidePressProgress();
             this.longPressTarget = null;
           }
         };
 
-        const end = (e) => {
+        const end = () => {
           clearTimeout(this.longPressTimer);
           this.hidePressProgress();
           if (!this.longPressTarget) return;
-          const cell = this.longPressTarget.el;
           const r = this.longPressTarget.r;
           const c = this.longPressTarget.c;
           this.longPressTarget = null;
-
-          // Prevent default context menu for long press
-          if (e.type === 'touchend') {
-            // normal tap handling
-          }
 
           // Debounce rapid taps
           const now = Date.now();
@@ -420,19 +415,17 @@
           this.tryPlace(r, c, parseInt(this.activeTool, 10));
         };
 
-        this.grid.addEventListener('touchstart', start, { passive: true });
-        this.grid.addEventListener('touchmove', move, { passive: true });
-        this.grid.addEventListener('touchend', end);
-        this.grid.addEventListener('mousedown', start);
-        this.grid.addEventListener('mousemove', move);
-        this.grid.addEventListener('mouseup', end);
-        this.grid.addEventListener('contextmenu', (e) => e.preventDefault());
-      },
+        const cancel = () => {
+          clearTimeout(this.longPressTimer);
+          this.hidePressProgress();
+          this.longPressTarget = null;
+        };
 
-      getPointer(e) {
-        if (e.touches && e.touches.length) return { x: e.touches[0].clientX, y: e.touches[0].clientY };
-        if (e.changedTouches && e.changedTouches.length) return { x: e.changedTouches[0].clientX, y: e.changedTouches[0].clientY };
-        return { x: e.clientX, y: e.clientY };
+        this.grid.addEventListener('pointerdown', start);
+        this.grid.addEventListener('pointermove', move);
+        this.grid.addEventListener('pointerup', end);
+        this.grid.addEventListener('pointercancel', cancel);
+        this.grid.addEventListener('contextmenu', (e) => e.preventDefault());
       },
 
       showPressProgress(cell) {
@@ -491,6 +484,9 @@
         if (this.givenMask[r][c]) return;
         const oldVal = this.playGrid[r][c];
         this.playGrid[r][c] = val;
+        // No latent selection (design principle 2): the number pad resets
+        // after every placement, so each piece needs a fresh pick.
+        this.setTool(null);
         if (this.hasConflict(r, c, val)) {
           this.audioBuzz();
           this.renderGrid();
@@ -599,7 +595,14 @@
       },
 
       checkWin() {
-        for (let r = 0; r < 4; r++) for (let c = 0; c < 4; c++) if (this.playGrid[r][c] === 0) return false;
+        // Full AND conflict-free — in Keep mode illegal numbers stay on the
+        // board, so fullness alone is not a win.
+        for (let r = 0; r < 4; r++) {
+          for (let c = 0; c < 4; c++) {
+            const v = this.playGrid[r][c];
+            if (v === 0 || this.hasConflict(r, c, v)) return false;
+          }
+        }
         return true;
       },
 
@@ -786,25 +789,18 @@
           background_color: '#FFE4B5',
           theme_color: '#FF69B4',
           icons: [
-            { src: this.makeIcon(192), sizes: '192x192', type: 'image/png' },
-            { src: this.makeIcon(512), sizes: '512x512', type: 'image/png' }
+            { src: this.makeIcon(192), sizes: '192x192', type: 'image/svg+xml' },
+            { src: this.makeIcon(512), sizes: '512x512', type: 'image/svg+xml' }
           ]
         };
         const blob = new Blob([JSON.stringify(manifest)], { type: 'application/json' });
         document.getElementById('manifest-link').href = URL.createObjectURL(blob);
 
-        if ('serviceWorker' in navigator) {
-          const swCode = `
-            self.addEventListener('install', e => {
-              e.waitUntil(caches.open('child-sudoku-v1').then(cache => cache.add('.')));
-              self.skipWaiting();
-            });
-            self.addEventListener('fetch', e => {
-              e.respondWith(caches.match(e.request).then(r => r || fetch(e.request).catch(() => caches.match('.'))));
-            });
-          `;
-          const swBlob = new Blob([swCode], { type: 'application/javascript' });
-          navigator.serviceWorker.register(URL.createObjectURL(swBlob)).catch(() => {});
+        // Service workers must be registered from a real http(s) URL —
+        // browsers reject blob:/data: worker scripts. sw.js lives next to
+        // this file; at file:// there is no service worker support anyway.
+        if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
+          navigator.serviceWorker.register('sw.js').catch(() => {});
         }
       },
 
@@ -820,7 +816,7 @@
           <rect x="18" y="18" width="64" height="64" fill="none" stroke="#FF69B4" stroke-width="4" rx="8"/>
           <line x1="50" y1="18" x2="50" y2="82" stroke="#FF69B4" stroke-width="3"/>
           <line x1="18" y1="50" x2="82" y2="50" stroke="#FF69B4" stroke-width="3"/>
-          <text x="50" y="66" text-anchor="middle" font-family="Fredoka One, sans-serif" font-size="38" fill="#4A4A4A">4</text>
+          <text x="50" y="66" text-anchor="middle" font-family="Arial Rounded MT Bold, Arial, sans-serif" font-size="38" fill="#4A4A4A">4</text>
         </svg>`;
         return 'data:image/svg+xml;base64,' + btoa(unescape(encodeURIComponent(svg)));
       },

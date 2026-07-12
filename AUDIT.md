@@ -3,6 +3,12 @@
 Full audit of LibreToybox: every file was reviewed and cross-checked against
 `CLAUDE.md`, `plan.md`, and `design_principles.txt`.
 
+> **Status (2026-07-12):** A1–A5, A8, A9 (Google Fonts removed), A10, A13,
+> A14, and A15 are **fixed**. File paths below reference the pre-fix state —
+> in particular, `soduko-for-minis/` is now `sudoku-for-minis/`, and line
+> numbers have shifted. Still open: A6, A7 (tracked in plan.md), A11, A12,
+> A16–A18.
+
 **Severity scale**
 | Level | Meaning |
 |---|---|
