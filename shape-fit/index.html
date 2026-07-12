@@ -471,6 +471,11 @@
           if (deal) {
             slot.classList.add('deal');
             slot.style.setProperty('--d', `${i * CONFIG.dealStaggerMs}ms`);
+            // The fill-mode transform must be cleared once the pop-in ends:
+            // any ancestor with a transform becomes the containing block for
+            // position:fixed, which would anchor the dragged piece to this
+            // little slot instead of the viewport.
+            slot.addEventListener('animationend', () => slot.classList.remove('deal'), { once: true });
           }
           p.slotEl = slot;
           slot.appendChild(this.buildPieceEl(p));
@@ -604,6 +609,7 @@
           moved: false, fromPlaced: !!p.placed, target: null
         };
         p.placed = null;
+        p.slotEl.classList.remove('deal'); // grabbed mid-pop: kill the slot transform now
         p.el.classList.remove('in-tray', 'pop');
         p.el.classList.add('dragging');
         this.positionDrag(e);
