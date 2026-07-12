@@ -1,0 +1,916 @@
+<!DOCTYPE html>
+<!-- LibreToybox — Shape Fit · Licensed under the GNU GPL v3.0; see ../LICENSE -->
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
+  <title>Shape Fit</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🧸</text></svg>" />
+  <link rel="manifest" id="manifest-link" />
+  <meta name="theme-color" content="#2FA98C" />
+  <style>
+    :root {
+      --bg1: #EFFBF4;
+      --bg2: #D6F0E2;
+      --accent: #2FA98C;
+      --border: #A9CDBD;
+      --text: #3E4A44;
+      --cell: 56px;        /* set from JS: board width / N */
+      --tray-scale: 0.5;   /* set from JS: CONFIG.trayScale */
+    }
+
+    * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+    html, body { margin: 0; padding: 0; height: 100%; }
+    body {
+      font-family: ui-rounded, 'Hiragino Maru Gothic ProN', Quicksand, Comfortaa, 'Arial Rounded MT Bold', 'Varela Round', Calibri, sans-serif;
+      background: linear-gradient(180deg, var(--bg1), var(--bg2));
+      color: var(--text);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: flex-start;
+      overflow-x: hidden;
+      user-select: none;
+      -webkit-user-select: none;
+      -webkit-touch-callout: none;
+      touch-action: manipulation;
+    }
+
+    header {
+      width: 100%;
+      max-width: 420px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 14px 16px 6px;
+    }
+    .logo { display: flex; align-items: center; }
+    .top-btns { display: flex; gap: 8px; }
+    .top-btn {
+      background: #fff;
+      border: 2px solid var(--border);
+      border-radius: 12px;
+      padding: 6px 10px;
+      font-family: inherit;
+      font-size: 1.3rem;
+      cursor: pointer;
+      box-shadow: 0 3px 0 #cfe3d8;
+      transition: transform .05s;
+      min-width: 48px;
+      min-height: 48px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .top-btn:active { transform: translateY(2px); box-shadow: 0 1px 0 #cfe3d8; }
+
+    main { width: 100%; max-width: 420px; padding: 8px 16px 18px; display: flex; flex-direction: column; align-items: center; gap: 14px; }
+
+    .grid-wrap {
+      width: min(92vw, 360px);
+      background: #fff;
+      border: 4px solid #7AA692;
+      border-radius: 14px;
+      padding: 8px;
+      box-shadow: 0 8px 22px rgba(0,0,0,0.12);
+    }
+
+    /* The board is both a CSS grid (empty cells) and the positioning
+       context for the absolutely-placed pieces on top of it. */
+    #board {
+      position: relative;
+      width: 100%;
+      aspect-ratio: 1 / 1;
+      display: grid;
+      touch-action: none;
+    }
+    .cell {
+      border: 2px dashed #DCEAE2;
+      border-radius: 8px;
+      margin: 2px;
+      pointer-events: none;
+    }
+    .cell.ghost {
+      border: 2px solid #74C69D;
+      background: #D8F3E3;
+    }
+
+    /* Pieces: one div per polyomino, made of .blk squares. Everything is
+       sized off --cell so a resize only has to update that one variable. */
+    .piece {
+      position: absolute;
+      transform-origin: 0 0;
+      touch-action: none;
+      cursor: grab;
+      z-index: 5;
+    }
+    .piece:focus-visible { outline: 3px solid var(--text); outline-offset: 3px; border-radius: 10px; }
+    .piece.in-tray { left: 0; top: 0; transform: scale(var(--tray-scale)); }
+    .piece.dragging {
+      position: fixed;
+      z-index: 60;
+      cursor: grabbing;
+      filter: drop-shadow(0 12px 14px rgba(0,0,0,0.25));
+    }
+    .piece.flying {
+      position: fixed;
+      z-index: 60;
+      transition: left .25s ease, top .25s ease, transform .25s ease;
+      pointer-events: none;
+    }
+    .blk {
+      position: absolute;
+      border-radius: 9px;
+      border: 2px solid rgba(0,0,0,0.10);
+      box-shadow: inset 0 3px 0 rgba(255,255,255,0.45), inset 0 -3px 0 rgba(0,0,0,0.10);
+    }
+    .piece.pop .blk { animation: settle .22s ease-out; }
+    .piece.shake { animation: shake .3s ease; }
+
+    #tray {
+      width: min(92vw, 400px);
+      display: flex;
+      flex-wrap: wrap;
+      align-items: flex-start;
+      justify-content: center;
+      gap: 12px;
+      padding: 4px 0 8px;
+    }
+    /* Slots keep their size forever — an empty slot is an invisible spacer,
+       so the tray never reflows while the child is dragging. */
+    .slot { position: relative; }
+    .slot.deal { animation: pop .3s ease-out both; animation-delay: var(--d, 0s); }
+    .slot.out, .piece.out { animation: suction .22s ease-in forwards; }
+
+    .status { font-size: 0; height: 0; overflow: hidden; }
+
+    @keyframes pop { 0% { transform: scale(0.6); opacity: 0.4; } 60% { transform: scale(1.12); opacity: 1; } 100% { transform: scale(1); opacity: 1; } }
+    @keyframes settle { 0% { transform: scale(0.85); } 60% { transform: scale(1.08); } 100% { transform: scale(1); } }
+    @keyframes shake { 0%, 100% { margin-left: 0; } 25% { margin-left: -7px; } 75% { margin-left: 7px; } }
+    @keyframes suction { 0% { transform: scale(1); opacity: 1; } 100% { transform: scale(0.1); opacity: 0; } }
+    @keyframes fall { 0% { transform: translateY(-10vh) rotate(0deg); opacity: 1; } 100% { transform: translateY(110vh) rotate(720deg); opacity: 0; } }
+
+    .overlay {
+      position: fixed;
+      inset: 0;
+      display: none;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      z-index: 100;
+      text-align: center;
+      padding: 20px;
+    }
+    .overlay.show { display: flex; }
+    /* Translucent win overlay so the filled board stays visible beneath
+       the celebration (same pattern as Memory). */
+    #win-overlay { background: rgba(255,255,255,0.55); justify-content: flex-end; padding-bottom: 12vh; }
+    #settings-overlay { background: rgba(255,255,255,0.92); }
+    .emoji-row { font-size: 4.5rem; display: flex; gap: 18px; margin-bottom: 22px; }
+    .emoji-row span { display: inline-block; animation: pop .6s ease-out both; }
+    .emoji-row span:nth-child(2) { animation-delay: .15s; }
+    .emoji-row span:nth-child(3) { animation-delay: .3s; }
+    .confetti { position: fixed; top: 0; left: 0; width: 10px; height: 10px; pointer-events: none; z-index: 101; animation: fall linear forwards; }
+
+    .settings-card {
+      background: #fff;
+      border: 3px solid var(--border);
+      border-radius: 18px;
+      padding: 22px 26px;
+      box-shadow: 0 10px 28px rgba(0,0,0,0.15);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 14px;
+      min-width: 260px;
+    }
+    .settings-card h2 { margin: 0; font-size: 2rem; }
+    .size-row { display: flex; gap: 18px; }
+    .size-btn {
+      width: 72px;
+      height: 72px;
+      border: 2px solid var(--border);
+      border-radius: 16px;
+      background: #fff;
+      font-family: inherit;
+      font-size: 1.7rem;
+      cursor: pointer;
+      box-shadow: 0 4px 0 #cfe3d8;
+      transition: transform .05s;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 2px;
+      color: var(--text);
+    }
+    .size-btn small { font-size: 0.8rem; }
+    .size-btn:active { transform: translateY(2px); box-shadow: 0 2px 0 #cfe3d8; }
+    .size-btn.active { box-shadow: 0 0 0 4px gold, 0 4px 0 #cfe3d8; }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="logo" aria-label="Shape Fit" title="Shape Fit">
+      <svg viewBox="0 0 48 48" width="40" height="40" aria-hidden="true">
+        <rect x="4" y="4" width="13" height="13" rx="4" fill="#F7A6B9"/>
+        <rect x="4" y="18" width="13" height="13" rx="4" fill="#F7A6B9"/>
+        <rect x="4" y="32" width="13" height="13" rx="4" fill="#F7A6B9"/>
+        <rect x="18" y="32" width="13" height="13" rx="4" fill="#F7A6B9"/>
+        <rect x="18" y="4" width="13" height="13" rx="4" fill="#8ED3F4"/>
+        <rect x="32" y="4" width="13" height="13" rx="4" fill="#8ED3F4"/>
+        <rect x="32" y="18" width="13" height="13" rx="4" fill="#FFE66D"/>
+        <rect x="32" y="32" width="13" height="13" rx="4" fill="#FFE66D"/>
+      </svg>
+    </div>
+    <div class="top-btns">
+      <button class="top-btn" id="new-game" aria-label="New Game">🔄</button>
+      <button class="top-btn" id="settings-btn" aria-label="Settings">⚙️</button>
+    </div>
+  </header>
+
+  <main>
+    <div class="status" id="status" aria-live="polite"></div>
+    <div class="grid-wrap">
+      <div id="board" aria-label="Puzzle board"></div>
+    </div>
+    <div id="tray" aria-label="Piece tray"></div>
+  </main>
+
+  <div class="overlay" id="win-overlay" role="dialog" aria-modal="true" aria-label="You won">
+    <div class="emoji-row" id="emoji-row"></div>
+    <button class="top-btn" id="play-again" aria-label="Play Again">🔄</button>
+  </div>
+
+  <div class="overlay" id="settings-overlay" role="dialog" aria-modal="true" aria-label="Settings">
+    <div class="settings-card">
+      <h2>⚙️</h2>
+      <div class="size-row" role="radiogroup" aria-label="Board size">
+        <button class="size-btn" data-size="small" role="radio" aria-label="Small board, 6 by 6">🐣<small>6×6</small></button>
+        <button class="size-btn" data-size="large" role="radio" aria-label="Big board, 8 by 8">🦁<small>8×8</small></button>
+      </div>
+      <button class="top-btn" id="close-settings" aria-label="Close">✕</button>
+    </div>
+  </div>
+
+  <script>
+    // All tuning lives here — board sizes, piece sizes, timings, colors.
+    const CONFIG = {
+      sizes: {
+        small: { n: 6, minPiece: 3, maxPiece: 5 },
+        large: { n: 8, minPiece: 3, maxPiece: 6 }
+      },
+      trayScale: 0.5,
+      liftPx: 56,        // dragged piece rides this far above the finger
+      tapMovePx: 8,      // pointer travel below this counts as a tap
+      flyBackMs: 260,
+      dealStaggerMs: 40,
+      palette: [
+        { fill: '#F7A6B9', name: 'pink' },
+        { fill: '#F9C784', name: 'orange' },
+        { fill: '#FFE66D', name: 'yellow' },
+        { fill: '#A8E6CF', name: 'mint' },
+        { fill: '#8ED3F4', name: 'blue' },
+        { fill: '#C3B4F7', name: 'purple' },
+        { fill: '#FFB3A0', name: 'coral' },
+        { fill: '#C8E88A', name: 'green' }
+      ]
+    };
+
+    const App = {
+      pieces: [],       // { cells:[{r,c}] normalized, rows, cols, color, placed:{r,c}|null, el, slotEl }
+      N: 6,
+      size: 'small',
+      won: false,
+      drag: null,       // { p, pointerId, startX, startY, moved, fromPlaced, target }
+      kb: null,         // { p, r, c } keyboard placement cursor
+      gameId: 0,
+      audioCtx: null,
+      emojiSets: [
+        ['🎉', '🌟', '🏆'],
+        ['🎈', '🌈', '🎊'],
+        ['🥳', '✨', '🍭']
+      ],
+
+      init() {
+        this.cacheDOM();
+        this.bindEvents();
+        document.documentElement.style.setProperty('--tray-scale', CONFIG.trayScale);
+        this.newGame(false);
+        this.setupPWA();
+      },
+
+      cacheDOM() {
+        this.board = document.getElementById('board');
+        this.tray = document.getElementById('tray');
+        this.status = document.getElementById('status');
+        this.overlay = document.getElementById('win-overlay');
+        this.newGameBtn = document.getElementById('new-game');
+        this.playAgainBtn = document.getElementById('play-again');
+        this.settingsOverlay = document.getElementById('settings-overlay');
+        this.settingsBtn = document.getElementById('settings-btn');
+        this.closeSettingsBtn = document.getElementById('close-settings');
+      },
+
+      bindEvents() {
+        this.newGameBtn.addEventListener('click', () => this.newGame(true));
+        this.playAgainBtn.addEventListener('click', () => this.newGame(true));
+        this.settingsBtn.addEventListener('click', () => this.openSettings());
+        this.closeSettingsBtn.addEventListener('click', () => this.closeSettings());
+        this.settingsOverlay.addEventListener('click', (e) => {
+          if (e.target === this.settingsOverlay) this.closeSettings();
+        });
+        this.settingsOverlay.querySelectorAll('.size-btn').forEach(btn => {
+          btn.addEventListener('click', () => this.setSize(btn.dataset.size));
+        });
+        window.addEventListener('resize', () => {
+          this.setCellSize();
+          if (this.kb) this.positionKb();
+        });
+      },
+
+      /* ---------- puzzle generation ---------- */
+
+      // Partition the n×n grid into connected polyomino regions by
+      // randomized region-growing, so a solution exists by construction.
+      generatePieces(n, minS, maxS) {
+        const total = n * n;
+        const ids = new Array(total).fill(-1);
+        const nb = (i) => {
+          const r = (i / n) | 0, c = i % n, out = [];
+          if (r > 0) out.push(i - n);
+          if (r < n - 1) out.push(i + n);
+          if (c > 0) out.push(i - 1);
+          if (c < n - 1) out.push(i + 1);
+          return out;
+        };
+
+        let pid = 0;
+        for (let seed = 0; seed < total; seed++) {
+          if (ids[seed] !== -1) continue;
+          const target = minS + Math.floor(Math.random() * (maxS - minS + 1));
+          const region = [seed];
+          ids[seed] = pid;
+          while (region.length < target) {
+            const frontier = [];
+            region.forEach(i => nb(i).forEach(j => {
+              if (ids[j] === -1 && !frontier.includes(j)) frontier.push(j);
+            }));
+            if (!frontier.length) break;
+            const j = frontier[(Math.random() * frontier.length) | 0];
+            ids[j] = pid;
+            region.push(j);
+          }
+          pid++;
+        }
+
+        // Growth can strand undersized leftovers; absorb each into an
+        // adjacent region (the union of two adjacent regions stays connected).
+        for (;;) {
+          const sizes = new Map();
+          ids.forEach(id => sizes.set(id, (sizes.get(id) || 0) + 1));
+          let small = -1;
+          for (const [id, s] of sizes) if (s < minS && sizes.size > 1) { small = id; break; }
+          if (small === -1) break;
+          let into = -1;
+          for (let i = 0; i < total && into === -1; i++) {
+            if (ids[i] !== small) continue;
+            for (const j of nb(i)) if (ids[j] !== small) { into = ids[j]; break; }
+          }
+          for (let i = 0; i < total; i++) if (ids[i] === small) ids[i] = into;
+        }
+
+        // Collect cells per region in first-appearance order.
+        const order = new Map();
+        const cellsById = [];
+        ids.forEach((id, i) => {
+          if (!order.has(id)) { order.set(id, cellsById.length); cellsById.push([]); }
+          cellsById[order.get(id)].push({ r: (i / n) | 0, c: i % n });
+        });
+
+        // Greedy coloring over region adjacency so touching pieces never
+        // share a color; palette order is shuffled per game for variety.
+        const adj = cellsById.map(() => new Set());
+        ids.forEach((id, i) => {
+          nb(i).forEach(j => {
+            if (ids[j] !== id) adj[order.get(id)].add(order.get(ids[j]));
+          });
+        });
+        const paletteOrder = this.shuffle(CONFIG.palette.map((_, i) => i));
+        const colorIdx = new Array(cellsById.length).fill(-1);
+        cellsById.forEach((_, k) => {
+          const used = new Set([...adj[k]].map(m => colorIdx[m]).filter(v => v >= 0));
+          let pick = paletteOrder.find(ci => !used.has(ci));
+          if (pick === undefined) pick = paletteOrder[(Math.random() * paletteOrder.length) | 0];
+          colorIdx[k] = pick;
+        });
+
+        return cellsById.map((cells, k) => {
+          const minR = Math.min(...cells.map(c => c.r));
+          const minC = Math.min(...cells.map(c => c.c));
+          const norm = cells.map(({ r, c }) => ({ r: r - minR, c: c - minC }));
+          return {
+            cells: norm,
+            rows: Math.max(...norm.map(c => c.r)) + 1,
+            cols: Math.max(...norm.map(c => c.c)) + 1,
+            color: CONFIG.palette[colorIdx[k]],
+            placed: null,
+            el: null,
+            slotEl: null
+          };
+        });
+      },
+
+      /* ---------- game flow ---------- */
+
+      newGame(animated) {
+        this.overlay.classList.remove('show');
+        this.gameId++;
+        this.won = false;
+        this.drag = null;
+        this.kb = null;
+        const { n, minPiece, maxPiece } = CONFIG.sizes[this.size];
+        this.N = n;
+        this.pieces = this.shuffle(this.generatePieces(n, minPiece, maxPiece));
+
+        if (animated && this.tray.children.length > 0) {
+          // Re-deal visibly (design principle 9): everything sucks away first.
+          this.audioSwoosh();
+          [...this.tray.children].forEach(el => el.classList.add('out'));
+          [...this.board.querySelectorAll('.piece')].forEach(el => el.classList.add('out'));
+          setTimeout(() => this.renderAll(true), 230);
+        } else {
+          this.renderAll(animated);
+        }
+        this.updateStatus('');
+      },
+
+      renderAll(deal) {
+        this.board.style.gridTemplateColumns = `repeat(${this.N}, 1fr)`;
+        this.board.style.gridTemplateRows = `repeat(${this.N}, 1fr)`;
+        this.board.innerHTML = '';
+        this.cellEls = [];
+        for (let i = 0; i < this.N * this.N; i++) {
+          const cell = document.createElement('div');
+          cell.className = 'cell';
+          cell.setAttribute('aria-hidden', 'true');
+          this.board.appendChild(cell);
+          this.cellEls.push(cell);
+        }
+
+        this.tray.innerHTML = '';
+        this.pieces.forEach((p, i) => {
+          const slot = document.createElement('div');
+          slot.className = 'slot';
+          slot.style.width = `calc(var(--cell) * ${p.cols * CONFIG.trayScale})`;
+          slot.style.height = `calc(var(--cell) * ${p.rows * CONFIG.trayScale})`;
+          if (deal) {
+            slot.classList.add('deal');
+            slot.style.setProperty('--d', `${i * CONFIG.dealStaggerMs}ms`);
+          }
+          p.slotEl = slot;
+          slot.appendChild(this.buildPieceEl(p));
+          this.tray.appendChild(slot);
+        });
+        this.setCellSize();
+      },
+
+      buildPieceEl(p) {
+        const el = document.createElement('div');
+        el.className = 'piece in-tray';
+        el.style.width = `calc(var(--cell) * ${p.cols})`;
+        el.style.height = `calc(var(--cell) * ${p.rows})`;
+        el.tabIndex = 0;
+        el.setAttribute('role', 'button');
+        el.setAttribute('aria-label', `${p.color.name} piece, ${p.cells.length} blocks`);
+        p.cells.forEach(({ r, c }) => {
+          const b = document.createElement('div');
+          b.className = 'blk';
+          b.style.left = `calc(var(--cell) * ${c} + 2px)`;
+          b.style.top = `calc(var(--cell) * ${r} + 2px)`;
+          b.style.width = `calc(var(--cell) - 4px)`;
+          b.style.height = `calc(var(--cell) - 4px)`;
+          b.style.background = p.color.fill;
+          el.appendChild(b);
+        });
+        el.addEventListener('pointerdown', (e) => this.onPointerDown(e, p));
+        el.addEventListener('pointermove', (e) => this.onPointerMove(e));
+        el.addEventListener('pointerup', (e) => this.onPointerUp(e));
+        el.addEventListener('pointercancel', (e) => this.onPointerCancel(e));
+        el.addEventListener('keydown', (e) => this.onPieceKey(e, p));
+        el.addEventListener('blur', () => { if (this.kb && this.kb.p === p) this.endKb(true); });
+        p.el = el;
+        return el;
+      },
+
+      setCellSize() {
+        const w = this.board.clientWidth;
+        if (w > 0) document.documentElement.style.setProperty('--cell', (w / this.N) + 'px');
+      },
+
+      /* ---------- placement rules ---------- */
+
+      occupancy() {
+        const occ = new Array(this.N * this.N).fill(false);
+        this.pieces.forEach(p => {
+          if (!p.placed) return;
+          p.cells.forEach(({ r, c }) => { occ[(p.placed.r + r) * this.N + (p.placed.c + c)] = true; });
+        });
+        return occ;
+      },
+
+      fits(p, r, c, occ) {
+        return p.cells.every(({ r: dr, c: dc }) => {
+          const rr = r + dr, cc = c + dc;
+          return rr >= 0 && rr < this.N && cc >= 0 && cc < this.N && !occ[rr * this.N + cc];
+        });
+      },
+
+      placePiece(p, r, c) {
+        p.placed = { r, c };
+        const el = p.el;
+        el.classList.remove('dragging', 'flying', 'in-tray', 'pop');
+        el.style.left = `calc(var(--cell) * ${c})`;
+        el.style.top = `calc(var(--cell) * ${r})`;
+        el.style.transform = '';
+        this.board.appendChild(el);
+        void el.offsetWidth;
+        el.classList.add('pop');
+        this.audioPlace();
+        this.updateStatus(`Placed the ${p.color.name} piece.`);
+        this.checkWin();
+      },
+
+      flyToTray(p) {
+        const el = p.el, slot = p.slotEl;
+        const cur = el.getBoundingClientRect();
+        p.placed = null;
+        el.classList.remove('dragging', 'in-tray', 'pop', 'shake');
+        el.classList.add('flying');
+        el.style.left = cur.left + 'px';
+        el.style.top = cur.top + 'px';
+        el.style.transform = '';
+        void el.offsetWidth;
+        const t = slot.getBoundingClientRect();
+        el.style.left = t.left + 'px';
+        el.style.top = t.top + 'px';
+        el.style.transform = `scale(${CONFIG.trayScale})`;
+        const gen = this.gameId;
+        setTimeout(() => {
+          if (gen !== this.gameId) return;
+          el.classList.remove('flying');
+          el.classList.add('in-tray');
+          el.style.left = el.style.top = el.style.transform = '';
+          if (el.parentNode !== slot) slot.appendChild(el);
+        }, CONFIG.flyBackMs);
+      },
+
+      checkWin() {
+        if (!this.pieces.every(p => p.placed)) return;
+        this.won = true;
+        const gen = this.gameId;
+        setTimeout(() => { if (gen === this.gameId) this.celebrate(); }, 350);
+      },
+
+      /* ---------- drag interaction ---------- */
+
+      onPointerDown(e, p) {
+        if (this.won || this.drag) return;
+        if (this.kb) this.endKb(true);
+        e.preventDefault();
+        p.el.setPointerCapture(e.pointerId);
+        this.drag = {
+          p, pointerId: e.pointerId,
+          startX: e.clientX, startY: e.clientY,
+          moved: false, fromPlaced: !!p.placed, target: null
+        };
+        p.placed = null;
+        p.el.classList.remove('in-tray', 'pop');
+        p.el.classList.add('dragging');
+        this.positionDrag(e);
+        this.updateGhost();
+        this.audioPickup();
+        this.updateStatus(`Picked up the ${p.color.name} piece.`);
+      },
+
+      positionDrag(e) {
+        const el = this.drag.p.el;
+        el.style.left = (e.clientX - el.offsetWidth / 2) + 'px';
+        el.style.top = (e.clientY - el.offsetHeight - CONFIG.liftPx) + 'px';
+      },
+
+      onPointerMove(e) {
+        if (!this.drag || e.pointerId !== this.drag.pointerId) return;
+        if (Math.hypot(e.clientX - this.drag.startX, e.clientY - this.drag.startY) > CONFIG.tapMovePx) {
+          this.drag.moved = true;
+        }
+        this.positionDrag(e);
+        this.updateGhost();
+      },
+
+      onPointerUp(e) {
+        const d = this.drag;
+        if (!d || e.pointerId !== d.pointerId) return;
+        this.drag = null;
+        this.clearGhost();
+        const p = d.p;
+        // .dragging stays on until placePiece/flyToTray resolves the drop,
+        // so the piece keeps its fixed position meanwhile.
+        if (d.moved && d.target) {
+          this.placePiece(p, d.target.r, d.target.c);
+          return;
+        }
+        const overBoard = d.moved && this.rectsOverlap(p.el.getBoundingClientRect(), this.board.getBoundingClientRect());
+        this.flyToTray(p);
+        if (d.fromPlaced && !d.moved) {
+          this.audioSwoosh();
+          this.updateStatus(`Lifted the ${p.color.name} piece back to the tray.`);
+        } else if (overBoard) {
+          this.audioOops(); // it doesn't fit there — gentle, not punitive
+          this.updateStatus('That spot does not fit. The piece went back.');
+        } else {
+          this.audioSwoosh();
+        }
+      },
+
+      onPointerCancel(e) {
+        const d = this.drag;
+        if (!d || e.pointerId !== d.pointerId) return;
+        this.drag = null;
+        this.clearGhost();
+        this.flyToTray(d.p);
+      },
+
+      // Snap preview: where would the piece land if dropped right now?
+      updateGhost() {
+        this.clearGhost();
+        const d = this.drag;
+        if (!d) return;
+        const rect = d.p.el.getBoundingClientRect();
+        const brect = this.board.getBoundingClientRect();
+        const cell = brect.width / this.N;
+        const c = Math.round((rect.left - brect.left) / cell);
+        const r = Math.round((rect.top - brect.top) / cell);
+        if (this.fits(d.p, r, c, this.occupancy())) {
+          d.target = { r, c };
+          this.highlightGhost(d.p, r, c);
+        } else {
+          d.target = null;
+        }
+      },
+
+      highlightGhost(p, r, c) {
+        p.cells.forEach(({ r: dr, c: dc }) => {
+          this.cellEls[(r + dr) * this.N + (c + dc)].classList.add('ghost');
+        });
+      },
+
+      clearGhost() {
+        this.cellEls.forEach(el => el.classList.remove('ghost'));
+      },
+
+      rectsOverlap(a, b) {
+        return a.left < b.right && a.right > b.left && a.top < b.bottom && a.bottom > b.top;
+      },
+
+      /* ---------- keyboard interaction (parity with touch) ---------- */
+
+      onPieceKey(e, p) {
+        if (this.won || this.drag) return;
+        const key = e.key;
+        if (key === 'Enter' || key === ' ') {
+          e.preventDefault();
+          if (this.kb && this.kb.p === p) {
+            const { r, c } = this.kb;
+            if (this.fits(p, r, c, this.occupancy())) {
+              this.endKb(false);
+              this.placePiece(p, r, c);
+            } else {
+              this.audioOops();
+              p.el.classList.remove('shake');
+              void p.el.offsetWidth;
+              p.el.classList.add('shake');
+            }
+          } else if (p.placed) {
+            this.flyToTray(p);
+            this.audioSwoosh();
+            this.updateStatus(`Lifted the ${p.color.name} piece back to the tray.`);
+          } else {
+            this.startKb(p);
+          }
+        } else if (this.kb && this.kb.p === p && key.startsWith('Arrow')) {
+          e.preventDefault();
+          if (key === 'ArrowUp') this.kb.r--;
+          if (key === 'ArrowDown') this.kb.r++;
+          if (key === 'ArrowLeft') this.kb.c--;
+          if (key === 'ArrowRight') this.kb.c++;
+          this.kb.r = Math.max(0, Math.min(this.N - p.rows, this.kb.r));
+          this.kb.c = Math.max(0, Math.min(this.N - p.cols, this.kb.c));
+          this.positionKb();
+        } else if (key === 'Escape' && this.kb && this.kb.p === p) {
+          e.preventDefault();
+          this.endKb(true);
+        }
+      },
+
+      startKb(p) {
+        const occ = this.occupancy();
+        let spot = null;
+        for (let r = 0; r <= this.N - p.rows && !spot; r++) {
+          for (let c = 0; c <= this.N - p.cols && !spot; c++) {
+            if (this.fits(p, r, c, occ)) spot = { r, c };
+          }
+        }
+        if (!spot) spot = { r: 0, c: 0 };
+        this.kb = { p, r: spot.r, c: spot.c };
+        p.el.classList.remove('in-tray');
+        p.el.classList.add('dragging');
+        this.positionKb();
+        this.audioPickup();
+        this.updateStatus('Arrow keys move the piece. Enter places it. Escape puts it back.');
+      },
+
+      positionKb() {
+        if (!this.kb) return;
+        const { p, r, c } = this.kb;
+        const brect = this.board.getBoundingClientRect();
+        const cell = brect.width / this.N;
+        p.el.style.left = (brect.left + c * cell) + 'px';
+        p.el.style.top = (brect.top + r * cell) + 'px';
+        this.clearGhost();
+        if (this.fits(p, r, c, this.occupancy())) this.highlightGhost(p, r, c);
+      },
+
+      endKb(fly) {
+        if (!this.kb) return;
+        const p = this.kb.p;
+        this.kb = null;
+        this.clearGhost();
+        if (fly) this.flyToTray(p);
+      },
+
+      /* ---------- win / settings ---------- */
+
+      celebrate() {
+        this.audioWin();
+        this.updateStatus('The whole board is full. You did it!');
+        this.renderWinEmojis();
+        this.overlay.classList.add('show');
+        for (let i = 0; i < 60; i++) {
+          const conf = document.createElement('div');
+          conf.className = 'confetti';
+          conf.style.left = Math.random() * 100 + 'vw';
+          conf.style.background = CONFIG.palette[Math.floor(Math.random() * CONFIG.palette.length)].fill;
+          conf.style.width = (6 + Math.random() * 8) + 'px';
+          conf.style.height = (6 + Math.random() * 8) + 'px';
+          conf.style.animationDuration = (1.5 + Math.random() * 2) + 's';
+          conf.style.animationDelay = (Math.random() * 0.8) + 's';
+          document.body.appendChild(conf);
+          setTimeout(() => conf.remove(), 4500);
+        }
+      },
+
+      renderWinEmojis() {
+        const row = document.getElementById('emoji-row');
+        const set = this.emojiSets[Math.floor(Math.random() * this.emojiSets.length)];
+        row.innerHTML = set.map(e => `<span>${e}</span>`).join('');
+      },
+
+      openSettings() {
+        this.settingsOverlay.classList.add('show');
+        this.updateSizeButtons();
+      },
+
+      closeSettings() {
+        this.settingsOverlay.classList.remove('show');
+      },
+
+      setSize(size) {
+        if (size === this.size) {
+          this.closeSettings();
+          return;
+        }
+        this.size = size;
+        this.updateSizeButtons();
+        // Close first so the re-deal is visible, never a silent reset
+        // behind the overlay (design principle 9).
+        this.closeSettings();
+        this.newGame(true);
+      },
+
+      updateSizeButtons() {
+        this.settingsOverlay.querySelectorAll('.size-btn').forEach(btn => {
+          const active = btn.dataset.size === this.size;
+          btn.classList.toggle('active', active);
+          btn.setAttribute('aria-checked', active ? 'true' : 'false');
+        });
+      },
+
+      shuffle(arr) {
+        for (let i = arr.length - 1; i > 0; i--) {
+          const j = Math.floor(Math.random() * (i + 1));
+          [arr[i], arr[j]] = [arr[j], arr[i]];
+        }
+        return arr;
+      },
+
+      updateStatus(msg) {
+        this.status.textContent = msg;
+      },
+
+      /* ---------- PWA ---------- */
+
+      setupPWA() {
+        const manifest = {
+          name: 'Shape Fit',
+          short_name: 'Shape Fit',
+          start_url: '.',
+          display: 'standalone',
+          background_color: '#D6F0E2',
+          theme_color: '#2FA98C',
+          icons: [
+            { src: this.makeIcon(192), sizes: '192x192', type: 'image/svg+xml' },
+            { src: this.makeIcon(512), sizes: '512x512', type: 'image/svg+xml' }
+          ]
+        };
+        const blob = new Blob([JSON.stringify(manifest)], { type: 'application/json' });
+        document.getElementById('manifest-link').href = URL.createObjectURL(blob);
+
+        // Service workers must be registered from a real http(s) URL —
+        // browsers reject blob:/data: worker scripts. sw.js lives next to
+        // this file; at file:// there is no service worker support anyway.
+        if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
+          navigator.serviceWorker.register('sw.js').catch(() => {});
+        }
+      },
+
+      makeIcon(size) {
+        const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 100 100">
+          <rect width="100" height="100" fill="#D6F0E2" rx="18"/>
+          <rect x="14" y="14" width="23" height="23" rx="6" fill="#F7A6B9"/>
+          <rect x="14" y="39" width="23" height="23" rx="6" fill="#F7A6B9"/>
+          <rect x="14" y="64" width="23" height="23" rx="6" fill="#F7A6B9"/>
+          <rect x="39" y="64" width="23" height="23" rx="6" fill="#F7A6B9"/>
+          <rect x="39" y="14" width="23" height="23" rx="6" fill="#8ED3F4"/>
+          <rect x="64" y="14" width="23" height="23" rx="6" fill="#8ED3F4"/>
+          <rect x="64" y="39" width="23" height="23" rx="6" fill="#FFE66D"/>
+          <rect x="64" y="64" width="23" height="23" rx="6" fill="#FFE66D"/>
+        </svg>`;
+        return 'data:image/svg+xml;base64,' + btoa(unescape(encodeURIComponent(svg)));
+      },
+
+      /* ---------- audio ---------- */
+
+      ensureAudio() {
+        if (!this.audioCtx) this.audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        if (this.audioCtx.state === 'suspended') this.audioCtx.resume();
+      },
+
+      playTone({ type = 'sine', freq = 440, duration = 100, startGain = 0.0001, peakGain = 0.15 }) {
+        this.ensureAudio();
+        const ctx = this.audioCtx;
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = type;
+        osc.frequency.setValueAtTime(freq, ctx.currentTime);
+        gain.gain.setValueAtTime(startGain, ctx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(peakGain, ctx.currentTime + 0.01);
+        gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + duration / 1000);
+        osc.connect(gain).connect(ctx.destination);
+        osc.start();
+        osc.stop(ctx.currentTime + duration / 1000 + 0.02);
+      },
+
+      audioPickup() { this.playTone({ type: 'sine', freq: 660, duration: 60, peakGain: 0.1 }); },
+      audioPlace() {
+        this.playTone({ type: 'sine', freq: 540, duration: 80, peakGain: 0.16 });
+        setTimeout(() => this.playTone({ type: 'sine', freq: 810, duration: 70, peakGain: 0.13 }), 70);
+      },
+      // Gentle "hmm", not a punitive buzz (design principle 3)
+      audioOops() { this.playTone({ type: 'sine', freq: 240, duration: 160, peakGain: 0.1 }); },
+      audioSwoosh() {
+        this.ensureAudio();
+        const ctx = this.audioCtx;
+        const bufferSize = ctx.sampleRate * 0.1;
+        const buffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
+        const data = buffer.getChannelData(0);
+        for (let i = 0; i < bufferSize; i++) data[i] = (Math.random() * 2 - 1) * (1 - i / bufferSize);
+        const src = ctx.createBufferSource();
+        src.buffer = buffer;
+        const gain = ctx.createGain();
+        gain.gain.setValueAtTime(0.12, ctx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.1);
+        src.connect(gain).connect(ctx.destination);
+        src.start();
+      },
+      audioWin() {
+        [523.25, 659.25, 783.99].forEach((freq, i) => {
+          setTimeout(() => this.playTone({ type: 'sine', freq, duration: 220, peakGain: 0.18 }), i * 180);
+        });
+      }
+    };
+
+    App.init();
+  </script>
+</body>
+</html>

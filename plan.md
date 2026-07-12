@@ -28,7 +28,7 @@
 
 ## All games
 
-- **Service-worker update strategy** (AUDIT B1): the cache-first `sw.js` with a fixed cache name (now ×3 with `memory-v1`) means returning players never receive deployed updates until the cache name is bumped. Decide: network-first for navigations (fall back to cache offline), or enforce "bump the cache name in every release" as a hard rule in CLAUDE.md.
+- **Service-worker update strategy** (AUDIT B1): the cache-first `sw.js` with a fixed cache name (now ×4 with `shape-fit-v1`) means returning players never receive deployed updates until the cache name is bumped. Decide: network-first for navigations (fall back to cache offline), or enforce "bump the cache name in every release" as a hard rule in CLAUDE.md.
 - ~~**Favicon**~~ ✓ (AUDIT B3) — all three pages (hub + both games) declare `<link rel="icon">` using an inline 🧸 emoji SVG data URI, matching the teddy bear already used as the hub's logo.
 - ~~**Use or remove the `aria-live` status regions**~~ ✓ (AUDIT A17) — both games now announce meaningful state: Sudoku announces cell selection, placements, conflicts, and the win; Fold and Pass announces the current section (head/body/legs) and the final reveal.
 
@@ -43,9 +43,15 @@
 - **Feat: add an animated tutorial**.
 - ~~**Implement the game**~~ ✓ (2026-07-12) — pairs-matching game shipped per the Future Games scoping: face-down emoji cards, 3D flip, match chime / gentle mismatch flip-back (never blocks play — a third tap resolves the pair immediately), matched pairs fly off the board leaving their grid slot empty, 🐣 4×4 / 🦁 6×4 size setting with visible re-deal, translucent win overlay, no timer or move counter. Architecture notes in `CLAUDE.md`.
 
+## Shape Fit (`shape-fit/index.html`)
+
+- **Feat: add an animated tutorial**.
+- **Feat: rotation hard mode** — v1 deliberately ships without rotation (pieces arrive in their correct orientation, jigsaw-style). A later setting could deal pieces randomly rotated and let a tap on a held piece turn it 90°.
+- ~~**Implement the game**~~ ✓ (2026-07-12) — no-timer "reverse Tetris" shipped per the scoping: randomized region-growing cuts the board into 3–6-cell polyomino pieces (solvable by construction; adjacent pieces never share a color), drag with `setPointerCapture` + lift-above-finger + ghost snap preview, free placement with tap-to-lift undo, keyboard parity (Enter/arrows/Escape), translucent win overlay + confetti, 🐣 6×6 / 🦁 8×8 size setting with visible re-deal. **The big board became 8×8 instead of the scoped 9×9** — bigger cells (~45 px vs 40 px) and ~14 rather than ~18 pieces suit the age band better. Verified with a 4 000-board generator invariant test and a Playwright end-to-end run (drag, invalid drop, lift-off, keyboard, solve-to-win, settings). Architecture notes in `CLAUDE.md`.
+
 ## Future Games
 
-*(empty — next candidates discussed 2026-07-12: Shape Fit / tangram-lite, Four in a Row pass-and-play, pocket xylophone music toy, Simon-style Echo)*
+*(candidates discussed 2026-07-12: Four in a Row pass-and-play, pocket xylophone music toy, Simon-style Echo)*
 
 ## Later / not now
 
