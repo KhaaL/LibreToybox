@@ -3,11 +3,13 @@
 Full audit of LibreToybox: every file was reviewed and cross-checked against
 `CLAUDE.md`, `plan.md`, and `design_principles.txt`.
 
-> **Status (2026-07-12):** A1–A5, A8, A9 (Google Fonts removed), A10, A13,
-> A14, and A15 are **fixed**. File paths below reference the pre-fix state —
-> in particular, `soduko-for-minis/` is now `sudoku-for-minis/`, and line
-> numbers have shifted. Still open: A6, A7 (tracked in plan.md), A11, A12,
-> A16–A18.
+> **Status (2026-07-12, post-merge):** A1–A5, A8, A9 (Google Fonts removed),
+> A10, A13, A14, and A15 are **fixed and merged to `main`** (PR #2). File
+> paths below reference the pre-fix state — in particular,
+> `soduko-for-minis/` is now `sudoku-for-minis/`, and line numbers have
+> shifted. Still open: A6, A7, A11, A12, A16, A17 (aria-live item only),
+> A18 — all now tracked in `plan.md`. A second-pass re-audit of the merged
+> state follows at the end of this document (findings B1–B4).
 
 **Severity scale**
 | Level | Meaning |
@@ -237,3 +239,65 @@ soduko-for-minis sudoku-for-minis` and update both docs.
 4. **Write the README and surface the license** (A5, A14).
 5. **Add lightweight CI** — even just `htmlhint`/`html-validate` on `*/index.html` plus a link check would catch structural regressions with zero build-step impact. Add a `.gitignore` (currently absent) before tooling arrives.
 6. **Decide the extraction threshold now**: `playTone`, `ensureAudio`, `audioSwoosh`, `audioWin`, and `setupPWA` are already duplicated verbatim between the two games. Duplication is the documented philosophy (single self-contained files) — that's fine, but write it down as an explicit rule ("shared code is copied, never imported; canonical version lives in game X") so drift between copies is a conscious choice.
+
+---
+
+# Second pass — post-merge re-audit (2026-07-12)
+
+Re-audit of `main` after PR #2 merged. Scope: verify the merged fixes hold,
+re-check the open A-findings against current code, and sweep for issues
+introduced by the fixes themselves.
+
+**Fix verification.** All ten merged fixes verified end-to-end in headless
+Chromium against a static HTTP server *and* at `file://`: the service worker
+now installs from `sw.js` and populates its cache; a Keep-mode board that is
+full but conflicting no longer wins while a correct completion still does;
+the active digit resets after every placement; long-press erase works through
+Pointer Events; both games make **zero** external network requests; manifest
+icon types are correct. A repo-wide sweep found no stale `soduko`/font/CDN/
+`child-games` references outside this file's historical sections.
+
+**Open A-findings re-confirmed:** A6 (EC swatches 48×48, brush/undo/clear
+56×48), A7 (reveal squish), A11 (settings principle-9 violations), A12
+(cells not keyboard-accessible), A16 (all listed dead code still present;
+`getPointer` was removed by the A13 fix), A17 (only the unused `aria-live`
+status regions remain — the doc typos and the 460 ms wording were fixed),
+A18 (in-progress stroke lost on resize). All are now mirrored in `plan.md`.
+
+## New findings
+
+### B1. Installed users never receive game updates (severity 3)
+`sudoku-for-minis/sw.js`, `exquisite-corpse/sw.js`
+
+The service workers (introduced by the A1 fix) serve **cache-first** with a
+fixed cache name (`child-sudoku-v2` / `combo-man-v2`). Once a user has loaded
+a game over http(s), every future visit is served entirely from cache — a
+deployed new version of `index.html` is never fetched until the `CACHE`
+constant is manually bumped. CLAUDE.md says to bump the cache name "per
+game" but not **per release**. Consequence: bug fixes silently don't reach
+returning players. **Action:** either adopt a network-first strategy for
+navigation requests (fall back to cache when offline), or make "bump the
+sw.js cache name in every release that touches the game" an explicit rule in
+CLAUDE.md — done for now via a note in "Adding a New Game"; the strategy
+decision is tracked in plan.md.
+
+### B2. Open audit findings were not tracked in plan.md (severity 2) — fixed
+CLAUDE.md declares plan.md the "single source of truth" for pending work,
+but the open findings from this audit (A6, A11, A12, A16–A18) lived only
+here. **Fixed in this pass:** all open items are now listed in plan.md;
+this document is a point-in-time record, not a tracker.
+
+### B3. No favicon — guaranteed 404 on every hosted page load (severity 2)
+Neither game declares a `<link rel="icon">`, so browsers request
+`/favicon.ico` and log a 404 (observed during fix verification), and tabs
+show a generic icon. Both games already build SVG data-URI icons at runtime
+(`makeIcon()`) — a one-line static `<link rel="icon" href="data:image/svg+xml,...">`
+per game closes it. Tracked in plan.md.
+
+### B4. Sudoku overlays lack dialog semantics (severity 2)
+`sudoku-for-minis/index.html` — the settings and win overlays have no
+`role="dialog"`/`aria-modal`, while EC's settings overlay
+(`exquisite-corpse/index.html:350`) declares both. Same pattern, two
+different a11y treatments — screen readers announce one and not the other.
+**Action:** add `role="dialog" aria-modal="true"` to Sudoku's two overlays.
+Tracked in plan.md.
