@@ -15,7 +15,6 @@
       --c2: #4ECDC4;
       --c3: #FFE66D;
       --c4: #A8E6CF;
-      --eraser: #FFB6C1;
       --given: #E8E8E8;
       --cell: #FFFFFF;
       --border: #B0C4DE;
@@ -100,10 +99,10 @@
     }
     .cell.given { background: var(--given); font-weight: bold; cursor: default; }
     .cell.selected { outline: 4px dashed #32CD32; outline-offset: -4px; z-index: 2; }
+    .cell:focus-visible { outline: 3px solid #4A4A4A; outline-offset: -3px; z-index: 2; }
     .cell.conflict { background: #FFCDD2; color: #C62828; animation: flashShake .5s ease-in-out; }
     .cell.just-placed { animation: pop .25s ease-out; }
     .cell.cleared { animation: suction .22s ease-in; }
-    .cell.bonk { animation: bonk .25s ease-in-out; }
 
     /* thick borders between 2x2 blocks */
     .cell:nth-child(4n+2) { border-left-width: 3px; border-left-color: #7A8BA6; }
@@ -148,9 +147,7 @@
     .cell.pressing .press-progress { opacity: 1; }
 
     @keyframes pop { 0% { transform: scale(1); } 50% { transform: scale(1.18); } 100% { transform: scale(1); } }
-    @keyframes shake { 0%,100% { transform: translateX(0); } 20%,60% { transform: translateX(-5px); } 40%,80% { transform: translateX(5px); } }
     @keyframes suction { 0% { transform: scale(1); opacity: 1; } 100% { transform: scale(0.1); opacity: 0; } }
-    @keyframes bonk { 0%,100% { transform: rotate(0); } 25% { transform: rotate(-6deg); } 75% { transform: rotate(6deg); } }
     @keyframes fall { 0% { transform: translateY(-10vh) rotate(0deg); opacity: 1; } 100% { transform: translateY(110vh) rotate(720deg); opacity: 0; } }
     @keyframes bounce { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-18px); } }
 
@@ -240,10 +237,7 @@
     .emoji-row span { animation: pop .6s ease-out forwards; }
     .emoji-row span:nth-child(2) { animation-delay: .15s; }
     .emoji-row span:nth-child(3) { animation-delay: .3s; }
-    .emoji-row span:nth-child(4) { animation-delay: .45s; }
     .confetti { position: fixed; top: 0; left: 0; width: 10px; height: 10px; pointer-events: none; z-index: 101; animation: fall linear forwards; }
-
-    .hidden { display: none; }
   </style>
 </head>
 <body>
@@ -404,15 +398,7 @@
           this.lastTapTime = now;
           this.lastTapCell = key;
 
-          if (this.givenMask[r][c]) return;
-
-          if (!this.activeTool) {
-            this.selectCell(r, c);
-            this.updateStatus('');
-            return;
-          }
-
-          this.tryPlace(r, c, parseInt(this.activeTool, 10));
+          this.activateCell(r, c);
         };
 
         const cancel = () => {
@@ -426,6 +412,27 @@
         this.grid.addEventListener('pointerup', end);
         this.grid.addEventListener('pointercancel', cancel);
         this.grid.addEventListener('contextmenu', (e) => e.preventDefault());
+
+        // Keyboard parity (design principle 8): cells are tabbable
+        // (renderGrid sets tabIndex on non-given cells); Enter/Space
+        // activates the focused cell exactly like a tap.
+        this.grid.addEventListener('keydown', (e) => {
+          if (e.key !== 'Enter' && e.key !== ' ') return;
+          const cell = e.target.closest('.cell');
+          if (!cell) return;
+          e.preventDefault();
+          this.activateCell(parseInt(cell.dataset.r, 10), parseInt(cell.dataset.c, 10));
+        });
+      },
+
+      activateCell(r, c) {
+        if (this.givenMask[r][c]) return;
+        if (!this.activeTool) {
+          this.selectCell(r, c);
+          this.updateStatus(`Selected row ${r + 1}, column ${c + 1}. Choose a number.`);
+          return;
+        }
+        this.tryPlace(r, c, parseInt(this.activeTool, 10));
       },
 
       showPressProgress(cell) {
@@ -489,6 +496,7 @@
         this.setTool(null);
         if (this.hasConflict(r, c, val)) {
           this.audioBuzz();
+          this.updateStatus(`Number ${val} conflicts, try again.`);
           this.renderGrid();
           const el = this.getCellEl(r, c);
           if (el) {
@@ -504,16 +512,11 @@
           return;
         }
         this.audioPop();
+        this.updateStatus(`Placed ${val} at row ${r + 1}, column ${c + 1}.`);
         this.deselect();
         this.markJustPlaced(r, c);
         this.renderGrid();
         if (this.checkWin()) this.celebrate();
-      },
-
-      tryClear(r, c) {
-        if (this.won) return;
-        if (this.givenMask[r][c] || this.playGrid[r][c] === 0) return;
-        this.clearCell(r, c);
       },
 
       clearCell(r, c) {
@@ -522,16 +525,6 @@
         this.audioSwoosh();
         this.markCleared(r, c);
         this.renderGrid();
-      },
-
-      bonkCell(r, c) {
-        const el = this.getCellEl(r, c);
-        if (el) {
-          el.classList.remove('bonk');
-          void el.offsetWidth;
-          el.classList.add('bonk');
-        }
-        this.audioBonk();
       },
 
       markJustPlaced(r, c) {
@@ -609,6 +602,7 @@
       celebrate() {
         this.won = true;
         this.audioWin();
+        this.updateStatus('Puzzle solved!');
         this.renderWinEmojis();
         this.overlay.classList.add('show');
         for (let i = 0; i < 60; i++) {
@@ -734,7 +728,11 @@
             cell.dataset.r = r;
             cell.dataset.c = c;
             cell.setAttribute('role', 'gridcell');
-            if (this.givenMask[r][c]) cell.classList.add('given');
+            if (this.givenMask[r][c]) {
+              cell.classList.add('given');
+            } else {
+              cell.tabIndex = 0;
+            }
             if (this.selected && this.selected.r === r && this.selected.c === c) cell.classList.add('selected');
             if (this.playGrid[r][c] !== 0 && this.hasConflict(r, c, this.playGrid[r][c])) cell.classList.add('conflict');
             if (this.playGrid[r][c] !== 0) cell.textContent = this.playGrid[r][c];
@@ -770,13 +768,22 @@
       },
 
       removeIllegalCells() {
+        const toClear = [];
         for (let r = 0; r < 4; r++) {
           for (let c = 0; c < 4; c++) {
             if (!this.givenMask[r][c] && this.playGrid[r][c] !== 0 && this.hasConflict(r, c, this.playGrid[r][c])) {
-              this.playGrid[r][c] = 0;
+              toClear.push([r, c]);
             }
           }
         }
+        if (toClear.length === 0) return;
+        // Design principle 9: switching modes shouldn't clear cells silently
+        // — swoosh + the same suction animation a manual clear uses.
+        this.audioSwoosh();
+        toClear.forEach(([r, c]) => {
+          this.playGrid[r][c] = 0;
+          this.markCleared(r, c);
+        });
         this.renderGrid();
       },
 
@@ -843,7 +850,6 @@
 
       audioPop() { this.playTone({ type: 'sine', freq: 800, duration: 80, peakGain: 0.18 }); },
       audioBuzz() { this.playTone({ type: 'sawtooth', freq: 150, duration: 200, peakGain: 0.12 }); },
-      audioBonk() { this.playTone({ type: 'triangle', freq: 220, duration: 90, peakGain: 0.12 }); },
       audioSwoosh() {
         this.ensureAudio();
         const ctx = this.audioCtx;
