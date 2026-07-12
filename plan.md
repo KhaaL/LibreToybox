@@ -27,7 +27,7 @@
 ## Both games
 
 - **Service-worker update strategy** (AUDIT B1): the cache-first `sw.js` with a fixed cache name means returning players never receive deployed updates until the cache name is bumped. Decide: network-first for navigations (fall back to cache offline), or enforce "bump the cache name in every release" as a hard rule in CLAUDE.md.
-- **Favicon** (AUDIT B3): neither game declares a `<link rel="icon">` — hosted pages 404 on `/favicon.ico` and show a generic tab icon. Add an inline SVG/emoji data-URI favicon per game (each game already builds SVG icons in `makeIcon()`).
+- ~~**Favicon**~~ ✓ (AUDIT B3) — all three pages (hub + both games) declare `<link rel="icon">` using an inline 🧸 emoji SVG data URI, matching the teddy bear already used as the hub's logo.
 - ~~**Use or remove the `aria-live` status regions`**~~ ✓ (AUDIT A17) — both games now announce meaningful state: Sudoku announces cell selection, placements, conflicts, and the win; Exquisite Corpse announces the current section (head/body/legs) and the final reveal.
 
 ## Repository / Infrastructure
@@ -35,6 +35,10 @@
 - ~~**Feat: free CI/CD hosting**~~ ✓ — `.github/workflows/deploy-pages.yml` deploys the repo to **GitHub Pages** on every push to `main`, live at <https://khaal.github.io/LibreToybox/>. Zero external accounts, zero build step — the static tree is served as-is via `actions/upload-pages-artifact` + `actions/deploy-pages`. Repo was made public and Pages Source set to "GitHub Actions" on 2026-07-12; first deploy verified live.
 - **Feat: mirror to Codeberg** — add a GitHub Action that syncs this repository to <https://codeberg.org/krash/LibreToybox> on every push to `main` (push mirror using a Codeberg access token stored as a GitHub Actions secret, e.g. `git push --mirror` from a scheduled/push-triggered workflow).
 - **Lightweight CI** (AUDIT recommendation): `htmlhint`/`html-validate` over `*/index.html` + a link check; add a `.gitignore` before tooling arrives.
+
+## Future Games
+
+- **Memory** — classic pairs-matching / concentration game. Face-down emoji cards on a grid; tap two to flip, match clears the pair with a celebratory pop, mismatch flips back after a beat. Fits the existing design language directly: chunky ≥60×60 px cards, no text (emoji-only faces), Web Audio flip/match/mismatch/win sounds, offline single-file + `sw.js` per the established pattern in "Adding a New Game." Grid size and emoji set are the only real design decisions (e.g. 4×4 easy / 6×4 harder, matching Sudoku's beginner-friendly scope).
 
 ## Later / not now
 
