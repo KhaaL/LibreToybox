@@ -13,7 +13,7 @@
 ## Exquisite Corpse (`exquisite-corpse/index.html`)
 
 - **Feat: add an animated tutorial**.
-- **Bug: winning reveal covered by the last drawing section** (reported 2026-07-12): after the final ✓, the bottom part of the painting remains on screen and covers the final revealed image. Likely cause: `#reveal-canvas` is transparent outside the letterboxed artwork, so the main `#drawing-canvas` — still translated to the legs section — shows through around the reveal. Fix: paint an opaque background on the reveal canvas before `drawImage()` in `reveal()`, and/or hide the drawing canvas once `won`.
+- ~~**Bug: winning reveal covered by the last drawing section**~~ ✓ (reported & fixed 2026-07-12) — after the final ✓, the bottom part of the painting remained on screen and covered the final revealed image: `#reveal-canvas` was transparent outside the letterboxed artwork, so the main `#drawing-canvas` — still translated to the legs section — showed through around the reveal. `reveal()` now fills the reveal canvas with opaque paper white before `drawImage()`, fully covering the drawing canvas. `sw.js` cache bumped to `fold-and-pass-v2` per the release rule.
 - **Enlarge toolbar controls to 64×64 px** (AUDIT A6): color swatches are 48×48 and brush/undo/clear buttons 56×48, below the non-negotiable ≥64×64 tool-button rule (design principle 4).
 - **Bug: in-progress stroke lost on resize** (AUDIT A18): `redrawCanvas()` draws committed strokes but not `currentStroke`, so a stroke being drawn during device rotation vanishes.
 - ~~**Bug: final screen is "squished"**~~ ✓ (AUDIT A7) — `reveal()` now renders the full artwork onto an offscreen buffer at its true (undistorted) aspect ratio, then letterbox-scales that buffer into the wrap-sized overlay instead of stretching x/y independently. `downloadPainting()` exports the undistorted buffer directly (`artworkCanvas`), so the saved PNG is no longer squished either.
@@ -41,7 +41,7 @@
 ## Memory (`memory/index.html`)
 
 - **Feat: add an animated tutorial**.
-- ~~**Implement the game**~~ ✓ (2026-07-12) — pairs-matching game shipped per the Future Games scoping: face-down emoji cards, 3D flip, match chime / gentle mismatch flip-back (never blocks play — a third tap resolves the pair immediately), 🐣 4×4 / 🦁 6×4 size setting with visible re-deal, translucent win overlay keeping the board visible, no timer or move counter. Architecture notes in `CLAUDE.md`.
+- ~~**Implement the game**~~ ✓ (2026-07-12) — pairs-matching game shipped per the Future Games scoping: face-down emoji cards, 3D flip, match chime / gentle mismatch flip-back (never blocks play — a third tap resolves the pair immediately), matched pairs fly off the board leaving their grid slot empty, 🐣 4×4 / 🦁 6×4 size setting with visible re-deal, translucent win overlay, no timer or move counter. Architecture notes in `CLAUDE.md`.
 
 ## Future Games
 

@@ -96,6 +96,7 @@ All decisions must follow `design_principles.txt`. Key ones:
 - Cards are real `<button>`s — one `click` stream covers mouse, touch, pen **and** Enter/Space keyboard activation; no pointer/touch pairing needed (no long-press gesture in this game)
 - 3D flip via CSS: `.card-inner` rotates `rotateY(180deg)`, both faces use `backface-visibility: hidden`
 - A mismatched pair never blocks play (design principle 10): it flips back after `mismatchHoldMs`, **or** immediately when a third card is tapped (`resolveMismatch()` runs before the new flip)
+- A matched pair shows for `matchGoneMs`, then flies away (suction animation) — the `.gone` card keeps its grid slot as an invisible spacer so remaining cards never shift position; the board empties toward the win. Removal timers carry a `gameId` generation check so a 🔄 mid-animation can't touch the new board
 - Mismatch sound is a gentle low sine ("hmm"), not a buzz — mistakes are expected gameplay here, not errors (design principle 3)
 - **No timer, no move counter** — deliberate: no pressure mechanics (humane-first)
 - Win overlay is translucent (`rgba(255,255,255,0.55)`, content bottom-anchored) so the completed board stays visible under the confetti
