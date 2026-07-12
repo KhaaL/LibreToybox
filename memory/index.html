@@ -130,6 +130,9 @@
     .card.deal { animation: pop .3s ease-out both; animation-delay: var(--d, 0s); }
     .card.out { animation: suction .22s ease-in forwards; }
     .card.matched-pop .card-inner { animation: pop .35s ease-out; }
+    /* Matched pairs fly away but keep their grid slot, so the remaining
+       cards never shift position under the child's fingers. */
+    .card.gone { animation: suction .3s ease-in forwards; pointer-events: none; }
 
     .status { font-size: 0; height: 0; overflow: hidden; }
 
@@ -242,6 +245,7 @@
       },
       flipMs: 250,
       mismatchHoldMs: 900,
+      matchGoneMs: 650,
       dealStaggerMs: 25,
       emojiPool: ['🐶','🐱','🦊','🐸','🐢','🦋','🐝','🐙','🐬','🦉','🍓','🍌','🍉','🌈','⭐','🚀','🎈','🌻']
     };
@@ -302,6 +306,7 @@
       newGame(animated) {
         this.overlay.classList.remove('show');
         this.clearMismatchTimer();
+        this.gameId = (this.gameId || 0) + 1; // stale match-removal timers check this
         this.firstPick = null;
         this.pendingMismatch = null;
         this.won = false;
@@ -399,10 +404,22 @@
           el.classList.add('matched-pop');
         });
         this.audioMatch();
-        this.updateStatus(`Matched a pair of ${this.cards[a].emoji}!`);
-        if (this.cards.every(c => c.matched)) {
-          setTimeout(() => this.celebrate(), 350);
-        }
+        this.updateStatus(`Matched a pair of ${this.cards[a].emoji}! They fly away.`);
+        // Let the pair show for a beat, then remove it from the board.
+        const gen = this.gameId;
+        setTimeout(() => {
+          if (gen !== this.gameId) return; // a new game replaced this board
+          [a, b].forEach(i => {
+            const el = this.getCardEl(i);
+            el.classList.add('gone');
+            el.setAttribute('aria-hidden', 'true');
+            el.tabIndex = -1;
+          });
+          this.audioSwoosh();
+          if (this.cards.every(c => c.matched)) {
+            setTimeout(() => { if (gen === this.gameId) this.celebrate(); }, 400);
+          }
+        }, CONFIG.matchGoneMs);
       },
 
       resolveMismatch() {

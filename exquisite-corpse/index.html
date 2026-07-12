@@ -812,7 +812,11 @@ const App = {
     const drawW = buffer.width * scale;
     const drawH = buffer.height * scale;
     const rctx = rc.getContext('2d');
-    rctx.clearRect(0, 0, rc.width, rc.height);
+    // Opaque paper background — the reveal overlay must fully cover the
+    // drawing canvas behind it (still translated to the last section),
+    // which otherwise shows through around the letterboxed artwork.
+    rctx.fillStyle = '#fff';
+    rctx.fillRect(0, 0, rc.width, rc.height);
     rctx.drawImage(buffer, (wrapW - drawW) / 2, (wrapH - drawH) / 2, drawW, drawH);
 
     // Fade in the overlay
