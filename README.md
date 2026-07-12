@@ -12,6 +12,7 @@ Every game is a single `index.html` (plus a tiny `sw.js` for offline caching) �
 |---|---|---|
 | **Child Sudoku** | [`sudoku-for-minis/`](sudoku-for-minis/index.html) | A 4×4 Sudoku for beginners: number pad + chunky cells, playful sounds, a Reject/Keep toggle for wrong numbers, and a confetti party on winning. |
 | **Fold and Pass** | [`exquisite-corpse/`](exquisite-corpse/index.html) | An [Exquisite Corpse](https://en.wikipedia.org/wiki/Exquisite_corpse) drawing game: players take turns drawing head, body, and legs without seeing each other's sections, then reveal the combined creature — and can save it as a PNG. |
+| **Memory** | [`memory/`](memory/index.html) | A pairs-matching game: face-down emoji cards, tap two to flip, matches stay up with a chime, mismatches gently flip back. 4×4 or 6×4 board, no timer, confetti on winning. |
 
 ## Playing & hosting
 

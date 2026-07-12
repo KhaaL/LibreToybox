@@ -1,0 +1,581 @@
+<!DOCTYPE html>
+<!-- LibreToybox — Memory · Licensed under the GNU GPL v3.0; see ../LICENSE -->
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
+  <title>Memory</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🧸</text></svg>" />
+  <link rel="manifest" id="manifest-link" />
+  <meta name="theme-color" content="#7C6FE0" />
+  <style>
+    :root {
+      --bg1: #EFF8FF;
+      --bg2: #D9E4FF;
+      --accent: #7C6FE0;
+      --back1: #8E7CF0;
+      --back2: #6FA8F0;
+      --matched-bg: #EAFBEF;
+      --matched-border: #7CCB8B;
+      --border: #B0C4DE;
+      --text: #4A4A4A;
+    }
+
+    * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+    html, body { margin: 0; padding: 0; height: 100%; }
+    body {
+      font-family: ui-rounded, 'Hiragino Maru Gothic ProN', Quicksand, Comfortaa, 'Arial Rounded MT Bold', 'Varela Round', Calibri, sans-serif;
+      background: linear-gradient(180deg, var(--bg1), var(--bg2));
+      color: var(--text);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: flex-start;
+      overflow-x: hidden;
+      user-select: none;
+      -webkit-user-select: none;
+      touch-action: manipulation;
+    }
+
+    header {
+      width: 100%;
+      max-width: 420px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 14px 16px 6px;
+    }
+    .logo { display: flex; align-items: center; }
+    .top-btns { display: flex; gap: 8px; }
+    .top-btn {
+      background: #fff;
+      border: 2px solid var(--border);
+      border-radius: 12px;
+      padding: 6px 10px;
+      font-family: inherit;
+      font-size: 1.3rem;
+      cursor: pointer;
+      box-shadow: 0 3px 0 #dbe3ef;
+      transition: transform .05s;
+      min-width: 48px;
+      min-height: 48px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .top-btn:active { transform: translateY(2px); box-shadow: 0 1px 0 #dbe3ef; }
+
+    main { width: 100%; max-width: 420px; padding: 8px 16px 18px; display: flex; flex-direction: column; align-items: center; gap: 16px; }
+
+    .grid-wrap {
+      width: min(92vw, 360px);
+      background: #fff;
+      border: 4px solid #7A8BA6;
+      border-radius: 14px;
+      padding: 8px;
+      box-shadow: 0 8px 22px rgba(0,0,0,0.12);
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 8px;
+    }
+
+    .card {
+      position: relative;
+      aspect-ratio: 1 / 1;
+      min-width: 60px;
+      min-height: 60px;
+      background: transparent;
+      border: none;
+      padding: 0;
+      cursor: pointer;
+      perspective: 600px;
+      font-family: inherit;
+    }
+    .card:focus-visible { outline: 3px solid var(--text); outline-offset: 2px; border-radius: 12px; }
+    .card.matched { cursor: default; }
+
+    .card-inner {
+      position: relative;
+      display: block;
+      width: 100%;
+      height: 100%;
+      transform-style: preserve-3d;
+      transition: transform .25s ease;
+    }
+    .card.flipped .card-inner { transform: rotateY(180deg); }
+
+    .card-face {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 12px;
+      border: 2px solid var(--border);
+      font-size: clamp(1.6rem, 8vw, 2.3rem);
+      backface-visibility: hidden;
+      -webkit-backface-visibility: hidden;
+    }
+    .card-face.back {
+      background: linear-gradient(135deg, var(--back1), var(--back2));
+      color: rgba(255,255,255,0.9);
+      font-size: clamp(1.2rem, 6vw, 1.7rem);
+    }
+    .card-face.front {
+      background: #fff;
+      transform: rotateY(180deg);
+    }
+    .card.matched .card-face.front { background: var(--matched-bg); border-color: var(--matched-border); }
+
+    .card.deal { animation: pop .3s ease-out both; animation-delay: var(--d, 0s); }
+    .card.out { animation: suction .22s ease-in forwards; }
+    .card.matched-pop .card-inner { animation: pop .35s ease-out; }
+
+    .status { font-size: 0; height: 0; overflow: hidden; }
+
+    @keyframes pop { 0% { transform: scale(0.6); opacity: 0.4; } 60% { transform: scale(1.12); opacity: 1; } 100% { transform: scale(1); opacity: 1; } }
+    @keyframes suction { 0% { transform: scale(1); opacity: 1; } 100% { transform: scale(0.1); opacity: 0; } }
+    @keyframes fall { 0% { transform: translateY(-10vh) rotate(0deg); opacity: 1; } 100% { transform: translateY(110vh) rotate(720deg); opacity: 0; } }
+
+    .overlay {
+      position: fixed;
+      inset: 0;
+      display: none;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      z-index: 100;
+      text-align: center;
+      padding: 20px;
+    }
+    .overlay.show { display: flex; }
+    /* Win overlay stays translucent so the finished board remains visible
+       beneath the celebration (unlike Sudoku's opaque overlay — see plan.md). */
+    #win-overlay { background: rgba(255,255,255,0.55); justify-content: flex-end; padding-bottom: 12vh; }
+    #settings-overlay { background: rgba(255,255,255,0.92); }
+    .emoji-row { font-size: 4.5rem; display: flex; gap: 18px; margin-bottom: 22px; }
+    .emoji-row span { display: inline-block; animation: pop .6s ease-out both; }
+    .emoji-row span:nth-child(2) { animation-delay: .15s; }
+    .emoji-row span:nth-child(3) { animation-delay: .3s; }
+    .confetti { position: fixed; top: 0; left: 0; width: 10px; height: 10px; pointer-events: none; z-index: 101; animation: fall linear forwards; }
+
+    .settings-card {
+      background: #fff;
+      border: 3px solid var(--border);
+      border-radius: 18px;
+      padding: 22px 26px;
+      box-shadow: 0 10px 28px rgba(0,0,0,0.15);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 14px;
+      min-width: 260px;
+    }
+    .settings-card h2 { margin: 0; font-size: 2rem; }
+    .size-row { display: flex; gap: 18px; }
+    .size-btn {
+      width: 72px;
+      height: 72px;
+      border: 2px solid var(--border);
+      border-radius: 16px;
+      background: #fff;
+      font-family: inherit;
+      font-size: 1.7rem;
+      cursor: pointer;
+      box-shadow: 0 4px 0 #dbe3ef;
+      transition: transform .05s;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 2px;
+      color: var(--text);
+    }
+    .size-btn small { font-size: 0.8rem; }
+    .size-btn:active { transform: translateY(2px); box-shadow: 0 2px 0 #dbe3ef; }
+    .size-btn.active { box-shadow: 0 0 0 4px gold, 0 4px 0 #dbe3ef; }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="logo" aria-label="Memory" title="Memory">
+      <svg viewBox="0 0 48 48" width="40" height="40" aria-hidden="true">
+        <rect x="3" y="8" width="24" height="30" rx="6" fill="#8E7CF0" transform="rotate(-8 15 23)"/>
+        <text x="14" y="30" text-anchor="middle" font-family="Arial Rounded MT Bold, Arial, sans-serif" font-size="16" fill="#fff" transform="rotate(-8 15 23)">?</text>
+        <rect x="21" y="10" width="24" height="30" rx="6" fill="#fff" stroke="#7C6FE0" stroke-width="2.5" transform="rotate(8 33 25)"/>
+        <text x="33" y="31" text-anchor="middle" font-size="15" transform="rotate(8 33 25)">🐶</text>
+      </svg>
+    </div>
+    <div class="top-btns">
+      <button class="top-btn" id="new-game" aria-label="New Game">🔄</button>
+      <button class="top-btn" id="settings-btn" aria-label="Settings">⚙️</button>
+    </div>
+  </header>
+
+  <main>
+    <div class="status" id="status" aria-live="polite"></div>
+    <div class="grid-wrap" id="board" role="grid" aria-label="Memory board"></div>
+  </main>
+
+  <div class="overlay" id="win-overlay" role="dialog" aria-modal="true" aria-label="You won">
+    <div class="emoji-row" id="emoji-row"></div>
+    <button class="top-btn" id="play-again" aria-label="Play Again">🔄</button>
+  </div>
+
+  <div class="overlay" id="settings-overlay" role="dialog" aria-modal="true" aria-label="Settings">
+    <div class="settings-card">
+      <h2>⚙️</h2>
+      <div class="size-row" role="radiogroup" aria-label="Board size">
+        <button class="size-btn" data-size="small" role="radio" aria-label="Small board, 4 by 4">🐣<small>4×4</small></button>
+        <button class="size-btn" data-size="large" role="radio" aria-label="Big board, 6 by 4">🦁<small>6×4</small></button>
+      </div>
+      <button class="top-btn" id="close-settings" aria-label="Close">✕</button>
+    </div>
+  </div>
+
+  <script>
+    // All tuning lives here — sizes, timings, and the face pool.
+    const CONFIG = {
+      sizes: {
+        small: { pairs: 8, cols: 4 },
+        large: { pairs: 12, cols: 4 }
+      },
+      flipMs: 250,
+      mismatchHoldMs: 900,
+      dealStaggerMs: 25,
+      emojiPool: ['🐶','🐱','🦊','🐸','🐢','🦋','🐝','🐙','🐬','🦉','🍓','🍌','🍉','🌈','⭐','🚀','🎈','🌻']
+    };
+
+    const App = {
+      cards: [],            // { emoji, flipped, matched }
+      firstPick: null,      // index of the single face-up unmatched card
+      pendingMismatch: null,// [i, j] waiting to flip back
+      mismatchTimer: null,
+      size: 'small',
+      won: false,
+      audioCtx: null,
+      emojiSets: [
+        ['🎉', '🌟', '🏆'],
+        ['🎈', '🌈', '🎊'],
+        ['🥳', '✨', '🍭']
+      ],
+
+      init() {
+        this.cacheDOM();
+        this.bindEvents();
+        this.newGame(false);
+        this.setupPWA();
+      },
+
+      cacheDOM() {
+        this.board = document.getElementById('board');
+        this.status = document.getElementById('status');
+        this.overlay = document.getElementById('win-overlay');
+        this.newGameBtn = document.getElementById('new-game');
+        this.playAgainBtn = document.getElementById('play-again');
+        this.settingsOverlay = document.getElementById('settings-overlay');
+        this.settingsBtn = document.getElementById('settings-btn');
+        this.closeSettingsBtn = document.getElementById('close-settings');
+      },
+
+      bindEvents() {
+        this.newGameBtn.addEventListener('click', () => this.newGame(true));
+        this.playAgainBtn.addEventListener('click', () => this.newGame(true));
+        this.settingsBtn.addEventListener('click', () => this.openSettings());
+        this.closeSettingsBtn.addEventListener('click', () => this.closeSettings());
+        this.settingsOverlay.addEventListener('click', (e) => {
+          if (e.target === this.settingsOverlay) this.closeSettings();
+        });
+        this.settingsOverlay.querySelectorAll('.size-btn').forEach(btn => {
+          btn.addEventListener('click', () => this.setSize(btn.dataset.size));
+        });
+
+        // Cards are real <button>s, so click covers mouse, touch, pen and
+        // Enter/Space keyboard activation in one event stream.
+        this.board.addEventListener('click', (e) => {
+          const card = e.target.closest('.card');
+          if (!card) return;
+          this.cardTapped(parseInt(card.dataset.i, 10));
+        });
+      },
+
+      newGame(animated) {
+        this.overlay.classList.remove('show');
+        this.clearMismatchTimer();
+        this.firstPick = null;
+        this.pendingMismatch = null;
+        this.won = false;
+
+        const { pairs } = CONFIG.sizes[this.size];
+        const pool = CONFIG.emojiPool.slice();
+        this.shuffle(pool);
+        const faces = pool.slice(0, pairs);
+        const deck = this.shuffle([...faces, ...faces]);
+        this.cards = deck.map(emoji => ({ emoji, flipped: false, matched: false }));
+
+        if (animated && this.board.children.length > 0) {
+          // Deal visibly (design principle 9): old cards suck away, new ones pop in.
+          this.audioSwoosh();
+          [...this.board.children].forEach(el => el.classList.add('out'));
+          setTimeout(() => this.renderBoard(true), 230);
+        } else {
+          this.renderBoard(animated);
+        }
+        this.updateStatus('');
+      },
+
+      renderBoard(dealAnimation) {
+        this.board.innerHTML = '';
+        this.board.style.gridTemplateColumns = `repeat(${CONFIG.sizes[this.size].cols}, 1fr)`;
+        this.cards.forEach((card, i) => {
+          const btn = document.createElement('button');
+          btn.className = 'card';
+          btn.dataset.i = i;
+          btn.setAttribute('role', 'gridcell');
+          this.syncCardEl(btn, card);
+          btn.innerHTML = `<span class="card-inner">
+            <span class="card-face back" aria-hidden="true">❓</span>
+            <span class="card-face front" aria-hidden="true">${card.emoji}</span>
+          </span>`;
+          if (dealAnimation) {
+            btn.classList.add('deal');
+            btn.style.setProperty('--d', `${i * CONFIG.dealStaggerMs}ms`);
+          }
+          this.board.appendChild(btn);
+        });
+      },
+
+      syncCardEl(el, card) {
+        el.classList.toggle('flipped', card.flipped || card.matched);
+        el.classList.toggle('matched', card.matched);
+        el.setAttribute('aria-label', (card.flipped || card.matched) ? card.emoji : 'Hidden card');
+        if (card.matched) {
+          el.setAttribute('aria-disabled', 'true');
+          el.tabIndex = -1;
+        }
+      },
+
+      getCardEl(i) {
+        return this.board.querySelector(`.card[data-i="${i}"]`);
+      },
+
+      cardTapped(i) {
+        if (this.won) return;
+        const card = this.cards[i];
+        if (card.matched || card.flipped) return;
+
+        // A mismatched pair still showing never blocks play (design
+        // principle 10): a third tap flips it back right away.
+        if (this.pendingMismatch) this.resolveMismatch();
+
+        card.flipped = true;
+        this.syncCardEl(this.getCardEl(i), card);
+        this.audioFlip();
+
+        if (this.firstPick === null) {
+          this.firstPick = i;
+          this.updateStatus(`Flipped ${card.emoji}. Find its twin.`);
+          return;
+        }
+
+        const j = this.firstPick;
+        this.firstPick = null;
+        if (this.cards[j].emoji === card.emoji) {
+          this.matchFound(j, i);
+        } else {
+          this.pendingMismatch = [j, i];
+          this.updateStatus('Not a match. They will flip back.');
+          this.mismatchTimer = setTimeout(() => this.resolveMismatch(), CONFIG.mismatchHoldMs);
+        }
+      },
+
+      matchFound(a, b) {
+        [a, b].forEach(i => {
+          this.cards[i].matched = true;
+          const el = this.getCardEl(i);
+          this.syncCardEl(el, this.cards[i]);
+          el.classList.remove('matched-pop');
+          void el.offsetWidth;
+          el.classList.add('matched-pop');
+        });
+        this.audioMatch();
+        this.updateStatus(`Matched a pair of ${this.cards[a].emoji}!`);
+        if (this.cards.every(c => c.matched)) {
+          setTimeout(() => this.celebrate(), 350);
+        }
+      },
+
+      resolveMismatch() {
+        this.clearMismatchTimer();
+        if (!this.pendingMismatch) return;
+        const pair = this.pendingMismatch;
+        this.pendingMismatch = null;
+        pair.forEach(i => {
+          this.cards[i].flipped = false;
+          this.syncCardEl(this.getCardEl(i), this.cards[i]);
+        });
+        this.audioOops();
+      },
+
+      clearMismatchTimer() {
+        if (this.mismatchTimer) clearTimeout(this.mismatchTimer);
+        this.mismatchTimer = null;
+      },
+
+      celebrate() {
+        this.won = true;
+        this.audioWin();
+        this.updateStatus('All pairs found!');
+        this.renderWinEmojis();
+        this.overlay.classList.add('show');
+        for (let i = 0; i < 60; i++) {
+          const conf = document.createElement('div');
+          conf.className = 'confetti';
+          conf.style.left = Math.random() * 100 + 'vw';
+          conf.style.background = ['#8E7CF0','#6FA8F0','#FFE66D','#A8E6CF','#FFB6C1','#FF69B4'][Math.floor(Math.random()*6)];
+          conf.style.width = (6 + Math.random()*8) + 'px';
+          conf.style.height = (6 + Math.random()*8) + 'px';
+          conf.style.animationDuration = (1.5 + Math.random()*2) + 's';
+          conf.style.animationDelay = (Math.random()*0.8) + 's';
+          document.body.appendChild(conf);
+          setTimeout(() => conf.remove(), 4500);
+        }
+      },
+
+      renderWinEmojis() {
+        const row = document.getElementById('emoji-row');
+        const set = this.emojiSets[Math.floor(Math.random() * this.emojiSets.length)];
+        row.innerHTML = set.map(e => `<span>${e}</span>`).join('');
+      },
+
+      openSettings() {
+        this.settingsOverlay.classList.add('show');
+        this.updateSizeButtons();
+      },
+
+      closeSettings() {
+        this.settingsOverlay.classList.remove('show');
+      },
+
+      setSize(size) {
+        if (size === this.size) {
+          this.closeSettings();
+          return;
+        }
+        this.size = size;
+        this.updateSizeButtons();
+        // Close first so the re-deal is visible, never a silent reset
+        // behind the overlay (design principle 9).
+        this.closeSettings();
+        this.newGame(true);
+      },
+
+      updateSizeButtons() {
+        this.settingsOverlay.querySelectorAll('.size-btn').forEach(btn => {
+          const active = btn.dataset.size === this.size;
+          btn.classList.toggle('active', active);
+          btn.setAttribute('aria-checked', active ? 'true' : 'false');
+        });
+      },
+
+      shuffle(arr) {
+        for (let i = arr.length - 1; i > 0; i--) {
+          const j = Math.floor(Math.random() * (i + 1));
+          [arr[i], arr[j]] = [arr[j], arr[i]];
+        }
+        return arr;
+      },
+
+      updateStatus(msg) {
+        this.status.textContent = msg;
+      },
+
+      setupPWA() {
+        const manifest = {
+          name: 'Memory',
+          short_name: 'Memory',
+          start_url: '.',
+          display: 'standalone',
+          background_color: '#D9E4FF',
+          theme_color: '#7C6FE0',
+          icons: [
+            { src: this.makeIcon(192), sizes: '192x192', type: 'image/svg+xml' },
+            { src: this.makeIcon(512), sizes: '512x512', type: 'image/svg+xml' }
+          ]
+        };
+        const blob = new Blob([JSON.stringify(manifest)], { type: 'application/json' });
+        document.getElementById('manifest-link').href = URL.createObjectURL(blob);
+
+        // Service workers must be registered from a real http(s) URL —
+        // browsers reject blob:/data: worker scripts. sw.js lives next to
+        // this file; at file:// there is no service worker support anyway.
+        if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
+          navigator.serviceWorker.register('sw.js').catch(() => {});
+        }
+      },
+
+      makeIcon(size) {
+        const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 100 100">
+          <rect width="100" height="100" fill="#D9E4FF" rx="18"/>
+          <rect x="14" y="22" width="38" height="52" rx="9" fill="#8E7CF0" transform="rotate(-8 33 48)"/>
+          <text x="33" y="58" text-anchor="middle" font-family="Arial Rounded MT Bold, Arial, sans-serif" font-size="28" fill="#fff" transform="rotate(-8 33 48)">?</text>
+          <rect x="48" y="26" width="38" height="52" rx="9" fill="#fff" stroke="#7C6FE0" stroke-width="4" transform="rotate(8 67 52)"/>
+          <text x="67" y="60" text-anchor="middle" font-size="26" transform="rotate(8 67 52)">🐶</text>
+        </svg>`;
+        return 'data:image/svg+xml;base64,' + btoa(unescape(encodeURIComponent(svg)));
+      },
+
+      ensureAudio() {
+        if (!this.audioCtx) this.audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        if (this.audioCtx.state === 'suspended') this.audioCtx.resume();
+      },
+
+      playTone({ type = 'sine', freq = 440, duration = 100, startGain = 0.0001, peakGain = 0.15 }) {
+        this.ensureAudio();
+        const ctx = this.audioCtx;
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = type;
+        osc.frequency.setValueAtTime(freq, ctx.currentTime);
+        gain.gain.setValueAtTime(startGain, ctx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(peakGain, ctx.currentTime + 0.01);
+        gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + duration / 1000);
+        osc.connect(gain).connect(ctx.destination);
+        osc.start();
+        osc.stop(ctx.currentTime + duration / 1000 + 0.02);
+      },
+
+      audioFlip() { this.playTone({ type: 'sine', freq: 640, duration: 70, peakGain: 0.14 }); },
+      audioMatch() {
+        [660, 880].forEach((freq, i) => {
+          setTimeout(() => this.playTone({ type: 'sine', freq, duration: 140, peakGain: 0.16 }), i * 110);
+        });
+      },
+      // Gentle "hmm", not a punitive buzz (design principle 3)
+      audioOops() { this.playTone({ type: 'sine', freq: 240, duration: 160, peakGain: 0.1 }); },
+      audioSwoosh() {
+        this.ensureAudio();
+        const ctx = this.audioCtx;
+        const bufferSize = ctx.sampleRate * 0.1;
+        const buffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
+        const data = buffer.getChannelData(0);
+        for (let i = 0; i < bufferSize; i++) data[i] = (Math.random() * 2 - 1) * (1 - i / bufferSize);
+        const src = ctx.createBufferSource();
+        src.buffer = buffer;
+        const gain = ctx.createGain();
+        gain.gain.setValueAtTime(0.12, ctx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.1);
+        src.connect(gain).connect(ctx.destination);
+        src.start();
+      },
+      audioWin() {
+        [523.25, 659.25, 783.99].forEach((freq, i) => {
+          setTimeout(() => this.playTone({ type: 'sine', freq, duration: 220, peakGain: 0.18 }), i * 180);
+        });
+      }
+    };
+
+    App.init();
+  </script>
+</body>
+</html>
