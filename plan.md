@@ -45,7 +45,14 @@
 
 ## Future Games
 
-*(empty — next candidates discussed 2026-07-12: Shape Fit / tangram-lite, Four in a Row pass-and-play, pocket xylophone music toy, Simon-style Echo)*
+- **Shape Fit** (`shape-fit/index.html`) — scoped 2026-07-12: a calm, no-timer "reverse Tetris." The game partitions an N×N grid into random polyomino pieces (box, L, S, T shapes…), scatters them into a tray, and the child drags them back to fill the whole grid. Key decisions from scoping:
+  - **Generate the solution first**: randomized region-growing partition of the grid into pieces of 3–6 cells — solvability guaranteed by construction. (Pure tetrominoes can't tile 9×9 — 81 isn't divisible by 4 — so mixed sizes are required anyway, and friendlier.)
+  - **No rotation in v1** — pieces arrive in their correct orientation, jigsaw-style. Rotation is a possible later hard mode.
+  - **Free placement**: a piece may drop anywhere it fits (all cells in-bounds and empty); tap or drag a placed piece to lift it off again, so dead ends are always recoverable. Win = board completely full (alternative tilings count).
+  - **Drag interaction**: Pointer Events + `setPointerCapture`, piece rides ~70 px above the finger so it stays visible, snap-to-grid ghost preview, pop sound on placement, animated fly-back to tray on an invalid drop (principles 3 & 10).
+  - **Board sizes** (the one settings toggle): 🐣 6×6 (~5–8 pieces, 60 px cells on a 360 px board — meets the chunky-target rule) / 🦁 9×9 (~14–20 pieces, 40 px cells — acceptable because pieces, not cells, are the touch targets and snapping is forgiving).
+  - DOM rendering (CSS grid board + absolutely-positioned piece divs sharing one `--cell` unit), not canvas. Memory's `CONFIG`/`App` structure, audio helpers, PWA boilerplate + own `sw.js` (`shape-fit-v1`), hub link.
+- *(other candidates discussed 2026-07-12: Four in a Row pass-and-play, pocket xylophone music toy, Simon-style Echo)*
 
 ## Later / not now
 
