@@ -3,18 +3,20 @@
 Full audit of LibreToybox: every file was reviewed and cross-checked against
 `CLAUDE.md`, `plan.md`, and `design_principles.txt`.
 
-> **Status (2026-07-12, post-merge):** A1–A5, A8, A9 (Google Fonts removed),
-> A10, A13, A14, and A15 are **fixed and merged to `main`** (PR #2). A7,
-> A11 (both games), A12, A16, and A17 are **fixed** on top of that (letterboxed
-> reveal/download in Exquisite Corpse; canvas-mode change preserves the
-> drawing instead of resetting it; Sudoku's Reject-mode clear got sound +
-> animation; grid cells are keyboard-accessible via a shared `activateCell()`;
-> dead code removed; both games' `aria-live` regions now announce
-> meaningful state). File paths below reference the pre-fix state — in
-> particular, `soduko-for-minis/` is now `sudoku-for-minis/`, and line
-> numbers have shifted throughout. Still open: A6, A18, B1, B3, B4 — all
-> tracked in `plan.md`. A second-pass re-audit of the merged state follows
-> at the end of this document (findings B1–B4).
+> **Status (2026-07-12, latest):** A1–A5, A8, A9 (Google Fonts removed),
+> A10, A13, A14, and A15 are **fixed and merged to `main`** (PR #2). On top
+> of that, A7, A11 (both games), A12, A16, A17, and B3 are also **fixed**
+> (letterboxed reveal/download in Fold and Pass — née "Combination Man",
+> see the naming note under A4; canvas-mode change preserves the drawing
+> instead of resetting it; Sudoku's Reject-mode clear got sound +
+> animation; grid cells are keyboard-accessible via a shared
+> `activateCell()`; dead code removed; both games' `aria-live` regions now
+> announce meaningful state; all three pages have a 🧸 favicon). File
+> paths below reference the pre-fix state — in particular,
+> `soduko-for-minis/` is now `sudoku-for-minis/`, and line numbers have
+> shifted throughout. Still open: A6, A18, B1, B4 — all tracked in
+> `plan.md`. A second-pass re-audit of the merged state follows at the end
+> of this document (findings B1–B4).
 
 **Severity scale**
 | Level | Meaning |
@@ -278,9 +280,10 @@ A18 (in-progress stroke lost on resize). All are now mirrored in `plan.md`.
 `sudoku-for-minis/sw.js`, `exquisite-corpse/sw.js`
 
 The service workers (introduced by the A1 fix) serve **cache-first** with a
-fixed cache name (`child-sudoku-v2` / `combo-man-v2`). Once a user has loaded
-a game over http(s), every future visit is served entirely from cache — a
-deployed new version of `index.html` is never fetched until the `CACHE`
+fixed cache name (`child-sudoku-v2` / `fold-and-pass-v1`). Once a user has
+loaded a game over http(s), every future visit is served entirely from
+cache — a deployed new version of `index.html` is never fetched until the
+`CACHE`
 constant is manually bumped. CLAUDE.md says to bump the cache name "per
 game" but not **per release**. Consequence: bug fixes silently don't reach
 returning players. **Action:** either adopt a network-first strategy for

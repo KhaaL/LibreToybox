@@ -67,12 +67,13 @@ All decisions must follow `design_principles.txt`. Key ones:
 
 ### Win/reveal screen
 - `#reveal-canvas` is a separate `<canvas>` overlay (same size as `#canvas-wrap`)
-- `reveal()` temporarily swaps `this.canvas`/`this.ctx` to draw onto it using `redrawCanvas()`
+- `reveal()` renders the full artwork onto an offscreen buffer at its true (undistorted) aspect ratio — same `redrawCanvas()` technique, just onto a temporary canvas — then letterbox-scales that buffer into `#reveal-canvas` via `drawImage()` so nothing stretches. Drawing straight onto a wrap-sized canvas is what used to squish the figure.
+- The buffer is kept as `this.artworkCanvas`; `downloadPainting()` exports that directly (undistorted), not the letterboxed on-screen overlay
 - Main canvas never moves or resizes → no layout jump
 - Toolbar rows hidden with `visibility: hidden` (NOT `display: none`) — they stay in layout as invisible spacers, preserving canvas position
 
 ### Settings
-- Changing canvas mode calls `newGame()` — always resets the game
+- Changing canvas mode (`setCanvasMode()`) resizes the canvas for the new aspect and redraws existing strokes — it does **not** call `newGame()`, so the drawing in progress is preserved (design principle 9)
 
 ## Child Sudoku — Architecture Notes
 
