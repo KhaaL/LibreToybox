@@ -12,6 +12,9 @@ LibreToybox/
 ├── exquisite-corpse/
 │   ├── index.html            — Exquisite Corpse drawing game (ships as "Combination Man")
 │   └── sw.js                 — offline cache worker
+├── .github/workflows/
+│   └── deploy-pages.yml      — auto-deploy to GitHub Pages on push to main
+├── index.html                — game hub / landing page (links to both games)
 ├── design_principles.txt     — authoritative design rules (read before any change)
 ├── plan.md                   — pending work (single source of truth)
 ├── AUDIT.md                  — repository audit (2026-07-12 snapshot)
@@ -29,6 +32,7 @@ LibreToybox/
 - Web Audio API for procedural sound (both games)
 - PWA: local `sw.js` service worker (registered only over http/https — browsers reject blob-URL workers) + runtime Blob-URL manifest (both games)
 - Zero external dependencies — system font stack, procedural audio, inline SVG icons
+- Hosting: GitHub Pages, deployed automatically by `.github/workflows/deploy-pages.yml` on every push to `main` — no external hosting account, no build step, the whole repo is served as-is
 
 ## Design Rules (non-negotiable)
 
