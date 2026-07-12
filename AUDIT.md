@@ -4,12 +4,17 @@ Full audit of LibreToybox: every file was reviewed and cross-checked against
 `CLAUDE.md`, `plan.md`, and `design_principles.txt`.
 
 > **Status (2026-07-12, post-merge):** A1–A5, A8, A9 (Google Fonts removed),
-> A10, A13, A14, and A15 are **fixed and merged to `main`** (PR #2). File
-> paths below reference the pre-fix state — in particular,
-> `soduko-for-minis/` is now `sudoku-for-minis/`, and line numbers have
-> shifted. Still open: A6, A7, A11, A12, A16, A17 (aria-live item only),
-> A18 — all now tracked in `plan.md`. A second-pass re-audit of the merged
-> state follows at the end of this document (findings B1–B4).
+> A10, A13, A14, and A15 are **fixed and merged to `main`** (PR #2). A7,
+> A11 (both games), A12, A16, and A17 are **fixed** on top of that (letterboxed
+> reveal/download in Exquisite Corpse; canvas-mode change preserves the
+> drawing instead of resetting it; Sudoku's Reject-mode clear got sound +
+> animation; grid cells are keyboard-accessible via a shared `activateCell()`;
+> dead code removed; both games' `aria-live` regions now announce
+> meaningful state). File paths below reference the pre-fix state — in
+> particular, `soduko-for-minis/` is now `sudoku-for-minis/`, and line
+> numbers have shifted throughout. Still open: A6, A18, B1, B3, B4 — all
+> tracked in `plan.md`. A second-pass re-audit of the merged state follows
+> at the end of this document (findings B1–B4).
 
 **Severity scale**
 | Level | Meaning |

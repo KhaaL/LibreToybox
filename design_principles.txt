@@ -71,7 +71,7 @@ Humane first software: no tracking, spyware, addictive feedback loops or require
 ## 8. Accessibility Without Complexity
 
 - **Use `aria-label` on icon-only buttons** so screen readers can describe actions.
-- **Maintain keyboard/touch parity:** support both mouse and touch interactions.
+- **Maintain keyboard/touch parity:** support keyboard, mouse, and touch interactions.
 - **Provide visual focus states** (selection outlines, active tool highlights) without relying on color alone.
 
 ---

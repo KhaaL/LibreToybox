@@ -4,19 +4,19 @@
 - **Feat: add an animated tutorial**.
 - **Selected cell highlight**: The current selected-cell outline is too subtle. Make it more distinct — thicker border, stronger color contrast, or a filled background — so children can clearly see which cell is active.
 - **Win screen should keep puzzle visible**: The confetti/win overlay currently covers the completed puzzle. The puzzle should remain visible beneath the celebration so players can see their finished work.
-- **Visible feedback when Reject mode clears illegal cells** (AUDIT A11): switching Keep → Reject removes conflicting numbers instantly with no animation or sound; design principle 9 says "do so visibly" (e.g. suction animation + swoosh per cleared cell).
-- **Keyboard access for grid cells** (AUDIT A12): cells are `<div>`s with no `tabindex`/key handlers, so the board can't be played by keyboard. Also fix design principle 8's wording (title says keyboard, body says mouse).
 - **Dialog semantics for overlays** (AUDIT B4): add `role="dialog" aria-modal="true"` to the settings and win overlays, matching Exquisite Corpse's settings overlay.
-- **Dead code cleanup** (AUDIT A16): remove unused `tryClear()`, `bonkCell()`/`audioBonk()`, `--eraser` CSS variable, `@keyframes shake`, `.hidden` class, and the `.emoji-row span:nth-child(4)` rule (emoji sets have 3 entries).
+- ~~**Visible feedback when Reject mode clears illegal cells**~~ ✓ (AUDIT A11) — `removeIllegalCells()` now plays the swoosh sound and the same suction animation a manual clear uses, per cell, instead of silently zeroing the board.
+- ~~**Keyboard access for grid cells**~~ ✓ (AUDIT A12) — non-given cells are tabbable (`tabIndex = 0`), a shared `activateCell(r, c)` drives both pointer taps and Enter/Space, and there's a `:focus-visible` outline distinct from the tap-selected one. `design_principles.txt` §8 wording fixed to say "keyboard, mouse, and touch."
+- ~~**Dead code cleanup**~~ ✓ (AUDIT A16) — removed `tryClear()`, `bonkCell()`/`audioBonk()` (plus the now-orphaned `.cell.bonk`/`@keyframes bonk` they triggered), the `--eraser` CSS variable, `@keyframes shake`, `.hidden` class, and the `.emoji-row span:nth-child(4)` rule.
 - ~~**Inconsistent interaction**~~ ✓ — the active number now resets after every placement; each piece requires picking a number again (no latent selection).
 
 ## Exquisite Corpse (`exquisite-corpse/index.html`)
 
-- **Bug: final screen is "squished"** — `reveal()` compresses the 3-section drawing into one wrap-height canvas on the Y axis only, distorting the figure on **all** screens (see AUDIT.md A7). Needs aspect-preserving (letterboxed) scaling; the downloaded PNG is affected too, and resizes while on the win screen are ignored.
 - **Feat: add an animated tutorial**.
 - **Enlarge toolbar controls to 64×64 px** (AUDIT A6): color swatches are 48×48 and brush/undo/clear buttons 56×48, below the non-negotiable ≥64×64 tool-button rule (design principle 4).
-- **Canvas-mode change destroys the current drawing** (AUDIT A11): switching Tall/Wide calls `newGame()` with no warning, against design principle 9. Add a confirm step or preserve strokes across the mode change.
 - **Bug: in-progress stroke lost on resize** (AUDIT A18): `redrawCanvas()` draws committed strokes but not `currentStroke`, so a stroke being drawn during device rotation vanishes.
+- ~~**Bug: final screen is "squished"**~~ ✓ (AUDIT A7) — `reveal()` now renders the full artwork onto an offscreen buffer at its true (undistorted) aspect ratio, then letterbox-scales that buffer into the wrap-sized overlay instead of stretching x/y independently. `downloadPainting()` exports the undistorted buffer directly (`artworkCanvas`), so the saved PNG is no longer squished either.
+- ~~**Canvas-mode change destroys the current drawing**~~ ✓ (AUDIT A11) — `setCanvasMode()` no longer calls `newGame()`; it resizes the canvas for the new aspect and redraws existing strokes (normalized coordinates already survive resize, the same mechanism the window-resize handler uses), so switching Tall/Wide preserves the drawing in progress.
 - ~~**Full section hiding between players**~~ ✓ — canvas slides vertically; completed sections off-screen, `PEEK_PX: 40` strip visible as connection guide.
 - ~~**Tall/Wide canvas setting**~~ ✓ — Settings ⚙️ radio: Tall (`flex:1`, portrait) for phones; Wide (`aspect-ratio: 4/3`) for tablets. Changing mode starts a new game.
 - ~~**Download finished painting**~~ ✓ — 💾 button on win screen saves `combination-man.png` via `canvas.toDataURL`.
@@ -28,10 +28,14 @@
 
 - **Service-worker update strategy** (AUDIT B1): the cache-first `sw.js` with a fixed cache name means returning players never receive deployed updates until the cache name is bumped. Decide: network-first for navigations (fall back to cache offline), or enforce "bump the cache name in every release" as a hard rule in CLAUDE.md.
 - **Favicon** (AUDIT B3): neither game declares a `<link rel="icon">` — hosted pages 404 on `/favicon.ico` and show a generic tab icon. Add an inline SVG/emoji data-URI favicon per game (each game already builds SVG icons in `makeIcon()`).
-- **Use or remove the `aria-live` status regions** (AUDIT A17): both games render a visually-hidden `#status` element that is only ever set to an empty string. Either announce placements/wins for screen readers (supports design principle 8) or delete it.
+- ~~**Use or remove the `aria-live` status regions`**~~ ✓ (AUDIT A17) — both games now announce meaningful state: Sudoku announces cell selection, placements, conflicts, and the win; Exquisite Corpse announces the current section (head/body/legs) and the final reveal.
 
 ## Repository / Infrastructure
 
-- ~~**Feat: free CI/CD hosting**~~ ✓ — `.github/workflows/deploy-pages.yml` deploys the repo to **GitHub Pages** on every push to `main`, live at <https://khaal.github.io/LibreToybox/>. Zero external accounts, zero build step — the static tree is served as-is via `actions/upload-pages-artifact` + `actions/deploy-pages`. **One-time manual step required:** in the repo's Settings → Pages, set Source to "GitHub Actions" (cannot be set via API/workflow — an admin must do this once in the UI) before the first deploy will go live.
+- ~~**Feat: free CI/CD hosting**~~ ✓ — `.github/workflows/deploy-pages.yml` deploys the repo to **GitHub Pages** on every push to `main`, live at <https://khaal.github.io/LibreToybox/>. Zero external accounts, zero build step — the static tree is served as-is via `actions/upload-pages-artifact` + `actions/deploy-pages`. Repo was made public and Pages Source set to "GitHub Actions" on 2026-07-12; first deploy verified live.
 - **Feat: mirror to Codeberg** — add a GitHub Action that syncs this repository to <https://codeberg.org/krash/LibreToybox> on every push to `main` (push mirror using a Codeberg access token stored as a GitHub Actions secret, e.g. `git push --mirror` from a scheduled/push-triggered workflow).
 - **Lightweight CI** (AUDIT recommendation): `htmlhint`/`html-validate` over `*/index.html` + a link check; add a `.gitignore` before tooling arrives.
+
+## Later / not now
+
+- **Android packaging (Capacitor APK)** — scoped on 2026-07-12 (one Capacitor 8 app wrapping the hub + both games, GitHub Actions build+sign+release on tag push). Deliberately shelved: focus is on the web app and PWA experience first. Revisit this scoping conversation if/when Android packaging becomes a priority again.
