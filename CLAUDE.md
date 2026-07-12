@@ -12,9 +12,12 @@ LibreToybox/
 ├── exquisite-corpse/
 │   ├── index.html            — Exquisite Corpse drawing game (ships as "Fold and Pass")
 │   └── sw.js                 — offline cache worker
+├── memory/
+│   ├── index.html            — Memory (pairs-matching, 4×4 / 6×4 board)
+│   └── sw.js                 — offline cache worker
 ├── .github/workflows/
 │   └── deploy-pages.yml      — auto-deploy to GitHub Pages on push to main
-├── index.html                — game hub / landing page (links to both games)
+├── index.html                — game hub / landing page (links to all games)
 ├── design_principles.txt     — authoritative design rules (read before any change)
 ├── plan.md                   — pending work (single source of truth)
 ├── AUDIT.md                  — repository audit (2026-07-12 snapshot)
@@ -29,8 +32,8 @@ LibreToybox/
 
 - Vanilla HTML5 / CSS3 / JavaScript — no frameworks, no build tools
 - HTML5 Canvas API for drawing (exquisite-corpse)
-- Web Audio API for procedural sound (both games)
-- PWA: local `sw.js` service worker (registered only over http/https — browsers reject blob-URL workers) + runtime Blob-URL manifest (both games)
+- Web Audio API for procedural sound (all games)
+- PWA: local `sw.js` service worker (registered only over http/https — browsers reject blob-URL workers) + runtime Blob-URL manifest (all games)
 - Zero external dependencies — system font stack, procedural audio, inline SVG icons
 - Hosting: GitHub Pages, deployed automatically by `.github/workflows/deploy-pages.yml` on every push to `main` — no external hosting account, no build step, the whole repo is served as-is
 
@@ -85,6 +88,18 @@ All decisions must follow `design_principles.txt`. Key ones:
 - Pointer Events only (`pointerdown`/`move`/`up`/`cancel`) — never touch/mouse pairs, which double-fire via synthetic mouse events
 - Web Audio feedback on placement, error, win
 - Confetti win overlay
+
+## Memory — Architecture Notes
+
+`memory/index.html` — pairs-matching game:
+- All tuning lives in the `CONFIG` object at the top of the script: board sizes (`small` 8 pairs / `large` 12 pairs, both 4 columns wide for portrait phones), flip duration, mismatch hold time, deal stagger, and the emoji face pool
+- Cards are real `<button>`s — one `click` stream covers mouse, touch, pen **and** Enter/Space keyboard activation; no pointer/touch pairing needed (no long-press gesture in this game)
+- 3D flip via CSS: `.card-inner` rotates `rotateY(180deg)`, both faces use `backface-visibility: hidden`
+- A mismatched pair never blocks play (design principle 10): it flips back after `mismatchHoldMs`, **or** immediately when a third card is tapped (`resolveMismatch()` runs before the new flip)
+- Mismatch sound is a gentle low sine ("hmm"), not a buzz — mistakes are expected gameplay here, not errors (design principle 3)
+- **No timer, no move counter** — deliberate: no pressure mechanics (humane-first)
+- Win overlay is translucent (`rgba(255,255,255,0.55)`, content bottom-anchored) so the completed board stays visible under the confetti
+- Settings ⚙️ has exactly one control: board size (🐣 4×4 / 🦁 6×4). Choosing a size closes the overlay first, then re-deals **visibly** (suction-out + staggered pop-in + swoosh) — never a silent reset (design principle 9)
 
 ## Pending Work
 
