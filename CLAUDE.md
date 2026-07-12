@@ -15,6 +15,9 @@ LibreToybox/
 ├── memory/
 │   ├── index.html            — Memory (pairs-matching, 4×4 / 6×4 board)
 │   └── sw.js                 — offline cache worker
+├── shape-fit/
+│   ├── index.html            — Shape Fit (grid-packing puzzle, 6×6 / 8×8 board)
+│   └── sw.js                 — offline cache worker
 ├── .github/workflows/
 │   └── deploy-pages.yml      — auto-deploy to GitHub Pages on push to main
 ├── index.html                — game hub / landing page (links to all games)
@@ -101,6 +104,20 @@ All decisions must follow `design_principles.txt`. Key ones:
 - **No timer, no move counter** — deliberate: no pressure mechanics (humane-first)
 - Win overlay is translucent (`rgba(255,255,255,0.55)`, content bottom-anchored) so the completed board stays visible under the confetti
 - Settings ⚙️ has exactly one control: board size (🐣 4×4 / 🦁 6×4). Choosing a size closes the overlay first, then re-deals **visibly** (suction-out + staggered pop-in + swoosh) — never a silent reset (design principle 9)
+
+## Shape Fit — Architecture Notes
+
+`shape-fit/index.html` — no-timer grid-packing puzzle ("reverse Tetris"): the board is cut into polyomino pieces (box, L, S, T…) that the child drags back to fill the whole grid. All tuning lives in the `CONFIG` object at the top of the script.
+
+- **Generate the solution first**: randomized region-growing partitions the N×N board into connected pieces (3–6 cell targets; undersized leftovers are merged into an adjacent piece), so a solution exists by construction. Greedy coloring over the piece-adjacency graph (palette order shuffled per game) guarantees touching pieces never share a color.
+- **Board sizes** (the one settings toggle): 🐣 6×6 / 🦁 8×8. Deliberately 8×8 rather than 9×9 — bigger cells (~45 px vs 40 px on a phone) and ~14 rather than ~18 pieces. Cells below the 60 px rule are acceptable here because cells are *drop* targets; the pieces (multi-cell, 80–240 px) are what fingers touch, and snapping is forgiving.
+- **One `--cell` CSS variable** (board width ÷ N, set from JS) sizes everything — board cells, piece divs, `.blk` squares, tray slots — via `calc()`, so a resize only updates the variable.
+- **Drag**: Pointer Events + `setPointerCapture` on the piece element. While dragging, the piece switches to `position: fixed` **without reparenting** (reparenting mid-gesture can drop pointer capture) and rides `CONFIG.liftPx` above the finger so it isn't hidden by the hand. The snap target (`Math.round` to the nearest cell) is previewed by highlighting board cells (`.ghost`).
+- **Free placement**: a piece may land anywhere it fits (in-bounds, no overlap); win = board completely full, so alternative tilings count. A tap (or drag) on a placed piece lifts it back to the tray — dead ends are always recoverable. Invalid drops fly back to the tray with a gentle "hmm" (principles 3 & 10).
+- **Tray slots never resize or disappear** — an empty slot is an invisible spacer, so the tray never reflows under the child's fingers (same idea as Memory's `.gone` cards). Fly-back animates fixed `left/top/transform` to the slot's rect (`.flying`), then reparents.
+- **Keyboard parity** (principle 8): Enter/Space on a tray piece picks it up at the first fitting spot, arrows move it cell by cell, Enter places (shake + "hmm" if it doesn't fit), Escape cancels; Enter on a placed piece lifts it off.
+- **No rotation in v1** — pieces arrive in their correct orientation, jigsaw-style (rotation is a possible later hard mode, see plan.md). No timer, no move counter (humane-first).
+- Async timers (fly-back, celebrate) carry a `gameId` generation check so a 🔄 mid-animation can't touch the new board, same as Memory.
 
 ## Pending Work
 

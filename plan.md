@@ -28,7 +28,7 @@
 
 ## All games
 
-- **Service-worker update strategy** (AUDIT B1): the cache-first `sw.js` with a fixed cache name (now ×3 with `memory-v1`) means returning players never receive deployed updates until the cache name is bumped. Decide: network-first for navigations (fall back to cache offline), or enforce "bump the cache name in every release" as a hard rule in CLAUDE.md.
+- **Service-worker update strategy** (AUDIT B1): the cache-first `sw.js` with a fixed cache name (now ×4 with `shape-fit-v1`) means returning players never receive deployed updates until the cache name is bumped. Decide: network-first for navigations (fall back to cache offline), or enforce "bump the cache name in every release" as a hard rule in CLAUDE.md.
 - ~~**Favicon**~~ ✓ (AUDIT B3) — all three pages (hub + both games) declare `<link rel="icon">` using an inline 🧸 emoji SVG data URI, matching the teddy bear already used as the hub's logo.
 - ~~**Use or remove the `aria-live` status regions**~~ ✓ (AUDIT A17) — both games now announce meaningful state: Sudoku announces cell selection, placements, conflicts, and the win; Fold and Pass announces the current section (head/body/legs) and the final reveal.
 
@@ -43,16 +43,15 @@
 - **Feat: add an animated tutorial**.
 - ~~**Implement the game**~~ ✓ (2026-07-12) — pairs-matching game shipped per the Future Games scoping: face-down emoji cards, 3D flip, match chime / gentle mismatch flip-back (never blocks play — a third tap resolves the pair immediately), matched pairs fly off the board leaving their grid slot empty, 🐣 4×4 / 🦁 6×4 size setting with visible re-deal, translucent win overlay, no timer or move counter. Architecture notes in `CLAUDE.md`.
 
+## Shape Fit (`shape-fit/index.html`)
+
+- **Feat: add an animated tutorial**.
+- **Feat: rotation hard mode** — v1 deliberately ships without rotation (pieces arrive in their correct orientation, jigsaw-style). A later setting could deal pieces randomly rotated and let a tap on a held piece turn it 90°.
+- ~~**Implement the game**~~ ✓ (2026-07-12) — no-timer "reverse Tetris" shipped per the scoping: randomized region-growing cuts the board into 3–6-cell polyomino pieces (solvable by construction; adjacent pieces never share a color), drag with `setPointerCapture` + lift-above-finger + ghost snap preview, free placement with tap-to-lift undo, keyboard parity (Enter/arrows/Escape), translucent win overlay + confetti, 🐣 6×6 / 🦁 8×8 size setting with visible re-deal. **The big board became 8×8 instead of the scoped 9×9** — bigger cells (~45 px vs 40 px) and ~14 rather than ~18 pieces suit the age band better. Verified with a 4 000-board generator invariant test and a Playwright end-to-end run (drag, invalid drop, lift-off, keyboard, solve-to-win, settings). Architecture notes in `CLAUDE.md`.
+
 ## Future Games
 
-- **Shape Fit** (`shape-fit/index.html`) — scoped 2026-07-12: a calm, no-timer "reverse Tetris." The game partitions an N×N grid into random polyomino pieces (box, L, S, T shapes…), scatters them into a tray, and the child drags them back to fill the whole grid. Key decisions from scoping:
-  - **Generate the solution first**: randomized region-growing partition of the grid into pieces of 3–6 cells — solvability guaranteed by construction. (Pure tetrominoes can't tile 9×9 — 81 isn't divisible by 4 — so mixed sizes are required anyway, and friendlier.)
-  - **No rotation in v1** — pieces arrive in their correct orientation, jigsaw-style. Rotation is a possible later hard mode.
-  - **Free placement**: a piece may drop anywhere it fits (all cells in-bounds and empty); tap or drag a placed piece to lift it off again, so dead ends are always recoverable. Win = board completely full (alternative tilings count).
-  - **Drag interaction**: Pointer Events + `setPointerCapture`, piece rides ~70 px above the finger so it stays visible, snap-to-grid ghost preview, pop sound on placement, animated fly-back to tray on an invalid drop (principles 3 & 10).
-  - **Board sizes** (the one settings toggle): 🐣 6×6 (~5–8 pieces, 60 px cells on a 360 px board — meets the chunky-target rule) / 🦁 9×9 (~14–20 pieces, 40 px cells — acceptable because pieces, not cells, are the touch targets and snapping is forgiving).
-  - DOM rendering (CSS grid board + absolutely-positioned piece divs sharing one `--cell` unit), not canvas. Memory's `CONFIG`/`App` structure, audio helpers, PWA boilerplate + own `sw.js` (`shape-fit-v1`), hub link.
-- *(other candidates discussed 2026-07-12: Four in a Row pass-and-play, pocket xylophone music toy, Simon-style Echo)*
+*(candidates discussed 2026-07-12: Four in a Row pass-and-play, pocket xylophone music toy, Simon-style Echo)*
 
 ## Later / not now
 
