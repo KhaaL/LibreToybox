@@ -1,5 +1,5 @@
 /* LibreToybox — Shape Fit service worker · GNU GPL v3.0; see ../LICENSE */
-const CACHE = 'shape-fit-v1';
+const CACHE = 'shape-fit-v2';
 
 self.addEventListener('install', (e) => {
   e.waitUntil(caches.open(CACHE).then((c) => c.addAll(['./', './index.html'])));
