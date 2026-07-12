@@ -62,9 +62,9 @@ Humane first software: no tracking, spyware, addictive feedback loops or require
 
 ## 7. Offline-First, Single-File Architecture
 
-- **Deliver as one self-contained HTML file** with inline CSS, JS, and embedded assets.
-- **Use data URIs / Blob URLs for the manifest and service worker** so the game works offline after first load.
-- **No external runtime dependencies** beyond fonts or strictly optional resources.
+- **Deliver as one self-contained HTML file** with inline CSS, JS, and embedded assets — plus a tiny sibling `sw.js` for offline caching when served over http(s).
+- **Use a Blob URL for the runtime manifest; register the service worker from the local `sw.js` with a relative path.** Browsers reject blob:/data: service-worker script URLs, so the worker must be a real file.
+- **No external runtime dependencies.** Use system font stacks (no font CDNs); generate icons and audio procedurally.
 
 ---
 
