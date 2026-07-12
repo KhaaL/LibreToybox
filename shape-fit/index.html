@@ -118,11 +118,13 @@
       transition: left .25s ease, top .25s ease, transform .25s ease;
       pointer-events: none;
     }
+    /* Block borders, radii and bevels are set per-side from JS so the
+       outline runs around the piece's outer perimeter only — the piece
+       reads as one connected shape with a visible edge. */
     .blk {
       position: absolute;
-      border-radius: 9px;
-      border: 2px solid rgba(0,0,0,0.10);
-      box-shadow: inset 0 3px 0 rgba(255,255,255,0.45), inset 0 -3px 0 rgba(0,0,0,0.10);
+      border-style: solid;
+      border-width: 0;
     }
     .piece.pop .blk { animation: settle .22s ease-out; }
     .piece.shake { animation: shake .3s ease; }
@@ -246,7 +248,8 @@
     <div class="settings-card">
       <h2>⚙️</h2>
       <div class="size-row" role="radiogroup" aria-label="Board size">
-        <button class="size-btn" data-size="small" role="radio" aria-label="Small board, 6 by 6">🐣<small>6×6</small></button>
+        <button class="size-btn" data-size="tiny" role="radio" aria-label="Tiny board, 4 by 4">🐣<small>4×4</small></button>
+        <button class="size-btn" data-size="small" role="radio" aria-label="Small board, 6 by 6">🐥<small>6×6</small></button>
         <button class="size-btn" data-size="large" role="radio" aria-label="Big board, 8 by 8">🦁<small>8×8</small></button>
       </div>
       <button class="top-btn" id="close-settings" aria-label="Close">✕</button>
@@ -257,6 +260,7 @@
     // All tuning lives here — board sizes, piece sizes, timings, colors.
     const CONFIG = {
       sizes: {
+        tiny:  { n: 4, minPiece: 3, maxPiece: 4 },
         small: { n: 6, minPiece: 3, maxPiece: 5 },
         large: { n: 8, minPiece: 3, maxPiece: 6 }
       },
@@ -266,14 +270,14 @@
       flyBackMs: 260,
       dealStaggerMs: 40,
       palette: [
-        { fill: '#F7A6B9', name: 'pink' },
-        { fill: '#F9C784', name: 'orange' },
-        { fill: '#FFE66D', name: 'yellow' },
-        { fill: '#A8E6CF', name: 'mint' },
-        { fill: '#8ED3F4', name: 'blue' },
-        { fill: '#C3B4F7', name: 'purple' },
-        { fill: '#FFB3A0', name: 'coral' },
-        { fill: '#C8E88A', name: 'green' }
+        { fill: '#F7A6B9', edge: '#DE7590', name: 'pink' },
+        { fill: '#F9C784', edge: '#DE9A47', name: 'orange' },
+        { fill: '#FFE66D', edge: '#DCBC2E', name: 'yellow' },
+        { fill: '#A8E6CF', edge: '#6DBF9B', name: 'mint' },
+        { fill: '#8ED3F4', edge: '#54A6D2', name: 'blue' },
+        { fill: '#C3B4F7', edge: '#9480DC', name: 'purple' },
+        { fill: '#FFB3A0', edge: '#DE7F66', name: 'coral' },
+        { fill: '#C8E88A', edge: '#96C24E', name: 'green' }
       ]
     };
 
@@ -483,14 +487,29 @@
         el.tabIndex = 0;
         el.setAttribute('role', 'button');
         el.setAttribute('aria-label', `${p.color.name} piece, ${p.cells.length} blocks`);
+        // Blocks merge into one solid shape: no inset or border on edges
+        // shared with a sibling block; the piece's outer perimeter gets an
+        // inset gap, a darker outline and a bevel, so two same-colored
+        // pieces placed side by side never blend together.
+        const has = new Set(p.cells.map(({ r, c }) => `${r},${c}`));
+        const INSET = 2, EDGE = 3, RADIUS = 10;
         p.cells.forEach(({ r, c }) => {
+          const up = has.has(`${r - 1},${c}`), down = has.has(`${r + 1},${c}`);
+          const left = has.has(`${r},${c - 1}`), right = has.has(`${r},${c + 1}`);
           const b = document.createElement('div');
           b.className = 'blk';
-          b.style.left = `calc(var(--cell) * ${c} + 2px)`;
-          b.style.top = `calc(var(--cell) * ${r} + 2px)`;
-          b.style.width = `calc(var(--cell) - 4px)`;
-          b.style.height = `calc(var(--cell) - 4px)`;
+          b.style.left = `calc(var(--cell) * ${c} + ${left ? 0 : INSET}px)`;
+          b.style.top = `calc(var(--cell) * ${r} + ${up ? 0 : INSET}px)`;
+          b.style.width = `calc(var(--cell) - ${(left ? 0 : INSET) + (right ? 0 : INSET)}px)`;
+          b.style.height = `calc(var(--cell) - ${(up ? 0 : INSET) + (down ? 0 : INSET)}px)`;
           b.style.background = p.color.fill;
+          b.style.borderColor = p.color.edge;
+          b.style.borderWidth = `${up ? 0 : EDGE}px ${right ? 0 : EDGE}px ${down ? 0 : EDGE}px ${left ? 0 : EDGE}px`;
+          b.style.borderRadius = `${!up && !left ? RADIUS : 0}px ${!up && !right ? RADIUS : 0}px ${!down && !right ? RADIUS : 0}px ${!down && !left ? RADIUS : 0}px`;
+          const bevel = [];
+          if (!up) bevel.push('inset 0 3px 0 rgba(255,255,255,0.4)');
+          if (!down) bevel.push('inset 0 -3px 0 rgba(0,0,0,0.08)');
+          if (bevel.length) b.style.boxShadow = bevel.join(', ');
           el.appendChild(b);
         });
         el.addEventListener('pointerdown', (e) => this.onPointerDown(e, p));
