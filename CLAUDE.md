@@ -10,7 +10,7 @@ LibreToybox/
 │   ├── index.html            — Child Sudoku (4×4, beginner-friendly)
 │   └── sw.js                 — offline cache worker
 ├── exquisite-corpse/
-│   ├── index.html            — Exquisite Corpse drawing game (ships as "Combination Man")
+│   ├── index.html            — Exquisite Corpse drawing game (ships as "Fold and Pass")
 │   └── sw.js                 — offline cache worker
 ├── .github/workflows/
 │   └── deploy-pages.yml      — auto-deploy to GitHub Pages on push to main
@@ -23,7 +23,7 @@ LibreToybox/
 └── CLAUDE.md                 — this file
 ```
 
-**Naming:** the project/repository name is **LibreToybox**. The drawing game's working name in these docs is *Exquisite Corpse*; its player-facing title is **Combination Man**.
+**Naming:** the project/repository name is **LibreToybox**. The drawing game's working name in these docs is *Exquisite Corpse*; its player-facing title is **Fold and Pass** (renamed 2026-07-12 from "Combination Man" for a gender-neutral, theme-fitting title — exquisite corpse is traditionally played by folding paper and passing it along).
 
 ## Tech Stack
 

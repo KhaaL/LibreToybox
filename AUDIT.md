@@ -111,6 +111,9 @@ CLAUDE.md's diagram omits `README.md`, `LICENSE`, and `AUDIT.md`.
 docs-name ↔ product-name mapping for the drawing game. Do this before more
 apps are added.
 
+*(Note: "Combination Man" was later renamed to "Fold and Pass" — see
+plan.md. This section is left as the historical record of the finding.)*
+
 ### A5. README.md is empty
 `README.md` (0 bytes)
 

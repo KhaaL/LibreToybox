@@ -1,10 +1,11 @@
 <!DOCTYPE html>
-<!-- LibreToybox — Combination Man (Exquisite Corpse) · Licensed under the GNU GPL v3.0; see ../LICENSE -->
+<!-- LibreToybox — Fold and Pass (Exquisite Corpse) · Licensed under the GNU GPL v3.0; see ../LICENSE -->
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
-  <title>Combination Man</title>
+  <title>Fold and Pass</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🧸</text></svg>" />
   <link rel="manifest" id="manifest-link" />
   <meta name="theme-color" content="#7C4DFF" />
   <style>
@@ -317,7 +318,7 @@
 <body>
 
 <header>
-  <div class="logo" aria-label="Combination Man" title="Combination Man">🎨</div>
+  <div class="logo" aria-label="Fold and Pass" title="Fold and Pass">🎨</div>
   <div class="top-btns">
     <button class="top-btn" id="new-game" aria-label="New Game">🔄</button>
     <button class="top-btn" id="settings-btn" aria-label="Settings">⚙️</button>
@@ -836,7 +837,7 @@ const App = {
   downloadPainting() {
     const a = document.createElement('a');
     a.href = this.artworkCanvas.toDataURL('image/png');
-    a.download = 'combination-man.png';
+    a.download = 'fold-and-pass.png';
     a.click();
   },
 
@@ -871,8 +872,8 @@ const App = {
 
   setupPWA() {
     const manifest = {
-      name: 'Combination Man',
-      short_name: 'Combo Man',
+      name: 'Fold and Pass',
+      short_name: 'Fold & Pass',
       start_url: '.',
       display: 'standalone',
       background_color: '#F3F0FF',
