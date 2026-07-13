@@ -2,8 +2,8 @@
 
 ## Child Sudoku (`sudoku-for-minis/index.html`)
 - **Feat: add an animated tutorial**.
-- **Selected cell highlight**: The current selected-cell outline is too subtle. Make it more distinct — thicker border, stronger color contrast, or a filled background — so children can clearly see which cell is active.
-- **Win screen should keep puzzle visible**: The confetti/win overlay currently covers the completed puzzle. The puzzle should remain visible beneath the celebration so players can see their finished work. Memory now establishes the pattern to copy: a translucent overlay (`rgba(255,255,255,0.55)`) with bottom-anchored content — see `#win-overlay` in `memory/index.html`.
+- ~~**Selected cell highlight**~~ ✓ (2026-07-13, UI-coherence pass) — the lime dashed outline became a solid 4 px teal (`--c2`) outline plus a tinted `#E6FAF8` fill, distinct and on-palette.
+- ~~**Win screen should keep puzzle visible**~~ ✓ (2026-07-13, UI-coherence pass) — copied Memory's pattern: translucent `rgba(255,255,255,0.55)` win overlay with bottom-anchored content; settings overlay keeps the opaque white.
 - **Dialog semantics for overlays** (AUDIT B4): add `role="dialog" aria-modal="true"` to the settings and win overlays, matching Exquisite Corpse's settings overlay.
 - ~~**Visible feedback when Reject mode clears illegal cells**~~ ✓ (AUDIT A11) — `removeIllegalCells()` now plays the swoosh sound and the same suction animation a manual clear uses, per cell, instead of silently zeroing the board.
 - ~~**Keyboard access for grid cells**~~ ✓ (AUDIT A12) — non-given cells are tabbable (`tabIndex = 0`), a shared `activateCell(r, c)` drives both pointer taps and Enter/Space, and there's a `:focus-visible` outline distinct from the tap-selected one. `design_principles.txt` §8 wording fixed to say "keyboard, mouse, and touch."
@@ -26,8 +26,13 @@
 - ~~**Section emojis**~~ ✓ — 🙂 head / 👕 body / 👖 legs. No player number labels.
 - ~~**Automatic section transitions**~~ ✓ — No handoff pause screen. Slides to next section after 460 ms animation.
 
+## Hub (`index.html`)
+
+- **Offline capability** (UI review 2026-07-13): the hub is the only page without a manifest, theme-color, or service worker — offline players can open every installed game but not the front door that links them. Add the same PWA boilerplate the games use.
+
 ## All games
 
+- ~~**UI / color coherence pass**~~ ✓ (2026-07-13) — one color system across the toybox (now design principle 11): Memory's saturated card-back gradient replaced with the shared purple pastel + darker edge (`#C3B4F7`/`#9480DC`); Sudoku's stray hot pink (`#FF69B4`) unified to its coral `--c1`; Fold and Pass's vivid `#7C4DFF` accent and Material greens softened to `#9480DC`/`#66BB6A`, and its dark settings overlay switched to the translucent white every other game uses; confetti everywhere draws from the shared palette; hub cards shrunk to a 2×2 grid with hover/focus states. Cache names bumped: `memory-v2`, `child-sudoku-v3`, `fold-and-pass-v3`.
 - **Service-worker update strategy** (AUDIT B1): the cache-first `sw.js` with a fixed cache name (now ×4 with `shape-fit-v1`) means returning players never receive deployed updates until the cache name is bumped. Decide: network-first for navigations (fall back to cache offline), or enforce "bump the cache name in every release" as a hard rule in CLAUDE.md.
 - ~~**Favicon**~~ ✓ (AUDIT B3) — all three pages (hub + both games) declare `<link rel="icon">` using an inline 🧸 emoji SVG data URI, matching the teddy bear already used as the hub's logo.
 - ~~**Use or remove the `aria-live` status regions**~~ ✓ (AUDIT A17) — both games now announce meaningful state: Sudoku announces cell selection, placements, conflicts, and the win; Fold and Pass announces the current section (head/body/legs) and the final reveal.

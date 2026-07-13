@@ -1,5 +1,5 @@
 /* LibreToybox — Child Sudoku service worker · GNU GPL v3.0; see ../LICENSE */
-const CACHE = 'child-sudoku-v2';
+const CACHE = 'child-sudoku-v3';
 
 self.addEventListener('install', (e) => {
   e.waitUntil(caches.open(CACHE).then((c) => c.addAll(['./', './index.html'])));

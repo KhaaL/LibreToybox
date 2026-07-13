@@ -50,6 +50,7 @@ All decisions must follow `design_principles.txt`. Key ones:
 4. **Sound as feedback** — Web Audio API only; short, pleasant, non-looping
 5. **Offline-first** — works at `file://` with no server; `sw.js` adds offline caching when served over http(s)
 6. **No tracking, no ads, no online requirement**
+7. **One color system** — Shape Fit's `CONFIG.palette` is the canonical pastel set; per-game identity comes from the background hue family only; interactive elements are flat fill + darker same-hue edge, never gradients (principle 11)
 
 ## Exquisite Corpse — Architecture Notes
 

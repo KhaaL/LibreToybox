@@ -1,5 +1,5 @@
 /* LibreToybox — Fold and Pass service worker · GNU GPL v3.0; see ../LICENSE */
-const CACHE = 'fold-and-pass-v2';
+const CACHE = 'fold-and-pass-v3';
 
 self.addEventListener('install', (e) => {
   e.waitUntil(caches.open(CACHE).then((c) => c.addAll(['./', './index.html'])));

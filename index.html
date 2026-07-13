@@ -23,30 +23,32 @@
     p.tagline { margin: 0 0 32px; opacity: 0.75; text-align: center; max-width: 480px; }
     .games {
       display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-      gap: 20px;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 14px;
       width: 100%;
-      max-width: 520px;
+      max-width: 440px;
     }
     a.card {
       display: flex;
       flex-direction: column;
       align-items: center;
-      gap: 10px;
-      padding: 28px 16px;
+      gap: 6px;
+      padding: 16px 10px;
       background: #fff;
       border: 3px solid #C0B4F0;
       border-radius: 20px;
       box-shadow: 0 8px 22px rgba(0,0,0,0.12);
       text-decoration: none;
       color: #3A3060;
-      font-size: 1.2rem;
+      font-size: 1.05rem;
       font-weight: bold;
-      transition: transform .1s;
+      transition: transform .1s, border-color .1s;
     }
+    a.card:hover { border-color: #9480DC; transform: translateY(-2px); }
+    a.card:focus-visible { outline: 4px solid #9480DC; outline-offset: 2px; }
     a.card:active { transform: translateY(3px); }
-    .emoji { font-size: 3rem; }
-    footer { margin-top: 40px; font-size: 0.85rem; opacity: 0.6; }
+    .emoji { font-size: 2.4rem; }
+    footer { margin-top: 40px; font-size: 0.85rem; opacity: 0.75; }
     footer a { color: inherit; }
   </style>
 </head>
@@ -63,7 +65,7 @@
       Fold and Pass
     </a>
     <a class="card" href="memory/">
-      <span class="emoji">🃏</span>
+      <span class="emoji">❓</span>
       Memory
     </a>
     <a class="card" href="shape-fit/">

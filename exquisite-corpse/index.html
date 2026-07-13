@@ -7,12 +7,12 @@
   <title>Fold and Pass</title>
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🧸</text></svg>" />
   <link rel="manifest" id="manifest-link" />
-  <meta name="theme-color" content="#7C4DFF" />
+  <meta name="theme-color" content="#9480DC" />
   <style>
     :root {
       --bg1: #F3F0FF;
       --bg2: #E0D9FF;
-      --accent: #7C4DFF;
+      --accent: #9480DC;
       --border: #C0B4F0;
       --text: #3A3060;
       --shadow: #b0a4e0;
@@ -140,7 +140,7 @@
       height: 4px;
       background: repeating-linear-gradient(
         90deg,
-        rgba(124, 77, 255, 0.8) 0 14px,
+        rgba(148, 128, 220, 0.9) 0 14px,
         transparent 14px 22px
       );
       pointer-events: none;
@@ -221,16 +221,16 @@
       height: 56px;
       border: none;
       border-radius: 16px;
-      background: #43A047;
+      background: #66BB6A;
       color: #fff;
       font-family: inherit;
       font-size: 2rem;
       cursor: pointer;
-      box-shadow: 0 5px 0 #2E7D32;
+      box-shadow: 0 5px 0 #43A047;
       transition: transform .05s, box-shadow .05s;
       flex-shrink: 0;
     }
-    #done-btn:active { transform: translateY(3px); box-shadow: 0 2px 0 #2E7D32; }
+    #done-btn:active { transform: translateY(3px); box-shadow: 0 2px 0 #43A047; }
 
     .overlay {
       position: fixed;
@@ -265,17 +265,18 @@
     #download-btn {
       background: var(--accent);
       color: #fff;
-      box-shadow: 0 5px 0 #5C35CC;
+      box-shadow: 0 5px 0 #6F5BB5;
     }
-    #download-btn:active { transform: translateY(3px); box-shadow: 0 2px 0 #5C35CC; }
+    #download-btn:active { transform: translateY(3px); box-shadow: 0 2px 0 #6F5BB5; }
     #play-again {
-      background: #43A047;
+      background: #66BB6A;
       color: #fff;
-      box-shadow: 0 5px 0 #2E7D32;
+      box-shadow: 0 5px 0 #43A047;
     }
-    #play-again:active { transform: translateY(3px); box-shadow: 0 2px 0 #2E7D32; }
+    #play-again:active { transform: translateY(3px); box-shadow: 0 2px 0 #43A047; }
 
-    #settings-overlay { background: rgba(0,0,0,0.45); }
+    /* Translucent white like every other game's settings overlay */
+    #settings-overlay { background: rgba(255,255,255,0.92); }
     .settings-card {
       background: #fff;
       border: 3px solid var(--border);
@@ -881,7 +882,7 @@ const App = {
       start_url: '.',
       display: 'standalone',
       background_color: '#F3F0FF',
-      theme_color: '#7C4DFF',
+      theme_color: '#9480DC',
       icons: [
         { src: this.makeIcon(192), sizes: '192x192', type: 'image/svg+xml' },
         { src: this.makeIcon(512), sizes: '512x512', type: 'image/svg+xml' }
@@ -901,10 +902,10 @@ const App = {
   makeIcon(size) {
     const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 100 100">
       <rect width="100" height="100" fill="#F3F0FF" rx="18"/>
-      <circle cx="50" cy="26" r="16" fill="#7C4DFF"/>
-      <rect x="30" y="46" width="40" height="26" rx="8" fill="#7C4DFF"/>
-      <rect x="33" y="75" width="13" height="15" rx="5" fill="#7C4DFF"/>
-      <rect x="54" y="75" width="13" height="15" rx="5" fill="#7C4DFF"/>
+      <circle cx="50" cy="26" r="16" fill="#9480DC"/>
+      <rect x="30" y="46" width="40" height="26" rx="8" fill="#9480DC"/>
+      <rect x="33" y="75" width="13" height="15" rx="5" fill="#9480DC"/>
+      <rect x="54" y="75" width="13" height="15" rx="5" fill="#9480DC"/>
     </svg>`;
     return 'data:image/svg+xml;base64,' + btoa(unescape(encodeURIComponent(svg)));
   },
