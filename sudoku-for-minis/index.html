@@ -96,11 +96,9 @@
       display: flex;
       align-items: center;
       justify-content: center;
-      font-size: clamp(1.5rem, 7vw, 2rem);
+      font-size: var(--num-font, clamp(1.5rem, 7vw, 2rem));
       cursor: pointer;
       transition: background .15s, transform .1s;
-      min-height: 60px;
-      min-width: 60px;
     }
     .cell.given { background: var(--given); font-weight: bold; cursor: default; }
     .cell.selected { outline: 4px solid var(--c2); outline-offset: -4px; background: #E6FAF8; z-index: 2; }
@@ -109,12 +107,10 @@
     .cell.just-placed { animation: pop .25s ease-out; }
     .cell.cleared { animation: suction .22s ease-in; }
 
-    /* thick borders between 2x2 blocks */
-    .cell:nth-child(4n+2) { border-left-width: 3px; border-left-color: #7A8BA6; }
-    .cell:nth-child(4n+3) { border-right-width: 3px; border-right-color: #7A8BA6; }
-    .cell:nth-child(n+5):nth-child(-n+8),
-    .cell:nth-child(n+13):nth-child(-n+16) { border-top-width: 3px; border-top-color: #7A8BA6; }
-    .cell:nth-child(n+9):nth-child(-n+12) { border-bottom-width: 3px; border-bottom-color: #7A8BA6; }
+    /* Thick borders between boxes — set per cell from JS (box-l / box-t),
+       since box geometry depends on the board size (2×2, 2×3 or 2×4). */
+    .cell.box-l { border-left-width: 3px; border-left-color: #7A8BA6; }
+    .cell.box-t { border-top-width: 3px; border-top-color: #7A8BA6; }
 
     .pad {
       display: flex;
@@ -145,6 +141,12 @@
     .tool.t2 { background: var(--c2); }
     .tool.t3 { background: var(--c3); color: #5d5d5d; }
     .tool.t4 { background: var(--c4); color: #3d6b55; }
+    /* Digits 5–8 (6×6 and 8×8 boards) continue the canonical pastel set
+       with darker same-hue text (design principle 11). */
+    .tool.t5 { background: #F7A6B9; color: #A34860; text-shadow: none; }
+    .tool.t6 { background: #F9C784; color: #96601C; text-shadow: none; }
+    .tool.t7 { background: #8ED3F4; color: #2F6C93; text-shadow: none; }
+    .tool.t8 { background: #C3B4F7; color: #5F4EA0; text-shadow: none; }
 
     .status { font-size: 0; height: 0; overflow: hidden; }
 
@@ -199,6 +201,28 @@
       min-width: 260px;
     }
     .settings-card h2 { margin: 0; font-size: 2rem; }
+    .size-row { display: flex; flex-wrap: wrap; justify-content: center; gap: 18px; }
+    .size-btn {
+      width: 72px;
+      height: 72px;
+      border: 2px solid var(--border);
+      border-radius: 16px;
+      background: #fff;
+      font-family: inherit;
+      font-size: 1.7rem;
+      cursor: pointer;
+      box-shadow: 0 4px 0 #dbe3ef;
+      transition: transform .05s;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 2px;
+      color: var(--text);
+    }
+    .size-btn small { font-size: 0.8rem; }
+    .size-btn:active { transform: translateY(2px); box-shadow: 0 2px 0 #dbe3ef; }
+    .size-btn.active { box-shadow: 0 0 0 4px gold, 0 4px 0 #dbe3ef; }
     .setting-row {
       display: flex;
       align-items: center;
@@ -230,7 +254,8 @@
       box-shadow: 0 1px 3px rgba(0,0,0,0.2);
     }
     .toggle-btn.active .toggle-thumb { transform: translateX(26px); }
-    .setting-hint { margin: 0; font-size: 0.9rem; color: #888; }
+    .setting-label { display: flex; flex-direction: column; gap: 2px; text-align: left; }
+    .setting-hint { margin: 0; font-size: 0.85rem; color: #888; }
     @keyframes ghostFly {
       0% { left: var(--gx); top: var(--gy); transform: translate(-50%, -50%) scale(1); opacity: 1; }
       100% { left: var(--tx); top: var(--ty); transform: translate(-50%, -50%) scale(0.3); opacity: 0; }
@@ -271,12 +296,7 @@
   <main>
     <div class="status" id="status" aria-live="polite"></div>
     <div class="grid-wrap" id="grid" role="grid" aria-label="Sudoku grid"></div>
-    <div class="pad" id="pad" role="toolbar" aria-label="Number pad">
-      <button class="tool t1" data-tool="1" aria-label="Number 1">1</button>
-      <button class="tool t2" data-tool="2" aria-label="Number 2">2</button>
-      <button class="tool t3" data-tool="3" aria-label="Number 3">3</button>
-      <button class="tool t4" data-tool="4" aria-label="Number 4">4</button>
-    </div>
+    <div class="pad" id="pad" role="toolbar" aria-label="Number pad"></div>
   </main>
 
   <div class="overlay" id="win-overlay">
@@ -287,23 +307,43 @@
   <div class="overlay" id="settings-overlay">
     <div class="settings-card">
       <h2>⚙️</h2>
+      <div class="size-row" role="radiogroup" aria-label="Board size">
+        <button class="size-btn" data-size="small" role="radio" aria-label="Small board, 4 by 4, numbers 1 to 4">🐣<small>1–4</small></button>
+        <button class="size-btn" data-size="medium" role="radio" aria-label="Medium board, 6 by 6, numbers 1 to 6">🐥<small>1–6</small></button>
+        <button class="size-btn" data-size="large" role="radio" aria-label="Big board, 8 by 8, numbers 1 to 8">🦁<small>1–8</small></button>
+      </div>
       <div class="setting-row">
-        <span>Wrong numbers</span>
+        <div class="setting-label">
+          <span>Wrong numbers</span>
+          <p class="setting-hint" id="mode-hint">Wrong or clashing numbers fly back to the pad</p>
+        </div>
         <button class="toggle-btn" id="mode-toggle" aria-label="Toggle wrong number behavior">
           <span class="toggle-thumb"></span>
         </button>
       </div>
-      <p class="setting-hint" id="mode-hint">Fly back to the number pad</p>
       <button class="top-btn" id="close-settings" aria-label="Close">✕</button>
     </div>
   </div>
 
   <script>
+    // Board sizes: n×n grid with boxR×boxC boxes, digits 1..n. The givens
+    // target keeps ~50% of cells filled at every size — the difficulty step
+    // comes from the board itself, not from sparser starts.
+    const SIZES = {
+      small:  { n: 4, boxR: 2, boxC: 2, givens: 8,  numFont: 'clamp(1.5rem, 7vw, 2rem)' },
+      medium: { n: 6, boxR: 2, boxC: 3, givens: 18, numFont: 'clamp(1.1rem, 5vw, 1.5rem)' },
+      large:  { n: 8, boxR: 2, boxC: 4, givens: 32, numFont: 'clamp(0.95rem, 4.2vw, 1.25rem)' }
+    };
+
     const App = {
       solution: [],
       puzzle: [],
       playGrid: [],
       givenMask: [],
+      size: 'small',
+      n: 4,
+      boxR: 2,
+      boxC: 2,
       selected: null,
       activeTool: null,
       won: false,
@@ -315,7 +355,7 @@
       pressProgressCell: null,
       pressProgressStart: 0,
       pressProgressRAF: null,
-      keepIllegal: false,
+      keepWrong: false,
       emojiSets: [
         ['🎉', '🌟', '🏆'],
         ['🎈', '🌈', '🎊'],
@@ -351,6 +391,9 @@
         this.modeToggle.addEventListener('click', () => this.toggleMode());
         this.settingsOverlay.addEventListener('click', (e) => {
           if (e.target === this.settingsOverlay) this.closeSettings();
+        });
+        this.settingsOverlay.querySelectorAll('.size-btn').forEach(btn => {
+          btn.addEventListener('click', () => this.setSize(btn.dataset.size));
         });
 
         this.pad.addEventListener('click', (e) => {
@@ -505,9 +548,12 @@
         // No latent selection (design principle 2): the number pad resets
         // after every placement, so each piece needs a fresh pick.
         this.setTool(null);
-        if (this.hasConflict(r, c, val)) {
+        // The puzzle has a unique solution, so "wrong" is simply "not the
+        // solution digit" — that covers rule-breaking (illegal) placements
+        // and quietly-wrong ones alike; the mode toggle governs both.
+        if (this.isWrong(r, c)) {
           this.audioBuzz();
-          this.updateStatus(`Number ${val} conflicts, try again.`);
+          this.updateStatus(`Number ${val} is wrong, try again.`);
           this.renderGrid();
           const el = this.getCellEl(r, c);
           if (el) {
@@ -515,7 +561,7 @@
             void el.offsetWidth;
             el.classList.add('conflict');
           }
-          if (this.keepIllegal) return;
+          if (this.keepWrong) return;
           this.animateGhost(r, c, val, () => {
             this.playGrid[r][c] = oldVal;
             this.renderGrid();
@@ -583,15 +629,21 @@
         });
       },
 
+      isWrong(r, c) {
+        return this.playGrid[r][c] !== 0 && !this.givenMask[r][c] &&
+               this.playGrid[r][c] !== this.solution[r][c];
+      },
+
       hasConflict(r, c, val) {
+        const n = this.n;
         // row
-        for (let cc = 0; cc < 4; cc++) if (cc !== c && this.playGrid[r][cc] === val) return true;
+        for (let cc = 0; cc < n; cc++) if (cc !== c && this.playGrid[r][cc] === val) return true;
         // col
-        for (let rr = 0; rr < 4; rr++) if (rr !== r && this.playGrid[rr][c] === val) return true;
+        for (let rr = 0; rr < n; rr++) if (rr !== r && this.playGrid[rr][c] === val) return true;
         // block
-        const br = Math.floor(r / 2) * 2, bc = Math.floor(c / 2) * 2;
-        for (let rr = br; rr < br + 2; rr++) {
-          for (let cc = bc; cc < bc + 2; cc++) {
+        const br = Math.floor(r / this.boxR) * this.boxR, bc = Math.floor(c / this.boxC) * this.boxC;
+        for (let rr = br; rr < br + this.boxR; rr++) {
+          for (let cc = bc; cc < bc + this.boxC; cc++) {
             if ((rr !== r || cc !== c) && this.playGrid[rr][cc] === val) return true;
           }
         }
@@ -601,8 +653,8 @@
       checkWin() {
         // Full AND conflict-free — in Keep mode illegal numbers stay on the
         // board, so fullness alone is not a win.
-        for (let r = 0; r < 4; r++) {
-          for (let c = 0; c < 4; c++) {
+        for (let r = 0; r < this.n; r++) {
+          for (let c = 0; c < this.n; c++) {
             const v = this.playGrid[r][c];
             if (v === 0 || this.hasConflict(r, c, v)) return false;
           }
@@ -635,28 +687,51 @@
         this.selected = null;
         this.activeTool = null;
         this.won = false;
-        this.pad.querySelectorAll('.tool').forEach(t => t.classList.remove('active'));
+        const s = SIZES[this.size];
+        this.n = s.n;
+        this.boxR = s.boxR;
+        this.boxC = s.boxC;
+        this.grid.style.gridTemplateColumns = `repeat(${this.n}, 1fr)`;
+        this.grid.style.gridTemplateRows = `repeat(${this.n}, 1fr)`;
+        this.grid.style.setProperty('--num-font', s.numFont);
+        this.buildPad();
         this.generatePuzzle();
         this.renderGrid();
         this.updateStatus('');
       },
 
+      buildPad() {
+        this.pad.innerHTML = '';
+        // cap the pad width so the rows wrap evenly: 4 / 3+3 / 4+4
+        this.pad.style.maxWidth = { 4: '', 6: '236px', 8: '300px' }[this.n];
+        for (let i = 1; i <= this.n; i++) {
+          const b = document.createElement('button');
+          b.className = `tool t${i}`;
+          b.dataset.tool = i;
+          b.setAttribute('aria-label', `Number ${i}`);
+          b.textContent = i;
+          this.pad.appendChild(b);
+        }
+      },
+
       generatePuzzle() {
         // generate a full valid solution
-        const solution = Array.from({ length: 4 }, () => Array(4).fill(0));
+        const n = this.n;
+        const solution = Array.from({ length: n }, () => Array(n).fill(0));
         this.solve(solution);
         this.solution = solution.map(row => row.slice());
 
-        // remove cells while keeping unique solution, target 8-10 givens
+        // remove cells while keeping unique solution, down to the size's
+        // givens target (~50% of the board at every size)
         const puzzle = solution.map(row => row.slice());
-        const givenMask = Array.from({ length: 4 }, () => Array(4).fill(true));
+        const givenMask = Array.from({ length: n }, () => Array(n).fill(true));
         const positions = [];
-        for (let r = 0; r < 4; r++) for (let c = 0; c < 4; c++) positions.push([r, c]);
+        for (let r = 0; r < n; r++) for (let c = 0; c < n; c++) positions.push([r, c]);
         this.shuffle(positions);
 
-        let givens = 16;
+        let givens = n * n;
         for (const [r, c] of positions) {
-          if (givens <= 8) break;
+          if (givens <= SIZES[this.size].givens) break;
           const backup = puzzle[r][c];
           puzzle[r][c] = 0;
           givenMask[r][c] = false;
@@ -677,14 +752,15 @@
       },
 
       solve(grid) {
-        for (let r = 0; r < 4; r++) {
-          for (let c = 0; c < 4; c++) {
+        const n = this.n;
+        for (let r = 0; r < n; r++) {
+          for (let c = 0; c < n; c++) {
             if (grid[r][c] === 0) {
-              const nums = [1, 2, 3, 4];
+              const nums = Array.from({ length: n }, (_, i) => i + 1);
               this.shuffle(nums);
-              for (const n of nums) {
-                if (this.isValid(grid, r, c, n)) {
-                  grid[r][c] = n;
+              for (const v of nums) {
+                if (this.isValid(grid, r, c, v)) {
+                  grid[r][c] = v;
                   if (this.solve(grid)) return true;
                   grid[r][c] = 0;
                 }
@@ -697,12 +773,13 @@
       },
 
       countSolutions(grid, cb, stop) {
-        for (let r = 0; r < 4; r++) {
-          for (let c = 0; c < 4; c++) {
+        const n = this.n;
+        for (let r = 0; r < n; r++) {
+          for (let c = 0; c < n; c++) {
             if (grid[r][c] === 0) {
-              for (let n = 1; n <= 4; n++) {
-                if (this.isValid(grid, r, c, n)) {
-                  grid[r][c] = n;
+              for (let v = 1; v <= n; v++) {
+                if (this.isValid(grid, r, c, v)) {
+                  grid[r][c] = v;
                   this.countSolutions(grid, cb, stop);
                   grid[r][c] = 0;
                   if (stop && stop()) return;
@@ -715,11 +792,12 @@
         cb();
       },
 
-      isValid(grid, r, c, n) {
-        for (let i = 0; i < 4; i++) if (grid[r][i] === n) return false;
-        for (let i = 0; i < 4; i++) if (grid[i][c] === n) return false;
-        const br = Math.floor(r / 2) * 2, bc = Math.floor(c / 2) * 2;
-        for (let i = br; i < br + 2; i++) for (let j = bc; j < bc + 2; j++) if (grid[i][j] === n) return false;
+      isValid(grid, r, c, v) {
+        const n = this.n;
+        for (let i = 0; i < n; i++) if (grid[r][i] === v) return false;
+        for (let i = 0; i < n; i++) if (grid[i][c] === v) return false;
+        const br = Math.floor(r / this.boxR) * this.boxR, bc = Math.floor(c / this.boxC) * this.boxC;
+        for (let i = br; i < br + this.boxR; i++) for (let j = bc; j < bc + this.boxC; j++) if (grid[i][j] === v) return false;
         return true;
       },
 
@@ -732,20 +810,23 @@
 
       renderGrid() {
         this.grid.innerHTML = '';
-        for (let r = 0; r < 4; r++) {
-          for (let c = 0; c < 4; c++) {
+        for (let r = 0; r < this.n; r++) {
+          for (let c = 0; c < this.n; c++) {
             const cell = document.createElement('div');
             cell.className = 'cell';
             cell.dataset.r = r;
             cell.dataset.c = c;
             cell.setAttribute('role', 'gridcell');
+            // thick border on box boundaries (box geometry varies per size)
+            if (c > 0 && c % this.boxC === 0) cell.classList.add('box-l');
+            if (r > 0 && r % this.boxR === 0) cell.classList.add('box-t');
             if (this.givenMask[r][c]) {
               cell.classList.add('given');
             } else {
               cell.tabIndex = 0;
             }
             if (this.selected && this.selected.r === r && this.selected.c === c) cell.classList.add('selected');
-            if (this.playGrid[r][c] !== 0 && this.hasConflict(r, c, this.playGrid[r][c])) cell.classList.add('conflict');
+            if (this.isWrong(r, c)) cell.classList.add('conflict');
             if (this.playGrid[r][c] !== 0) cell.textContent = this.playGrid[r][c];
             this.grid.appendChild(cell);
           }
@@ -759,30 +840,52 @@
       openSettings() {
         this.settingsOverlay.classList.add('show');
         this.updateModeToggle();
+        this.updateSizeButtons();
       },
 
       closeSettings() {
         this.settingsOverlay.classList.remove('show');
       },
 
+      setSize(size) {
+        if (size === this.size) {
+          this.closeSettings();
+          return;
+        }
+        this.size = size;
+        this.updateSizeButtons();
+        this.closeSettings();
+        this.newGame();
+      },
+
+      updateSizeButtons() {
+        this.settingsOverlay.querySelectorAll('.size-btn').forEach(btn => {
+          const active = btn.dataset.size === this.size;
+          btn.classList.toggle('active', active);
+          btn.setAttribute('aria-checked', active ? 'true' : 'false');
+        });
+      },
+
       toggleMode() {
-        this.keepIllegal = !this.keepIllegal;
+        this.keepWrong = !this.keepWrong;
         this.updateModeToggle();
-        if (!this.keepIllegal) {
-          this.removeIllegalCells();
+        if (!this.keepWrong) {
+          this.removeWrongCells();
         }
       },
 
       updateModeToggle() {
-        this.modeToggle.classList.toggle('active', this.keepIllegal);
-        this.modeHint.textContent = this.keepIllegal ? 'Stay red until fixed' : 'Fly back to the number pad';
+        this.modeToggle.classList.toggle('active', this.keepWrong);
+        this.modeHint.textContent = this.keepWrong
+          ? 'Wrong or clashing numbers stay red until fixed'
+          : 'Wrong or clashing numbers fly back to the pad';
       },
 
-      removeIllegalCells() {
+      removeWrongCells() {
         const toClear = [];
-        for (let r = 0; r < 4; r++) {
-          for (let c = 0; c < 4; c++) {
-            if (!this.givenMask[r][c] && this.playGrid[r][c] !== 0 && this.hasConflict(r, c, this.playGrid[r][c])) {
+        for (let r = 0; r < this.n; r++) {
+          for (let c = 0; c < this.n; c++) {
+            if (this.isWrong(r, c)) {
               toClear.push([r, c]);
             }
           }

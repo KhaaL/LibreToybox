@@ -7,7 +7,7 @@ LibreToybox is a collection of self-contained HTML5 games for children aged 6–
 ```
 LibreToybox/
 ├── sudoku-for-minis/
-│   ├── index.html            — Child Sudoku (4×4, beginner-friendly)
+│   ├── index.html            — Child Sudoku (4×4 / 6×6 / 8×8, beginner-friendly)
 │   └── sw.js                 — offline cache worker
 ├── exquisite-corpse/
 │   ├── index.html            — Exquisite Corpse drawing game (ships as "Fold and Pass")
@@ -23,6 +23,7 @@ LibreToybox/
 ├── index.html                — game hub / landing page (links to all games)
 ├── design_principles.txt     — authoritative design rules (read before any change)
 ├── plan.md                   — pending work (single source of truth)
+├── done.md                   — completed items, moved out of plan.md
 ├── AUDIT.md                  — repository audit (2026-07-12 snapshot)
 ├── README.md
 ├── LICENSE                   — GNU GPL v3.0
@@ -89,10 +90,11 @@ All decisions must follow `design_principles.txt`. Key ones:
 ## Child Sudoku — Architecture Notes
 
 `sudoku-for-minis/index.html` — standard single-file Sudoku with:
+- **Board sizes** (settings radio, same pattern as Memory/Shape Fit): 🐣 4×4 (digits 1–4, 2×2 boxes, the default) / 🐥 6×6 (1–6, 2×3 boxes) / 🦁 8×8 (1–8, 2×4 boxes). All geometry lives in the `SIZES` table at the top of the script (`n`, `boxR`×`boxC`, givens target — ~50% of cells at every size — and per-size number font). Thick box borders are per-cell classes (`box-l`/`box-t`) set from the box geometry, **not** static CSS. The number pad is built dynamically; digits 5–8 continue the canonical pastel palette with darker same-hue text (principle 11), and the pad width is capped so rows wrap evenly (3+3, 4+4)
 - Number pad → cell placement flow (select destination, then digit)
 - The active digit resets after **every** placement — no latent selection (design principle 2)
-- Reject mode / Keep mode toggle for illegal numbers
-- `checkWin()` requires the board to be full **and** conflict-free (Keep mode can fill the board with conflicts still present)
+- Reject mode / Keep mode toggle for **wrong numbers** — since every puzzle has a unique solution, "wrong" is simply "not the solution digit" (`isWrong()`), which covers rule-breaking (illegal) placements and quietly-wrong-but-legal ones alike; reject mode flies both back to the pad, keep mode leaves both red until fixed
+- `checkWin()` requires the board to be full **and** conflict-free (Keep mode can fill the board with wrong numbers still present)
 - Pointer Events only (`pointerdown`/`move`/`up`/`cancel`) — never touch/mouse pairs, which double-fire via synthetic mouse events
 - Web Audio feedback on placement, error, win
 - Confetti win overlay
