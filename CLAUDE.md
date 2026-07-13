@@ -16,7 +16,7 @@ LibreToybox/
 │   ├── index.html            — Memory (pairs-matching, 4×4 / 6×4 board)
 │   └── sw.js                 — offline cache worker
 ├── shape-fit/
-│   ├── index.html            — Shape Fit (grid-packing puzzle, 4×4 / 6×6 / 8×8 board)
+│   ├── index.html            — Shape Fit (grid-packing puzzle, 4×4 / 5×5 / 6×6 / 7×7 board)
 │   └── sw.js                 — offline cache worker
 ├── .github/workflows/
 │   └── deploy-pages.yml      — auto-deploy to GitHub Pages on push to main
@@ -116,7 +116,7 @@ All decisions must follow `design_principles.txt`. Key ones:
 `shape-fit/index.html` — no-timer grid-packing puzzle ("reverse Tetris"): the board is cut into polyomino pieces (box, L, S, T…) that the child drags back to fill the whole grid. All tuning lives in the `CONFIG` object at the top of the script.
 
 - **Generate the solution first**: randomized region-growing partitions the N×N board into connected pieces (3–6 cell targets; undersized leftovers are merged into an adjacent piece), so a solution exists by construction. Greedy coloring over the piece-adjacency graph (palette order shuffled per game) guarantees touching pieces never share a color.
-- **Board sizes** (the one settings toggle): 🐣 4×4 (~4 pieces, for the youngest) / 🐥 6×6 / 🦁 8×8. Deliberately 8×8 rather than 9×9 — bigger cells (~45 px vs 40 px on a phone) and ~14 rather than ~18 pieces. Cells below the 60 px rule are acceptable here because cells are *drop* targets; the pieces (multi-cell, 80–240 px) are what fingers touch, and snapping is forgiving.
+- **Board sizes** (the one settings toggle): 🐣 4×4 (~4 pieces, for the youngest) / 🐤 5×5 (~6 pieces) / 🐥 6×6 (~8 pieces) / 🦁 7×7 (~10 pieces); the settings size row wraps to a 2×2 grid so four 72 px buttons fit narrow phones. The hard board has been walked down twice for the age band — scoped 9×9, shipped 8×8, reduced to 7×7 on 2026-07-13 (still too hard) — each step meaning bigger cells and fewer pieces. Cells below the 60 px rule are acceptable here because cells are *drop* targets; the pieces (multi-cell, 80–240 px) are what fingers touch, and snapping is forgiving.
 - **Pieces read as one solid shape with a perimeter outline**: `buildPieceEl()` computes borders, corner radii, insets and bevels per block *side* — edges shared with a sibling block get none (blocks merge), only the polyomino's outer perimeter gets the inset gap + darker `edge` color from the palette. This matters because placement is free: the player can put two same-colored pieces next to each other (the generator's no-adjacent-colors guarantee only covers the generated layout), and without the outline they'd blend into one blob.
 - **One `--cell` CSS variable** (board width ÷ N, set from JS) sizes everything — board cells, piece divs, `.blk` squares, tray slots — via `calc()`, so a resize only updates the variable.
 - **Drag**: Pointer Events + `setPointerCapture` on the piece element. While dragging, the piece switches to `position: fixed` **without reparenting** (reparenting mid-gesture can drop pointer capture) and rides `CONFIG.liftPx` above the finger so it isn't hidden by the hand. The snap target (`Math.round` to the nearest cell) is previewed by highlighting board cells (`.ghost`).
