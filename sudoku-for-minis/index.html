@@ -254,7 +254,8 @@
       box-shadow: 0 1px 3px rgba(0,0,0,0.2);
     }
     .toggle-btn.active .toggle-thumb { transform: translateX(26px); }
-    .setting-hint { margin: 0; font-size: 0.9rem; color: #888; }
+    .setting-label { display: flex; flex-direction: column; gap: 2px; text-align: left; }
+    .setting-hint { margin: 0; font-size: 0.85rem; color: #888; }
     @keyframes ghostFly {
       0% { left: var(--gx); top: var(--gy); transform: translate(-50%, -50%) scale(1); opacity: 1; }
       100% { left: var(--tx); top: var(--ty); transform: translate(-50%, -50%) scale(0.3); opacity: 0; }
@@ -312,12 +313,14 @@
         <button class="size-btn" data-size="large" role="radio" aria-label="Big board, 8 by 8, numbers 1 to 8">🦁<small>1–8</small></button>
       </div>
       <div class="setting-row">
-        <span>Wrong numbers</span>
+        <div class="setting-label">
+          <span>Wrong numbers</span>
+          <p class="setting-hint" id="mode-hint">Wrong or clashing numbers fly back to the pad</p>
+        </div>
         <button class="toggle-btn" id="mode-toggle" aria-label="Toggle wrong number behavior">
           <span class="toggle-thumb"></span>
         </button>
       </div>
-      <p class="setting-hint" id="mode-hint">Fly back to the number pad</p>
       <button class="top-btn" id="close-settings" aria-label="Close">✕</button>
     </div>
   </div>
@@ -352,7 +355,7 @@
       pressProgressCell: null,
       pressProgressStart: 0,
       pressProgressRAF: null,
-      keepIllegal: false,
+      keepWrong: false,
       emojiSets: [
         ['🎉', '🌟', '🏆'],
         ['🎈', '🌈', '🎊'],
@@ -545,9 +548,12 @@
         // No latent selection (design principle 2): the number pad resets
         // after every placement, so each piece needs a fresh pick.
         this.setTool(null);
-        if (this.hasConflict(r, c, val)) {
+        // The puzzle has a unique solution, so "wrong" is simply "not the
+        // solution digit" — that covers rule-breaking (illegal) placements
+        // and quietly-wrong ones alike; the mode toggle governs both.
+        if (this.isWrong(r, c)) {
           this.audioBuzz();
-          this.updateStatus(`Number ${val} conflicts, try again.`);
+          this.updateStatus(`Number ${val} is wrong, try again.`);
           this.renderGrid();
           const el = this.getCellEl(r, c);
           if (el) {
@@ -555,7 +561,7 @@
             void el.offsetWidth;
             el.classList.add('conflict');
           }
-          if (this.keepIllegal) return;
+          if (this.keepWrong) return;
           this.animateGhost(r, c, val, () => {
             this.playGrid[r][c] = oldVal;
             this.renderGrid();
@@ -621,6 +627,11 @@
           ghost.remove();
           if (onDone) onDone();
         });
+      },
+
+      isWrong(r, c) {
+        return this.playGrid[r][c] !== 0 && !this.givenMask[r][c] &&
+               this.playGrid[r][c] !== this.solution[r][c];
       },
 
       hasConflict(r, c, val) {
@@ -815,7 +826,7 @@
               cell.tabIndex = 0;
             }
             if (this.selected && this.selected.r === r && this.selected.c === c) cell.classList.add('selected');
-            if (this.playGrid[r][c] !== 0 && this.hasConflict(r, c, this.playGrid[r][c])) cell.classList.add('conflict');
+            if (this.isWrong(r, c)) cell.classList.add('conflict');
             if (this.playGrid[r][c] !== 0) cell.textContent = this.playGrid[r][c];
             this.grid.appendChild(cell);
           }
@@ -856,23 +867,25 @@
       },
 
       toggleMode() {
-        this.keepIllegal = !this.keepIllegal;
+        this.keepWrong = !this.keepWrong;
         this.updateModeToggle();
-        if (!this.keepIllegal) {
-          this.removeIllegalCells();
+        if (!this.keepWrong) {
+          this.removeWrongCells();
         }
       },
 
       updateModeToggle() {
-        this.modeToggle.classList.toggle('active', this.keepIllegal);
-        this.modeHint.textContent = this.keepIllegal ? 'Stay red until fixed' : 'Fly back to the number pad';
+        this.modeToggle.classList.toggle('active', this.keepWrong);
+        this.modeHint.textContent = this.keepWrong
+          ? 'Wrong or clashing numbers stay red until fixed'
+          : 'Wrong or clashing numbers fly back to the pad';
       },
 
-      removeIllegalCells() {
+      removeWrongCells() {
         const toClear = [];
         for (let r = 0; r < this.n; r++) {
           for (let c = 0; c < this.n; c++) {
-            if (!this.givenMask[r][c] && this.playGrid[r][c] !== 0 && this.hasConflict(r, c, this.playGrid[r][c])) {
+            if (this.isWrong(r, c)) {
               toClear.push([r, c]);
             }
           }
