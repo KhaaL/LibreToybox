@@ -35,7 +35,7 @@
 
 ## All games
 
-- **Tappable celebration emojis** — pressing an emoji on the win screen should play a small ~500 ms effect on that emoji (wobble, pulse, or similar), with a matching little sound; a playful reward for poking the celebration, in every game.
+- ~~**Tappable celebration emojis**~~ ✓ (2026-07-13) — the win-screen emojis in Sudoku, Memory and Shape Fit are now real `<button>`s (keyboard parity, principle 8): a tap/Enter plays a 500 ms wiggle (rotate + scale keyframes, retriggerable mid-animation) and a random pentatonic chirp (`audioEmoji()`). Fold and Pass has no emoji row — its celebration is the artwork reveal itself, so nothing to do there. Side fix: Sudoku's emojis were plain inline `<span>`s, so its pop entrance transform never actually applied; buttons are inline-block, so the entrance animation now works there too.
 - **Instructions for installing as a PWA** — add player/parent-facing guidance (hub and/or each game) on how to install the app to a home screen, since there's currently no in-app hint that this is possible.
 - **Back button on every game** — a control to return to the hub landing page from within any game, not just browser back.
 - **"Reset board" button (long press)** — a way to reset the current game's board/puzzle without going through settings, guarded by a long press so it can't be triggered accidentally.

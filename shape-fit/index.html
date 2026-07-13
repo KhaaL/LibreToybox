@@ -172,9 +172,12 @@
     #win-overlay { background: rgba(255,255,255,0.55); justify-content: flex-end; padding-bottom: 12vh; }
     #settings-overlay { background: rgba(255,255,255,0.92); }
     .emoji-row { font-size: 4.5rem; display: flex; gap: 18px; margin-bottom: 22px; }
-    .emoji-row span { display: inline-block; animation: pop .6s ease-out both; }
-    .emoji-row span:nth-child(2) { animation-delay: .15s; }
-    .emoji-row span:nth-child(3) { animation-delay: .3s; }
+    .emoji-row button { background: none; border: none; padding: 0; font: inherit; cursor: pointer; animation: pop .6s ease-out both; }
+    .emoji-row button:nth-child(2) { animation-delay: .15s; }
+    .emoji-row button:nth-child(3) { animation-delay: .3s; }
+    .emoji-row button:focus-visible { outline: 3px solid var(--text); outline-offset: 2px; border-radius: 12px; }
+    .emoji-row button.wiggle { animation: wiggle .5s ease; }
+    @keyframes wiggle { 0%, 100% { transform: rotate(0) scale(1); } 25% { transform: rotate(-12deg) scale(1.25); } 55% { transform: rotate(9deg) scale(1.12); } 80% { transform: rotate(-4deg) scale(1.04); } }
     .confetti { position: fixed; top: 0; left: 0; width: 10px; height: 10px; pointer-events: none; z-index: 101; animation: fall linear forwards; }
 
     .settings-card {
@@ -834,7 +837,14 @@
       renderWinEmojis() {
         const row = document.getElementById('emoji-row');
         const set = this.emojiSets[Math.floor(Math.random() * this.emojiSets.length)];
-        row.innerHTML = set.map(e => `<span>${e}</span>`).join('');
+        row.innerHTML = set.map(e => `<button>${e}</button>`).join('');
+        // Poking a celebration emoji wiggles it and chirps — a tiny toy.
+        row.querySelectorAll('button').forEach(btn => btn.addEventListener('click', () => {
+          btn.classList.remove('wiggle');
+          void btn.offsetWidth;
+          btn.classList.add('wiggle');
+          this.audioEmoji();
+        }));
       },
 
       openSettings() {
@@ -949,6 +959,10 @@
       },
       // Gentle "hmm", not a punitive buzz (design principle 3)
       audioOops() { this.playTone({ type: 'sine', freq: 240, duration: 160, peakGain: 0.1 }); },
+      audioEmoji() {
+        const freq = [523, 587, 659, 784, 880][Math.floor(Math.random() * 5)]; // pentatonic chirp
+        this.playTone({ type: 'sine', freq, duration: 140, peakGain: 0.15 });
+      },
       audioSwoosh() {
         this.ensureAudio();
         const ctx = this.audioCtx;
