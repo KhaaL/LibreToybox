@@ -1,10 +1,12 @@
-# LibreToybox
+# LibreToybox 
+**Self-contained HTML5 games for kids aged 6–8. No tracking, ads or registration - just play.**
 
-**Play now: https://khaal.github.io/LibreToybox/**
+Play now: https://toybox.khalid.se/ or https://khaal.github.io/LibreToybox/
 
-A collection of small, self-contained HTML5 games for children aged 6–8, built for touchscreens.
+> Authors note: these games solves an issue I have with the majority of the games for kids: they either exploit their deopamine feedback, filled with ads and / or trackers, or require an internet connection. Inspired by GCompris, I build the games for my and other children to experience joy through the FOSS spirit with the help of AI. Stack is minimal on purpose.
+> Enjoy!
 
-Every game is a single `index.html` (plus a tiny `sw.js` for offline caching) — **no build step, no frameworks, no accounts, no ads, and no tracking**. Open the file and play.
+
 
 ## Games
 
