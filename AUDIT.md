@@ -14,9 +14,15 @@ Full audit of LibreToybox: every file was reviewed and cross-checked against
 > announce meaningful state; all three pages have a 🧸 favicon). File
 > paths below reference the pre-fix state — in particular,
 > `soduko-for-minis/` is now `sudoku-for-minis/`, and line numbers have
-> shifted throughout. Still open: A6, A18, B1, B4 — all tracked in
-> `plan.md`. A second-pass re-audit of the merged state follows at the end
-> of this document (findings B1–B4).
+> shifted throughout. A second-pass re-audit of the merged state follows
+> at the end of this document (findings B1–B4).
+>
+> **Update (2026-07-13):** A6 (toolbar controls enlarged to 64×64 with
+> wrapping rows), A18 (`redrawCanvas()` now draws `currentStroke`), and
+> B1 (all service workers switched to stale-while-revalidate) are
+> **fixed**. The same pass unified the color system across the hub and
+> all four games — now codified as design principle 11 ("One Color
+> System Across the Toybox"). Still open: **B4** — tracked in `plan.md`.
 
 **Severity scale**
 | Level | Meaning |

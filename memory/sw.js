@@ -1,5 +1,5 @@
 /* LibreToybox — Memory service worker · GNU GPL v3.0; see ../LICENSE */
-const CACHE = 'memory-v2';
+const CACHE = 'memory-v3';
 
 self.addEventListener('install', (e) => {
   e.waitUntil(caches.open(CACHE).then((c) => c.addAll(['./', './index.html'])));
@@ -14,8 +14,24 @@ self.addEventListener('activate', (e) => {
   );
 });
 
+// Stale-while-revalidate: answer from cache instantly (offline-first, no
+// network wait), refresh the cache in the background — the next visit gets
+// the new version. Bumping CACHE is only needed as an emergency
+// "everyone must get this now" lever.
 self.addEventListener('fetch', (e) => {
+  if (e.request.method !== 'GET') return;
   e.respondWith(
-    caches.match(e.request).then((r) => r || fetch(e.request).catch(() => caches.match('./')))
+    caches.open(CACHE).then((cache) =>
+      cache.match(e.request).then((cached) => {
+        const network = fetch(e.request)
+          .then((resp) => {
+            if (resp && resp.ok) cache.put(e.request, resp.clone());
+            return resp;
+          })
+          .catch(() => cached || cache.match('./'));
+        if (cached) e.waitUntil(network);
+        return cached || network;
+      })
+    )
   );
 });
