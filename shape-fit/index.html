@@ -21,6 +21,10 @@
 
     * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
     html, body { margin: 0; padding: 0; height: 100%; }
+    /* Own background on html stops the body gradient propagating to the
+       canvas, where it would tile — rubber-band overscroll then shows the
+       wrong end of the gradient instead of blending with the page. */
+    html { background: var(--bg1); }
     body {
       font-family: ui-rounded, 'Hiragino Maru Gothic ProN', Quicksand, Comfortaa, 'Arial Rounded MT Bold', 'Varela Round', Calibri, sans-serif;
       background: linear-gradient(180deg, var(--bg1), var(--bg2));
@@ -293,8 +297,8 @@
 
     const App = {
       pieces: [],       // { cells:[{r,c}] normalized, rows, cols, color, placed:{r,c}|null, el, slotEl }
-      N: 6,
-      size: 'small',
+      N: 5,
+      size: 'mini',
       won: false,
       drag: null,       // { p, pointerId, startX, startY, moved, fromPlaced, target }
       kb: null,         // { p, r, c } keyboard placement cursor

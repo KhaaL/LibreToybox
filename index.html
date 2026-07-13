@@ -9,6 +9,10 @@
   <style>
     * { box-sizing: border-box; }
     html, body { margin: 0; padding: 0; }
+    /* Own background on html stops the body gradient propagating to the
+       canvas, where it would tile — rubber-band overscroll then shows the
+       wrong end of the gradient instead of blending with the page. */
+    html { background: #FFF8E7; }
     body {
       font-family: ui-rounded, 'Hiragino Maru Gothic ProN', Quicksand, Comfortaa, 'Arial Rounded MT Bold', 'Varela Round', Calibri, sans-serif;
       background: linear-gradient(180deg, #FFF8E7, #E0D9FF);
