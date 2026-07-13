@@ -52,6 +52,7 @@
 ## Memory (`memory/index.html`)
 
 - **Feat: add an animated tutorial**.
+- **Win screen: show the full board face-up** — matched pairs fly off during play, so the celebration currently sits over an empty board. On win, put all tiles back on the board face-up under the translucent overlay, so the child sees the completed set of pairs they found.
 - ~~**Brighter card backs**~~ ✓ (2026-07-13) — card backs moved from the purple pastel to the canonical palette's brighter sky blue (`#8ED3F4`/`#54A6D2`), and the game's accent (theme-color, logo, manifest icon) followed into the blue family so the whole game sits in its ice-blue background hue (design principle 11). Cache bumped to `memory-v3`.
 - ~~**Implement the game**~~ ✓ (2026-07-12) — pairs-matching game shipped per the Future Games scoping: face-down emoji cards, 3D flip, match chime / gentle mismatch flip-back (never blocks play — a third tap resolves the pair immediately), matched pairs fly off the board leaving their grid slot empty, 🐣 4×4 / 🦁 6×4 size setting with visible re-deal, translucent win overlay, no timer or move counter. Architecture notes in `CLAUDE.md`.
 
