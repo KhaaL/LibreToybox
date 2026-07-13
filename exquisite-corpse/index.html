@@ -156,15 +156,18 @@
       flex-shrink: 0;
     }
 
+    /* Rows wrap so the ≥64 px controls (design principle 4) never overflow
+       narrow phones — six 64 px swatches need ~424 px in one line. */
     #color-row {
       display: flex;
+      flex-wrap: wrap;
       gap: 8px;
       justify-content: center;
     }
 
     .color-swatch {
-      width: 48px;
-      height: 48px;
+      width: 64px;
+      height: 64px;
       border-radius: 12px;
       border: 3px solid transparent;
       cursor: pointer;
@@ -176,14 +179,15 @@
 
     #tool-row {
       display: flex;
+      flex-wrap: wrap;
       gap: 10px;
       justify-content: center;
       align-items: center;
     }
 
     .brush-btn {
-      width: 56px;
-      height: 48px;
+      width: 64px;
+      height: 64px;
       border: 3px solid var(--border);
       border-radius: 12px;
       background: #fff;
@@ -200,8 +204,8 @@
     .brush-dot { border-radius: 50%; background: var(--text); display: block; }
 
     .action-btn {
-      width: 56px;
-      height: 48px;
+      width: 64px;
+      height: 64px;
       border: 3px solid var(--border);
       border-radius: 12px;
       background: #fff;
@@ -703,6 +707,9 @@ const App = {
     this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
     this.allStrokes.forEach(s => this.drawStroke(s));
     this.strokes.forEach(s => this.drawStroke(s));
+    // A stroke being drawn (e.g. when a rotation resize triggers a redraw
+    // mid-gesture) must survive too — it isn't in `strokes` yet.
+    if (this.currentStroke) this.drawStroke(this.currentStroke);
   },
 
   drawStroke(stroke) {
