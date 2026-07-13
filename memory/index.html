@@ -13,12 +13,14 @@
       --bg1: #EFF8FF;
       --bg2: #D9E4FF;
       --accent: #7C6FE0;
-      --back1: #8E7CF0;
-      --back2: #6FA8F0;
+      /* Card back = shape-fit's "purple" swatch: flat pastel fill with a
+         darker same-hue edge, the shared piece language across the suite. */
+      --back: #C3B4F7;
+      --back-edge: #9480DC;
       --matched-bg: #EAFBEF;
       --matched-border: #7CCB8B;
       --border: #B0C4DE;
-      --text: #4A4A4A;
+      --text: #3E4450;
     }
 
     * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
@@ -117,7 +119,8 @@
       -webkit-backface-visibility: hidden;
     }
     .card-face.back {
-      background: linear-gradient(135deg, var(--back1), var(--back2));
+      background: var(--back);
+      border-color: var(--back-edge);
       color: rgba(255,255,255,0.9);
       font-size: clamp(1.2rem, 6vw, 1.7rem);
     }
@@ -203,8 +206,8 @@
   <header>
     <div class="logo" aria-label="Memory" title="Memory">
       <svg viewBox="0 0 48 48" width="40" height="40" aria-hidden="true">
-        <rect x="3" y="8" width="24" height="30" rx="6" fill="#8E7CF0" transform="rotate(-8 15 23)"/>
-        <text x="14" y="30" text-anchor="middle" font-family="Arial Rounded MT Bold, Arial, sans-serif" font-size="16" fill="#fff" transform="rotate(-8 15 23)">?</text>
+        <rect x="3" y="8" width="24" height="30" rx="6" fill="#C3B4F7" stroke="#9480DC" stroke-width="2" transform="rotate(-8 15 23)"/>
+        <text x="14" y="30" text-anchor="middle" font-family="Arial Rounded MT Bold, Arial, sans-serif" font-size="16" fill="#7C6FE0" transform="rotate(-8 15 23)">?</text>
         <rect x="21" y="10" width="24" height="30" rx="6" fill="#fff" stroke="#7C6FE0" stroke-width="2.5" transform="rotate(8 33 25)"/>
         <text x="33" y="31" text-anchor="middle" font-size="15" transform="rotate(8 33 25)">🐶</text>
       </svg>
@@ -449,7 +452,7 @@
           const conf = document.createElement('div');
           conf.className = 'confetti';
           conf.style.left = Math.random() * 100 + 'vw';
-          conf.style.background = ['#8E7CF0','#6FA8F0','#FFE66D','#A8E6CF','#FFB6C1','#FF69B4'][Math.floor(Math.random()*6)];
+          conf.style.background = ['#C3B4F7','#8ED3F4','#FFE66D','#A8E6CF','#F7A6B9','#F9C784'][Math.floor(Math.random()*6)];
           conf.style.width = (6 + Math.random()*8) + 'px';
           conf.style.height = (6 + Math.random()*8) + 'px';
           conf.style.animationDuration = (1.5 + Math.random()*2) + 's';
@@ -534,8 +537,8 @@
       makeIcon(size) {
         const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 100 100">
           <rect width="100" height="100" fill="#D9E4FF" rx="18"/>
-          <rect x="14" y="22" width="38" height="52" rx="9" fill="#8E7CF0" transform="rotate(-8 33 48)"/>
-          <text x="33" y="58" text-anchor="middle" font-family="Arial Rounded MT Bold, Arial, sans-serif" font-size="28" fill="#fff" transform="rotate(-8 33 48)">?</text>
+          <rect x="14" y="22" width="38" height="52" rx="9" fill="#C3B4F7" stroke="#9480DC" stroke-width="3" transform="rotate(-8 33 48)"/>
+          <text x="33" y="58" text-anchor="middle" font-family="Arial Rounded MT Bold, Arial, sans-serif" font-size="28" fill="#7C6FE0" transform="rotate(-8 33 48)">?</text>
           <rect x="48" y="26" width="38" height="52" rx="9" fill="#fff" stroke="#7C6FE0" stroke-width="4" transform="rotate(8 67 52)"/>
           <text x="67" y="60" text-anchor="middle" font-size="26" transform="rotate(8 67 52)">🐶</text>
         </svg>`;

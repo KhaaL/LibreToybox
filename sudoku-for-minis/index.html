@@ -7,7 +7,7 @@
   <title>Child Sudoku</title>
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🧸</text></svg>" />
   <link rel="manifest" id="manifest-link" />
-  <meta name="theme-color" content="#FF69B4" />
+  <meta name="theme-color" content="#FF6B6B" />
   <style>
     :root {
       --bg1: #FFF8E7;
@@ -19,7 +19,7 @@
       --given: #E8E8E8;
       --cell: #FFFFFF;
       --border: #B0C4DE;
-      --text: #4A4A4A;
+      --text: #4A443E;
     }
 
     * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
@@ -99,8 +99,8 @@
       min-width: 60px;
     }
     .cell.given { background: var(--given); font-weight: bold; cursor: default; }
-    .cell.selected { outline: 4px dashed #32CD32; outline-offset: -4px; z-index: 2; }
-    .cell:focus-visible { outline: 3px solid #4A4A4A; outline-offset: -3px; z-index: 2; }
+    .cell.selected { outline: 4px solid var(--c2); outline-offset: -4px; background: #E6FAF8; z-index: 2; }
+    .cell:focus-visible { outline: 3px solid var(--text); outline-offset: -3px; z-index: 2; }
     .cell.conflict { background: #FFCDD2; color: #C62828; animation: flashShake .5s ease-in-out; }
     .cell.just-placed { animation: pop .25s ease-out; }
     .cell.cleared { animation: suction .22s ease-in; }
@@ -155,7 +155,6 @@
     .overlay {
       position: fixed;
       inset: 0;
-      background: rgba(255,255,255,0.92);
       display: none;
       flex-direction: column;
       align-items: center;
@@ -165,6 +164,10 @@
       padding: 20px;
     }
     .overlay.show { display: flex; }
+    /* Translucent win overlay so the solved puzzle stays visible beneath
+       the celebration (same pattern as Memory and Shape Fit). */
+    #win-overlay { background: rgba(255,255,255,0.55); justify-content: flex-end; padding-bottom: 12vh; }
+    #settings-overlay { background: rgba(255,255,255,0.92); }
     .emoji-row { font-size: 4.5rem; display: flex; gap: 18px; margin-bottom: 22px; }
 
     .ghost-digit {
@@ -210,7 +213,7 @@
       cursor: pointer;
       transition: background .2s;
     }
-    .toggle-btn.active { background: #FF69B4; }
+    .toggle-btn.active { background: var(--c1); }
     .toggle-thumb {
       position: absolute;
       top: 3px;
@@ -245,7 +248,7 @@
   <header>
     <div class="logo" aria-label="Child Sudoku" title="Child Sudoku">
       <svg viewBox="0 0 48 48" width="40" height="40" aria-hidden="true">
-        <rect x="4" y="4" width="40" height="40" rx="8" fill="#FF69B4"/>
+        <rect x="4" y="4" width="40" height="40" rx="8" fill="#FF6B6B"/>
         <rect x="10" y="10" width="28" height="28" rx="4" fill="none" stroke="#fff" stroke-width="2.5"/>
         <line x1="24" y1="10" x2="24" y2="38" stroke="#fff" stroke-width="2"/>
         <line x1="10" y1="24" x2="38" y2="24" stroke="#fff" stroke-width="2"/>
@@ -454,7 +457,7 @@
         const elapsed = performance.now() - this.pressProgressStart;
         const pct = Math.min(100, (elapsed / 500) * 100);
         const prog = this.pressProgressCell.querySelector('.press-progress');
-        if (prog) prog.style.background = `conic-gradient(rgba(255,105,180,0.85) ${pct}%, transparent ${pct}%)`;
+        if (prog) prog.style.background = `conic-gradient(rgba(255,107,107,0.85) ${pct}%, transparent ${pct}%)`;
         if (pct < 100 && this.pressProgressCell) {
           this.pressProgressRAF = requestAnimationFrame(() => this.animatePressProgress());
         }
@@ -610,7 +613,7 @@
           const conf = document.createElement('div');
           conf.className = 'confetti';
           conf.style.left = Math.random() * 100 + 'vw';
-          conf.style.background = ['#FF6B6B','#4ECDC4','#FFE66D','#A8E6CF','#FFB6C1','#FF69B4'][Math.floor(Math.random()*6)];
+          conf.style.background = ['#FF6B6B','#4ECDC4','#FFE66D','#A8E6CF','#F7A6B9','#F9C784'][Math.floor(Math.random()*6)];
           conf.style.width = (6 + Math.random()*8) + 'px';
           conf.style.height = (6 + Math.random()*8) + 'px';
           conf.style.animationDuration = (1.5 + Math.random()*2) + 's';
@@ -795,7 +798,7 @@
           start_url: '.',
           display: 'standalone',
           background_color: '#FFE4B5',
-          theme_color: '#FF69B4',
+          theme_color: '#FF6B6B',
           icons: [
             { src: this.makeIcon(192), sizes: '192x192', type: 'image/svg+xml' },
             { src: this.makeIcon(512), sizes: '512x512', type: 'image/svg+xml' }
@@ -821,10 +824,10 @@
       makeIcon(size) {
         const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 100 100">
           <rect width="100" height="100" fill="#FFE4B5" rx="18"/>
-          <rect x="18" y="18" width="64" height="64" fill="none" stroke="#FF69B4" stroke-width="4" rx="8"/>
-          <line x1="50" y1="18" x2="50" y2="82" stroke="#FF69B4" stroke-width="3"/>
-          <line x1="18" y1="50" x2="82" y2="50" stroke="#FF69B4" stroke-width="3"/>
-          <text x="50" y="66" text-anchor="middle" font-family="Arial Rounded MT Bold, Arial, sans-serif" font-size="38" fill="#4A4A4A">4</text>
+          <rect x="18" y="18" width="64" height="64" fill="none" stroke="#FF6B6B" stroke-width="4" rx="8"/>
+          <line x1="50" y1="18" x2="50" y2="82" stroke="#FF6B6B" stroke-width="3"/>
+          <line x1="18" y1="50" x2="82" y2="50" stroke="#FF6B6B" stroke-width="3"/>
+          <text x="50" y="66" text-anchor="middle" font-family="Arial Rounded MT Bold, Arial, sans-serif" font-size="38" fill="#4A443E">4</text>
         </svg>`;
         return 'data:image/svg+xml;base64,' + btoa(unescape(encodeURIComponent(svg)));
       },

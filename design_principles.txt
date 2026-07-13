@@ -90,3 +90,11 @@ Humane first software: no tracking, spyware, addictive feedback loops or require
 - **Prefer one-shot animations** over looping ones for feedback, so the child knows the action is finished.
 - **Animations should not block input.** Children tap quickly; the UI must stay responsive.
 
+
+---
+
+## 11. One Color System Across the Toybox
+
+- **One shared pastel set.** Shape Fit's `CONFIG.palette` is the canonical LibreToybox palette (pink `#F7A6B9`, orange `#F9C784`, yellow `#FFE66D`, mint `#A8E6CF`, blue `#8ED3F4`, purple `#C3B4F7`, coral `#FFB3A0`, green `#C8E88A`, each with a darker same-hue edge). New game-piece colors, confetti, and accents are picked from it — no one-off saturated colors.
+- **Each game's identity comes from its background hue family only** (Sudoku warm cream, Shape Fit mint, Memory ice blue, Fold and Pass lavender). Everything on top speaks the shared language: white panels, flat pastel fills with a darker same-hue edge, gold ring for the active choice.
+- **No gradients on interactive elements** — a flat fill with a darker edge is what reads as "a piece you can touch."

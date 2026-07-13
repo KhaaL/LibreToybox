@@ -1,5 +1,5 @@
 /* LibreToybox — Memory service worker · GNU GPL v3.0; see ../LICENSE */
-const CACHE = 'memory-v1';
+const CACHE = 'memory-v2';
 
 self.addEventListener('install', (e) => {
   e.waitUntil(caches.open(CACHE).then((c) => c.addAll(['./', './index.html'])));
