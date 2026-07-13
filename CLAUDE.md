@@ -127,7 +127,7 @@ See `plan.md` — it is the **single source of truth** for open bugs and feature
 
 ## Adding a New Game
 
-1. Copy the PWA boilerplate from either existing game: `setupPWA()` **and** the sibling `sw.js`. Register the worker with a relative path (`navigator.serviceWorker.register('sw.js')`) — blob-/data-URL worker scripts are rejected by browsers. Give each game its own cache name, and **bump that name in every release that changes the game** — the worker serves cache-first, so returning players keep the old version until the name changes (see plan.md "Service-worker update strategy" for the pending long-term fix).
+1. Copy the PWA boilerplate from either existing game: `setupPWA()` **and** the sibling `sw.js`. Register the worker with a relative path (`navigator.serviceWorker.register('sw.js')`) — blob-/data-URL worker scripts are rejected by browsers. Give each game its own cache name. The workers are **stale-while-revalidate**: the cached version is served instantly (offline-first), the cache refreshes in the background, and the next visit gets the new version — so routine releases need **no** cache-name bump. Bump the name only as an emergency "everyone must get this immediately" lever.
 2. Copy `playTone()` and audio helpers — don't use external audio files
 3. No external fonts or CDNs — use the system font stack from the existing games
 4. Follow all 10 design principles in `design_principles.txt`
