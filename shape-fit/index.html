@@ -112,6 +112,9 @@
       cursor: grabbing;
       filter: drop-shadow(0 12px 14px rgba(0,0,0,0.25));
     }
+    /* Pickup ease: on for the first liftMs of a drag, so the piece grows
+       from tray scale and rises to the lifted pose instead of teleporting. */
+    .piece.lifting { transition: left .13s ease-out, top .13s ease-out, transform .13s ease-out; }
     .piece.flying {
       position: fixed;
       z-index: 60;
@@ -267,7 +270,9 @@
         large: { n: 7, minPiece: 3, maxPiece: 6 }
       },
       trayScale: 0.5,
-      liftPx: 56,        // dragged piece rides this far above the finger
+      liftPx: 56,        // grabbed point rides this far above the finger (touch/pen only)
+      liftMs: 130,       // pickup eases into the lifted pose instead of teleporting
+      snapRange: 0.8,    // max distance (in cells) a drop may be from a fitting spot
       tapMovePx: 8,      // pointer travel below this counts as a tap
       flyBackMs: 260,
       dealStaggerMs: 40,
@@ -555,7 +560,7 @@
       placePiece(p, r, c) {
         p.placed = { r, c };
         const el = p.el;
-        el.classList.remove('dragging', 'flying', 'in-tray', 'pop');
+        el.classList.remove('dragging', 'flying', 'in-tray', 'pop', 'lifting');
         el.style.left = `calc(var(--cell) * ${c})`;
         el.style.top = `calc(var(--cell) * ${r})`;
         el.style.transform = '';
@@ -571,7 +576,7 @@
         const el = p.el, slot = p.slotEl;
         const cur = el.getBoundingClientRect();
         p.placed = null;
-        el.classList.remove('dragging', 'in-tray', 'pop', 'shake');
+        el.classList.remove('dragging', 'in-tray', 'pop', 'shake', 'lifting');
         el.classList.add('flying');
         el.style.left = cur.left + 'px';
         el.style.top = cur.top + 'px';
@@ -605,15 +610,34 @@
         if (this.kb) this.endKb(true);
         e.preventDefault();
         p.el.setPointerCapture(e.pointerId);
+        // Carry by the grabbed point: the spot under the finger stays under
+        // the finger (normalized, so the tray's 0.5 scale maps to the same
+        // spot at full size), riding liftPx above it so the hand never hides
+        // the piece. A mouse cursor hides nothing, so it gets no lift.
+        const rect = p.el.getBoundingClientRect();
         this.drag = {
           p, pointerId: e.pointerId,
           startX: e.clientX, startY: e.clientY,
-          moved: false, fromPlaced: !!p.placed, target: null
+          grabX: (e.clientX - rect.left) / rect.width,
+          grabY: (e.clientY - rect.top) / rect.height,
+          lift: e.pointerType === 'mouse' ? 0 : CONFIG.liftPx,
+          moved: false, fromPlaced: !!p.placed, target: null, x: 0, y: 0
         };
         p.placed = null;
         p.slotEl.classList.remove('deal'); // grabbed mid-pop: kill the slot transform now
-        p.el.classList.remove('in-tray', 'pop');
-        p.el.classList.add('dragging');
+        const el = p.el;
+        el.classList.remove('in-tray', 'pop');
+        el.classList.add('dragging');
+        // Ease into the lifted pose from the exact current visual pose
+        // (position and scale) instead of teleporting under the finger.
+        el.style.left = rect.left + 'px';
+        el.style.top = rect.top + 'px';
+        el.style.transform = `scale(${rect.width / el.offsetWidth})`;
+        void el.offsetWidth;
+        el.classList.add('lifting');
+        clearTimeout(this.liftTimer);
+        this.liftTimer = setTimeout(() => el.classList.remove('lifting'), CONFIG.liftMs);
+        el.style.transform = '';
         this.positionDrag(e);
         this.updateGhost();
         this.audioPickup();
@@ -621,9 +645,11 @@
       },
 
       positionDrag(e) {
-        const el = this.drag.p.el;
-        el.style.left = (e.clientX - el.offsetWidth / 2) + 'px';
-        el.style.top = (e.clientY - el.offsetHeight - CONFIG.liftPx) + 'px';
+        const d = this.drag, el = d.p.el;
+        d.x = e.clientX - d.grabX * el.offsetWidth;
+        d.y = e.clientY - d.grabY * el.offsetHeight - d.lift;
+        el.style.left = d.x + 'px';
+        el.style.top = d.y + 'px';
       },
 
       onPointerMove(e) {
@@ -669,21 +695,29 @@
       },
 
       // Snap preview: where would the piece land if dropped right now?
+      // Uses the logical drag pose (d.x/d.y), not getBoundingClientRect,
+      // so the target is correct even while the pickup ease is running.
+      // Forgiving: picks the nearest *fitting* cell within snapRange, so a
+      // near-miss beside an occupied region still lands instead of failing.
       updateGhost() {
         this.clearGhost();
         const d = this.drag;
         if (!d) return;
-        const rect = d.p.el.getBoundingClientRect();
         const brect = this.board.getBoundingClientRect();
         const cell = brect.width / this.N;
-        const c = Math.round((rect.left - brect.left) / cell);
-        const r = Math.round((rect.top - brect.top) / cell);
-        if (this.fits(d.p, r, c, this.occupancy())) {
-          d.target = { r, c };
-          this.highlightGhost(d.p, r, c);
-        } else {
-          d.target = null;
+        const exactC = (d.x - brect.left) / cell;
+        const exactR = (d.y - brect.top) / cell;
+        const occ = this.occupancy();
+        let best = null, bestDist = CONFIG.snapRange;
+        for (let r = Math.round(exactR) - 1; r <= Math.round(exactR) + 1; r++) {
+          for (let c = Math.round(exactC) - 1; c <= Math.round(exactC) + 1; c++) {
+            if (!this.fits(d.p, r, c, occ)) continue;
+            const dist = Math.hypot(r - exactR, c - exactC);
+            if (dist < bestDist) { bestDist = dist; best = { r, c }; }
+          }
         }
+        d.target = best;
+        if (best) this.highlightGhost(d.p, best.r, best.c);
       },
 
       highlightGhost(p, r, c) {
