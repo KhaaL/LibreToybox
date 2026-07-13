@@ -2,6 +2,7 @@
 
 ## Child Sudoku (`sudoku-for-minis/index.html`)
 - **Feat: add an animated tutorial**.
+- **Feat: bigger difficulty levels — 1–6 and 1–8** — beyond the current 4×4 (digits 1–4), add a 6×6 board (digits 1–6, 2×3 boxes) and an 8×8 board (digits 1–8, 2×4 boxes) as selectable difficulties in settings, following the same size-toggle pattern as Memory and Shape Fit.
 - ~~**Selected cell highlight**~~ ✓ (2026-07-13, UI-coherence pass) — the lime dashed outline became a solid 4 px teal (`--c2`) outline plus a tinted `#E6FAF8` fill, distinct and on-palette.
 - ~~**Win screen should keep puzzle visible**~~ ✓ (2026-07-13, UI-coherence pass) — copied Memory's pattern: translucent `rgba(255,255,255,0.55)` win overlay with bottom-anchored content; settings overlay keeps the opaque white.
 - **Dialog semantics for overlays** (AUDIT B4): add `role="dialog" aria-modal="true"` to the settings and win overlays, matching Exquisite Corpse's settings overlay.
@@ -57,6 +58,7 @@
 ## Shape Fit (`shape-fit/index.html`)
 
 - **Feat: add an animated tutorial**.
+- ~~**5×5 intermediate board**~~ ✓ (reported & fixed 2026-07-13) — the jump from 🐣 4×4 (~4 pieces) to 🐥 6×6 (~8 pieces) was too steep and the hardest level too hard for the target age; added a 🐤 5×5 (`mini`, pieces 3–5, ~6 pieces) between them, so sizes are now 🐣 4×4 / 🐤 5×5 / 🐥 6×6 / 🦁 8×8. The size row wraps to a 2×2 grid (`max-width: 162px`) so four 72 px buttons fit narrow phones. Generator invariants re-verified for n=5 (4 000 boards: full tiling, connected pieces ≥ 3 cells, no adjacent same colors) plus a Playwright solve-to-win run.
 - ~~**Bug: dragged piece lands off-screen after a size switch / re-deal**~~ ✓ (reported & fixed 2026-07-12) — the tray-slot deal animation (`animation-fill-mode: both`) left a permanent `transform: scale(1)` on every slot, and an ancestor with any transform becomes the containing block for `position: fixed`, so the dragged piece's viewport coordinates were interpreted relative to its tiny tray slot. Only animated deals were affected, which is why the initial (non-animated) 6×6 board worked and every size switch or 🔄 broke. Fixed by removing the `deal` class on `animationend` (plus on `pointerdown`, for pieces grabbed mid-pop); e2e test now drags for real after animated re-deals. `sw.js` cache bumped to `shape-fit-v3`.
 - ~~**4×4 board + piece outlines**~~ ✓ (reported & fixed 2026-07-12) — added a 🐣 4×4 board (~4 pieces) for the youngest players (sizes now 🐣 4×4 / 🐥 6×6 / 🦁 8×8), and gave every piece a darker perimeter outline: blocks now merge into one solid shape inside a piece, with the outline/gap/bevel drawn only around the polyomino's outer edge. Fixes same-colored pieces blending together when placed side by side — free placement means the generator's no-adjacent-colors guarantee can't cover what the player builds.
 - **Feat: rotation hard mode** — v1 deliberately ships without rotation (pieces arrive in their correct orientation, jigsaw-style). A later setting could deal pieces randomly rotated and let a tap on a held piece turn it 90°.
