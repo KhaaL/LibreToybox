@@ -23,6 +23,7 @@ LibreToybox/
 ├── index.html                — game hub / landing page (links to all games)
 ├── design_principles.txt     — authoritative design rules (read before any change)
 ├── plan.md                   — pending work (single source of truth)
+├── done.md                   — completed items, moved out of plan.md
 ├── AUDIT.md                  — repository audit (2026-07-12 snapshot)
 ├── README.md
 ├── LICENSE                   — GNU GPL v3.0
