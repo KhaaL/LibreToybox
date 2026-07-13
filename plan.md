@@ -5,7 +5,6 @@ Completed items live in `done.md`.
 ## Child Sudoku (`sudoku-for-minis/index.html`)
 
 - **Feat: add an animated tutorial**.
-- **Feat: bigger difficulty levels — 1–6 and 1–8** — beyond the current 4×4 (digits 1–4), add a 6×6 board (digits 1–6, 2×3 boxes) and an 8×8 board (digits 1–8, 2×4 boxes) as selectable difficulties in settings, following the same size-toggle pattern as Memory and Shape Fit.
 - **Dialog semantics for overlays** (AUDIT B4): add `role="dialog" aria-modal="true"` to the settings and win overlays, matching Exquisite Corpse's settings overlay.
 
 ## Exquisite Corpse (`exquisite-corpse/index.html`)
