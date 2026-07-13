@@ -24,6 +24,8 @@ Every game is a single `index.html` (plus a tiny `sw.js` for offline caching) �
 
 Humane-first software for kids: interaction is visual and transcends written language — no reading required. Chunky touch targets, direct manipulation, mistakes that are playful rather than punitive, procedural Web Audio sounds, offline-first, and zero tracking.
 
+The games share one color system: a single pastel palette (flat fills with a darker same-hue edge), with each game's identity coming from its background hue family — warm cream for Sudoku, mint for Shape Fit, ice blue for Memory, lavender for Fold and Pass.
+
 The full rules live in [`design_principles.txt`](design_principles.txt) — they are authoritative for every change.
 
 ## Contributing

@@ -36,7 +36,7 @@ LibreToybox/
 - Vanilla HTML5 / CSS3 / JavaScript — no frameworks, no build tools
 - HTML5 Canvas API for drawing (exquisite-corpse)
 - Web Audio API for procedural sound (all games)
-- PWA: local `sw.js` service worker (registered only over http/https — browsers reject blob-URL workers) + runtime Blob-URL manifest (all games)
+- PWA: local `sw.js` service worker (registered only over http/https — browsers reject blob-URL workers; **stale-while-revalidate**, so deployed updates reach players one visit later with no cache-name bump) + runtime Blob-URL manifest (all games)
 - Zero external dependencies — system font stack, procedural audio, inline SVG icons
 - Hosting: GitHub Pages, deployed automatically by `.github/workflows/deploy-pages.yml` on every push to `main` — no external hosting account, no build step, the whole repo is served as-is
 
@@ -62,6 +62,10 @@ All decisions must follow `design_principles.txt`. Key ones:
 - Canvas slides via CSS `translateY` to show the current section
 - `PEEK_PX: 40` — pixels of previous section visible at top as connection guide
 - Two canvas modes: **Tall** (`flex:1`, fills height) and **Wide** (`aspect-ratio: 4/3`)
+
+### Toolbar
+- All controls are ≥64×64 px (design principle 4); `#color-row` and `#tool-row` are `flex-wrap: wrap`, so the six swatches (~424 px in one line) wrap to two rows on narrow phones and the Tall canvas (`flex: 1`) absorbs the extra row — never shrink the controls below 64 px to avoid the wrap
+- The six `COLORS` are deliberately bold, saturated inks — they are paint, not UI chrome, and are exempt from the pastel rule (principle 11 covers interactive elements)
 
 ### Stroke storage
 - All points stored as **normalized 0..1 coordinates** — resize-safe
@@ -97,6 +101,7 @@ All decisions must follow `design_principles.txt`. Key ones:
 
 `memory/index.html` — pairs-matching game:
 - All tuning lives in the `CONFIG` object at the top of the script: board sizes (`small` 8 pairs / `large` 12 pairs, both 4 columns wide for portrait phones), flip duration, mismatch hold time, deal stagger, and the emoji face pool
+- Card backs are the canonical palette's sky blue — flat `#8ED3F4` fill with a darker same-hue `#54A6D2` edge (design principle 11), never a gradient; the accent/theme-color is the same `#54A6D2` so the whole game stays in its ice-blue background family
 - Cards are real `<button>`s — one `click` stream covers mouse, touch, pen **and** Enter/Space keyboard activation; no pointer/touch pairing needed (no long-press gesture in this game)
 - 3D flip via CSS: `.card-inner` rotates `rotateY(180deg)`, both faces use `backface-visibility: hidden`
 - A mismatched pair never blocks play (design principle 10): it flips back after `mismatchHoldMs`, **or** immediately when a third card is tapped (`resolveMismatch()` runs before the new flip)
