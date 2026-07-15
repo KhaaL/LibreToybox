@@ -119,6 +119,7 @@ All decisions must follow `design_principles.txt`. Key ones:
 - Mismatch sound is a gentle low sine ("hmm"), not a buzz — mistakes are expected gameplay here, not errors (design principle 3)
 - **No timer, no move counter** — deliberate: no pressure mechanics (humane-first)
 - Win overlay is translucent (`rgba(255,255,255,0.55)`, content bottom-anchored) so the completed board stays visible under the confetti
+- `revealBoard()` brings every flown-away `.gone` card back face-up (staggered like the initial deal) right before the overlay shows, so the win screen displays the completed set of pairs instead of an empty board. The bounce (`.matched-pop`) animates the outer `.card`, not `.card-inner` — `.card-inner` already owns the `rotateY` flip transform, and animating `transform` on the same element via a second rule would override the flip for the animation's duration (this was a latent bug in the brief in-game match bounce too, just imperceptible until the reveal made it obvious)
 - Settings ⚙️ has exactly one control: board size (🐣 4×4 / 🦁 6×4). Choosing a size closes the overlay first, then re-deals **visibly** (suction-out + staggered pop-in + swoosh) — never a silent reset (design principle 9)
 
 ## Shape Fit — Architecture Notes
