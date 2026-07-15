@@ -36,11 +36,13 @@ Completed items live in `done.md`.
 - **Feat: add an animated tutorial**.
 - **Feat: rotation hard mode** — v1 deliberately ships without rotation (pieces arrive in their correct orientation, jigsaw-style). A later setting could deal pieces randomly rotated and let a tap on a held piece turn it 90°.
 
+## Emoji Paint (`emoji-paint/index.html`)
+
+- **Feat: add an animated tutorial**.
+
 ## Future Games
 
 *(candidates discussed 2026-07-12: Four in a Row pass-and-play, pocket xylophone music toy, Simon-style Echo)*
-
-- **Plan for new game: Emoji Paint** — a drawing toy candidate; needs a scoping conversation (mechanics, canvas vs. stamp-based drawing, how it differs from Fold and Pass) before implementation.
 
 ## Later / not now
 
