@@ -48,6 +48,7 @@
       justify-content: space-between;
       padding: 14px 16px 6px;
     }
+    .header-left { display: flex; align-items: center; gap: 8px; }
     .logo { display: flex; align-items: center; }
     .top-btns { display: flex; gap: 8px; }
     .top-btn {
@@ -65,6 +66,8 @@
       display: flex;
       align-items: center;
       justify-content: center;
+      text-decoration: none;
+      color: inherit;
     }
     .top-btn:active { transform: translateY(2px); box-shadow: 0 1px 0 #cfe3d8; }
 
@@ -223,17 +226,20 @@
 </head>
 <body>
   <header>
-    <div class="logo" role="img" aria-label="Shape Fit" title="Shape Fit">
-      <svg viewBox="0 0 48 48" width="40" height="40" aria-hidden="true">
-        <rect x="4" y="4" width="13" height="13" rx="4" fill="#F7A6B9"/>
-        <rect x="4" y="18" width="13" height="13" rx="4" fill="#F7A6B9"/>
-        <rect x="4" y="32" width="13" height="13" rx="4" fill="#F7A6B9"/>
-        <rect x="18" y="32" width="13" height="13" rx="4" fill="#F7A6B9"/>
-        <rect x="18" y="4" width="13" height="13" rx="4" fill="#8ED3F4"/>
-        <rect x="32" y="4" width="13" height="13" rx="4" fill="#8ED3F4"/>
-        <rect x="32" y="18" width="13" height="13" rx="4" fill="#FFE66D"/>
-        <rect x="32" y="32" width="13" height="13" rx="4" fill="#FFE66D"/>
-      </svg>
+    <div class="header-left">
+      <a class="top-btn" id="back-btn" href="../index.html" aria-label="Back to LibreToybox home">🏠</a>
+      <div class="logo" role="img" aria-label="Shape Fit" title="Shape Fit">
+        <svg viewBox="0 0 48 48" width="40" height="40" aria-hidden="true">
+          <rect x="4" y="4" width="13" height="13" rx="4" fill="#F7A6B9"/>
+          <rect x="4" y="18" width="13" height="13" rx="4" fill="#F7A6B9"/>
+          <rect x="4" y="32" width="13" height="13" rx="4" fill="#F7A6B9"/>
+          <rect x="18" y="32" width="13" height="13" rx="4" fill="#F7A6B9"/>
+          <rect x="18" y="4" width="13" height="13" rx="4" fill="#8ED3F4"/>
+          <rect x="32" y="4" width="13" height="13" rx="4" fill="#8ED3F4"/>
+          <rect x="32" y="18" width="13" height="13" rx="4" fill="#FFE66D"/>
+          <rect x="32" y="32" width="13" height="13" rx="4" fill="#FFE66D"/>
+        </svg>
+      </div>
     </div>
     <div class="top-btns">
       <button class="top-btn" id="new-game" aria-label="New Game">🔄</button>

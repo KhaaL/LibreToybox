@@ -52,6 +52,7 @@
       justify-content: space-between;
       padding: 14px 16px 6px;
     }
+    .header-left { display: flex; align-items: center; gap: 8px; }
     .logo { display: flex; align-items: center; }
     .top-btns { display: flex; gap: 8px; }
     .top-btn {
@@ -69,6 +70,8 @@
       display: flex;
       align-items: center;
       justify-content: center;
+      text-decoration: none;
+      color: inherit;
     }
     .top-btn:active { transform: translateY(2px); box-shadow: 0 1px 0 #dbe3ef; }
 
@@ -216,13 +219,16 @@
 </head>
 <body>
   <header>
-    <div class="logo" role="img" aria-label="Memory" title="Memory">
-      <svg viewBox="0 0 48 48" width="40" height="40" aria-hidden="true">
-        <rect x="3" y="8" width="24" height="30" rx="6" fill="#8ED3F4" stroke="#54A6D2" stroke-width="2" transform="rotate(-8 15 23)"/>
-        <text x="14" y="30" text-anchor="middle" font-family="Arial Rounded MT Bold, Arial, sans-serif" font-size="16" fill="#fff" transform="rotate(-8 15 23)">?</text>
-        <rect x="21" y="10" width="24" height="30" rx="6" fill="#fff" stroke="#54A6D2" stroke-width="2.5" transform="rotate(8 33 25)"/>
-        <text x="33" y="31" text-anchor="middle" font-size="15" transform="rotate(8 33 25)">🐶</text>
-      </svg>
+    <div class="header-left">
+      <a class="top-btn" id="back-btn" href="../index.html" aria-label="Back to LibreToybox home">🏠</a>
+      <div class="logo" role="img" aria-label="Memory" title="Memory">
+        <svg viewBox="0 0 48 48" width="40" height="40" aria-hidden="true">
+          <rect x="3" y="8" width="24" height="30" rx="6" fill="#8ED3F4" stroke="#54A6D2" stroke-width="2" transform="rotate(-8 15 23)"/>
+          <text x="14" y="30" text-anchor="middle" font-family="Arial Rounded MT Bold, Arial, sans-serif" font-size="16" fill="#fff" transform="rotate(-8 15 23)">?</text>
+          <rect x="21" y="10" width="24" height="30" rx="6" fill="#fff" stroke="#54A6D2" stroke-width="2.5" transform="rotate(8 33 25)"/>
+          <text x="33" y="31" text-anchor="middle" font-size="15" transform="rotate(8 33 25)">🐶</text>
+        </svg>
+      </div>
     </div>
     <div class="top-btns">
       <button class="top-btn" id="new-game" aria-label="New Game">🔄</button>
