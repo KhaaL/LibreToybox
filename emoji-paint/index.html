@@ -1,0 +1,664 @@
+<!DOCTYPE html>
+<!-- LibreToybox — Emoji Paint · Licensed under the GNU GPL v3.0; see ../LICENSE -->
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
+  <title>Emoji Paint</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🌟</text></svg>" />
+  <link rel="manifest" id="manifest-link" href="data:application/json,%7B%7D" />
+  <meta name="theme-color" content="#DE7590" />
+  <style>
+    :root {
+      --bg1: #FFF3F6;
+      --bg2: #FFDCE6;
+      --accent: #DE7590;
+      --border: #F3C3D1;
+      --text: #5C3347;
+      --shadow: #E3A9BC;
+    }
+
+    * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+    html, body { margin: 0; padding: 0; height: 100%; overflow: hidden; }
+    /* Own background on html stops the body gradient propagating to the
+       canvas, where it would tile — rubber-band overscroll then shows the
+       wrong end of the gradient instead of blending with the page. */
+    html { background: var(--bg1); }
+    body {
+      font-family: ui-rounded, 'Hiragino Maru Gothic ProN', Quicksand, Comfortaa, 'Arial Rounded MT Bold', 'Varela Round', Calibri, sans-serif;
+      background: linear-gradient(180deg, var(--bg1), var(--bg2));
+      color: var(--text);
+      display: flex;
+      flex-direction: column;
+      height: 100%;
+      user-select: none;
+      -webkit-user-select: none;
+      touch-action: manipulation;
+    }
+
+    header {
+      width: 100%;
+      max-width: 480px;
+      align-self: center;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 14px 16px 6px;
+      flex-shrink: 0;
+    }
+    .header-left { display: flex; align-items: center; gap: 8px; }
+    .logo { display: flex; align-items: center; }
+    .top-btns { display: flex; gap: 8px; }
+    .top-btn {
+      background: #fff;
+      border: 2px solid var(--border);
+      border-radius: 12px;
+      padding: 6px 10px;
+      font-family: inherit;
+      font-size: 1.3rem;
+      cursor: pointer;
+      box-shadow: 0 3px 0 var(--shadow);
+      transition: transform .05s, box-shadow .05s;
+      min-width: 48px;
+      min-height: 48px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      text-decoration: none;
+      color: inherit;
+    }
+    .top-btn:active { transform: translateY(2px); box-shadow: 0 1px 0 var(--shadow); }
+
+    main {
+      width: 100%;
+      max-width: 480px;
+      align-self: center;
+      flex: 1;
+      padding: 2px 12px 10px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 8px;
+      min-height: 0;
+    }
+
+    #status { font-size: 0; height: 0; overflow: hidden; }
+
+    #canvas-wrap {
+      position: relative;
+      width: 100%;
+      min-height: 0;
+      background: #fff;
+      border: 3px solid var(--border);
+      border-radius: 16px;
+      box-shadow: 0 8px 24px rgba(0,0,0,0.13);
+      overflow: hidden;
+    }
+    #canvas-wrap.mode-tall { flex: 1; aspect-ratio: auto; }
+    #canvas-wrap.mode-wide { flex: none; aspect-ratio: 4/3; }
+
+    #drawing-canvas {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      touch-action: none;
+      cursor: crosshair;
+      display: block;
+    }
+
+    #toolbar {
+      width: 100%;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      flex-shrink: 0;
+    }
+
+    /* Wraps so the ≥64 px controls (design principle 4) never overflow narrow phones. */
+    #tool-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      justify-content: center;
+      align-items: center;
+    }
+
+    .stamp-btn {
+      width: 64px;
+      height: 64px;
+      border: 3px solid var(--border);
+      border-radius: 12px;
+      background: #fff;
+      font-size: 2rem;
+      line-height: 1;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 0 3px 0 var(--shadow);
+      transition: transform .05s;
+    }
+    .stamp-btn:active { transform: translateY(2px); }
+
+    .action-btn {
+      width: 64px;
+      height: 64px;
+      border: 3px solid var(--border);
+      border-radius: 12px;
+      background: #fff;
+      font-family: inherit;
+      font-size: 1.4rem;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 0 3px 0 var(--shadow);
+      transition: transform .05s;
+    }
+    .action-btn:active { transform: translateY(2px); }
+
+    .overlay {
+      position: fixed;
+      inset: 0;
+      display: none;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      z-index: 100;
+      text-align: center;
+      padding: 24px;
+    }
+    .overlay.show { display: flex; }
+
+    /* Translucent white like every other game's settings overlay */
+    #settings-overlay, #picker-overlay { background: rgba(255,255,255,0.92); }
+    .settings-card {
+      background: #fff;
+      border: 3px solid var(--border);
+      border-radius: 20px;
+      padding: 24px 28px;
+      box-shadow: 0 12px 32px rgba(0,0,0,0.18);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 20px;
+      min-width: 270px;
+    }
+    .settings-card h2 { margin: 0; font-size: 2rem; }
+    .radio-options { display: flex; gap: 12px; }
+    .radio-option {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 8px;
+      padding: 14px 22px;
+      border: 3px solid var(--border);
+      border-radius: 16px;
+      background: #fff;
+      cursor: pointer;
+      font-family: inherit;
+      font-size: 1rem;
+      color: var(--text);
+      transition: border-color .15s, background .15s;
+      min-width: 90px;
+    }
+    .radio-option .page-icon {
+      font-size: 2.4rem;
+      display: block;
+      transition: transform 0.35s ease;
+    }
+    .radio-option.wide-option .page-icon { transform: rotate(90deg); }
+    .radio-option.selected { border-color: var(--accent); background: #FFE4EC; }
+
+    /* Emoji stamp picker — a big scrollable grid the child can sift through */
+    .picker-card {
+      width: min(94vw, 460px);
+      height: min(82vh, 640px);
+      background: #fff;
+      border: 3px solid var(--border);
+      border-radius: 20px;
+      padding: 18px 16px;
+      box-shadow: 0 12px 32px rgba(0,0,0,0.18);
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+    .picker-header {
+      width: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-shrink: 0;
+    }
+    .picker-header h2 { margin: 0; font-size: 1.4rem; }
+    .picker-scroll {
+      flex: 1;
+      min-height: 0;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+      padding-right: 2px;
+    }
+    .picker-category { display: flex; flex-direction: column; gap: 8px; }
+    .picker-cat-label {
+      margin: 0;
+      font-size: 0.95rem;
+      font-weight: bold;
+      color: var(--text);
+      opacity: 0.8;
+      text-align: left;
+    }
+    .picker-grid {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      justify-content: center;
+    }
+    .emoji-opt {
+      width: 60px;
+      height: 60px;
+      border-radius: 12px;
+      border: 2px solid transparent;
+      background: var(--bg1);
+      font-size: 1.8rem;
+      padding: 0;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: transform .05s, border-color .1s, background .1s;
+    }
+    .emoji-opt.active { border-color: var(--accent); background: #FFE4EC; transform: scale(1.08); }
+    .emoji-opt:active { transform: scale(0.9); }
+  </style>
+</head>
+<body>
+
+<header>
+  <div class="header-left">
+    <a class="top-btn" id="back-btn" href="../index.html" aria-label="Back to LibreToybox home">🏠</a>
+    <div class="logo" role="img" aria-label="Emoji Paint" title="Emoji Paint">
+      <svg viewBox="0 0 48 48" width="40" height="40" aria-hidden="true">
+        <rect x="4" y="6" width="40" height="36" rx="6" fill="#fff" stroke="#DE7590" stroke-width="2.5" transform="rotate(-4 24 24)"/>
+        <text x="24" y="31" text-anchor="middle" font-size="22" transform="rotate(-4 24 24)">🌟</text>
+      </svg>
+    </div>
+  </div>
+  <div class="top-btns">
+    <button class="top-btn" id="new-game" aria-label="New Painting">🔄</button>
+    <button class="top-btn" id="settings-btn" aria-label="Settings">⚙️</button>
+  </div>
+</header>
+
+<main>
+  <div id="status" aria-live="polite"></div>
+  <div id="canvas-wrap">
+    <canvas id="drawing-canvas"></canvas>
+  </div>
+  <div id="toolbar">
+    <div id="tool-row">
+      <button class="stamp-btn" id="stamp-btn" aria-label="Choose emoji stamp">🌟</button>
+      <button class="action-btn" id="undo-btn" aria-label="Undo last stamp">↩</button>
+      <button class="action-btn" id="clear-btn" aria-label="Clear painting">🗑️</button>
+      <button class="action-btn" id="save-btn" aria-label="Save painting">💾</button>
+    </div>
+  </div>
+</main>
+
+<div class="overlay" id="settings-overlay" role="dialog" aria-modal="true">
+  <div class="settings-card">
+    <h2>⚙️</h2>
+    <div class="radio-options">
+      <button class="radio-option" id="mode-tall" aria-label="Tall canvas">
+        <span class="page-icon">📄</span>
+        Tall
+      </button>
+      <button class="radio-option wide-option" id="mode-wide" aria-label="Wide canvas">
+        <span class="page-icon">📄</span>
+        Wide
+      </button>
+    </div>
+    <button class="top-btn" id="close-settings" aria-label="Close settings">✕</button>
+  </div>
+</div>
+
+<div class="overlay" id="picker-overlay" role="dialog" aria-modal="true" aria-label="Choose an emoji stamp">
+  <div class="picker-card">
+    <div class="picker-header">
+      <h2>Pick a Stamp</h2>
+      <button class="top-btn" id="close-picker" aria-label="Close stamp picker">✕</button>
+    </div>
+    <div class="picker-scroll" id="picker-scroll"></div>
+  </div>
+</div>
+
+<script>
+const EMOJI_CATEGORIES = [
+  { label: '😀 Faces', emojis: '😀 😃 😄 😁 😆 😅 🤣 😂 🙂 🙃 😉 😊 😇 🥰 😍 🤩 😘 😋 😜 🤪 🤑 🤗 🤔 😐 😏 🙄 😴 🤤 😷 🤒 🤢 🥵 🥶 😵 🤯 🥳 😎 🤓 🧐 😢 😭 😡 👻'.split(' ') },
+  { label: '🐶 Animals', emojis: '🐶 🐱 🐭 🐹 🐰 🦊 🐻 🐼 🐨 🐯 🦁 🐮 🐷 🐸 🐵 🙈 🙉 🙊 🐔 🐧 🐦 🐤 🐥 🦆 🦉 🦇 🐺 🐗 🐴 🦄 🐝 🐛 🦋 🐌 🐞 🐢 🐍 🦎 🐙 🦑 🦀 🐠 🐟 🐬 🐳 🐋 🦈 🐊 🐅 🐆 🦓 🐘 🦒 🐫'.split(' ') },
+  { label: '🍎 Food', emojis: '🍏 🍎 🍊 🍋 🍌 🍉 🍇 🍓 🍒 🍑 🥭 🍍 🥥 🥝 🍅 🥑 🌽 🥕 🥐 🍞 🧀 🥚 🍳 🥞 🥓 🍗 🌭 🍔 🍟 🍕 🌮 🌯 🥗 🍝 🍜 🍣 🍱 🍙 🍦 🍩 🍪 🎂 🍰 🍫 🍭 🍬 🍿 🍯'.split(' ') },
+  { label: '🌈 Nature & Sky', emojis: '🌸 🌹 🌻 🌼 🌷 🌱 🌲 🌳 🌴 🌵 🍀 🍁 🍂 🍃 🍄 🌊 💧 ☔ 🌈 ☀️ ⛅ ☁️ 🌧️ ⛈️ ❄️ ☃️ 🌙 🌟 ⭐ 🌠 ⚡ 🔥 ✨ 🌕 🌛 🐚 🪐 ☄️ 🌫️ 💦'.split(' ') },
+  { label: '⚽ Activities', emojis: '⚽ 🏀 🏈 ⚾ 🎾 🏐 🏓 🏸 🏒 🥊 🥋 🎣 🏹 🎿 🏂 🛹 🎨 🎭 🎪 🎬 🎤 🎧 🎼 🎹 🥁 🎸 🎻 🎲 🎯 🎳 🎮 🎈 🎉 🎊 🏆 🥇'.split(' ') },
+  { label: '🚀 Travel', emojis: '🚗 🚕 🚙 🚌 🚓 🚑 🚒 🚚 🏍️ 🚲 🛴 🚂 🚆 ✈️ 🚀 🛸 🚁 ⛵ 🚤 🚢 ⚓ 🗺️ 🗽 🏰 🎡 🎢 🎠 ⛲ 🏖️ 🏝️ 🌋 🏔️ ⛰️ 🏠 🏡 🏫 🏥 🕌 🌉 🚦'.split(' ') },
+  { label: '🎁 Objects', emojis: '⌚ 📱 💻 📷 📺 🔦 🕯️ 💡 🔑 🔒 📚 📖 ✏️ 🖍️ 🎀 👑 💍 💎 🧸 🪀 🪁 🎁 🧩 🪄 🔋 🛍️ 👓 🎒 🧦 👟 👗 👒 🧢 🌂 ⏰ 🧴'.split(' ') },
+  { label: '❤️ Hearts & Symbols', emojis: '❤️ 🧡 💛 💚 💙 💜 🖤 🤍 🤎 💔 💕 💞 💓 💗 💖 💘 💝 💠 ☮️ ♥️ 💯 🔔 🔯 🕉️'.split(' ') }
+];
+
+const App = {
+  canvasMode: 'tall', // 'tall' = portrait (phone), 'wide' = landscape (tablet/computer)
+  stamp: '🌟',
+  STAMP_SIZE: 56,     // px, fixed — replaces the old color+brush-size controls
+  stamps: [],         // committed stamps: { emoji, x, y } in normalized 0..1 coords
+  placing: null,      // stamp being carried by the current gesture, not yet committed
+  audioCtx: null,
+
+  init() {
+    this.cacheDOM();
+    this.buildPicker();
+    this.bindEvents();
+    this.setupPWA();
+    // defer so layout is complete before we measure canvas dimensions
+    requestAnimationFrame(() => this.newGame());
+  },
+
+  cacheDOM() {
+    this.canvas = document.getElementById('drawing-canvas');
+    this.ctx = this.canvas.getContext('2d');
+    this.canvasWrap = document.getElementById('canvas-wrap');
+    this.statusEl = document.getElementById('status');
+    this.newGameBtn = document.getElementById('new-game');
+    this.settingsBtn = document.getElementById('settings-btn');
+    this.settingsOverlay = document.getElementById('settings-overlay');
+    this.closeSettingsBtn = document.getElementById('close-settings');
+    this.modeTallBtn = document.getElementById('mode-tall');
+    this.modeWideBtn = document.getElementById('mode-wide');
+    this.stampBtn = document.getElementById('stamp-btn');
+    this.pickerOverlay = document.getElementById('picker-overlay');
+    this.closePickerBtn = document.getElementById('close-picker');
+    this.pickerScroll = document.getElementById('picker-scroll');
+  },
+
+  buildPicker() {
+    EMOJI_CATEGORIES.forEach((cat) => {
+      const section = document.createElement('div');
+      section.className = 'picker-category';
+
+      const h3 = document.createElement('h3');
+      h3.className = 'picker-cat-label';
+      h3.textContent = cat.label;
+      section.appendChild(h3);
+
+      const grid = document.createElement('div');
+      grid.className = 'picker-grid';
+      cat.emojis.forEach((emoji) => {
+        const btn = document.createElement('button');
+        btn.className = 'emoji-opt';
+        btn.textContent = emoji;
+        btn.dataset.emoji = emoji;
+        grid.appendChild(btn);
+      });
+      section.appendChild(grid);
+
+      this.pickerScroll.appendChild(section);
+    });
+  },
+
+  bindEvents() {
+    this.newGameBtn.addEventListener('click', () => this.newGame());
+    this.settingsBtn.addEventListener('click', () => this.openSettings());
+    this.closeSettingsBtn.addEventListener('click', () => this.closeSettings());
+    this.settingsOverlay.addEventListener('click', (e) => { if (e.target === this.settingsOverlay) this.closeSettings(); });
+    this.modeTallBtn.addEventListener('click', () => this.setCanvasMode('tall'));
+    this.modeWideBtn.addEventListener('click', () => this.setCanvasMode('wide'));
+
+    this.stampBtn.addEventListener('click', () => this.openPicker());
+    this.closePickerBtn.addEventListener('click', () => this.closePicker());
+    this.pickerOverlay.addEventListener('click', (e) => { if (e.target === this.pickerOverlay) this.closePicker(); });
+    this.pickerScroll.addEventListener('click', (e) => {
+      const btn = e.target.closest('.emoji-opt');
+      if (btn) this.selectStamp(btn.dataset.emoji);
+    });
+
+    document.getElementById('undo-btn').addEventListener('click', () => this.undo());
+    document.getElementById('clear-btn').addEventListener('click', () => this.clearCanvas());
+    document.getElementById('save-btn').addEventListener('click', () => this.downloadPainting());
+
+    this.canvas.addEventListener('pointerdown', (e) => this.onPointerDown(e));
+    this.canvas.addEventListener('pointermove', (e) => this.onPointerMove(e));
+    this.canvas.addEventListener('pointerup', (e) => this.onPointerUp(e));
+    this.canvas.addEventListener('pointercancel', (e) => this.onPointerUp(e));
+    this.canvas.addEventListener('contextmenu', (e) => e.preventDefault());
+
+    window.addEventListener('resize', () => {
+      const newW = this.canvasWrap.clientWidth;
+      const newH = this.canvasWrap.clientHeight;
+      if (this.canvas.width !== newW || this.canvas.height !== newH) {
+        this.syncCanvasSize();
+        this.redrawCanvas();
+      }
+    });
+  },
+
+  // Normalize pointer coords to 0..1 so stamps survive canvas resize
+  getCanvasPoint(e) {
+    const rect = this.canvas.getBoundingClientRect();
+    return {
+      x: (e.clientX - rect.left) / rect.width,
+      y: (e.clientY - rect.top) / rect.height
+    };
+  },
+
+  toCanvasX(xn) { return xn * this.canvas.width; },
+  toCanvasY(yn) { return yn * this.canvas.height; },
+
+  syncCanvasSize() {
+    const w = this.canvasWrap.clientWidth;
+    const h = this.canvasWrap.clientHeight;
+    this.canvas.width = w;
+    this.canvas.height = h;
+    this.canvas.style.width = w + 'px';
+    this.canvas.style.height = h + 'px';
+  },
+
+  newGame() {
+    this.stamps = [];
+    this.placing = null;
+    this.applyCanvasMode();
+    this.updateCanvasModeToggle();
+    this.syncCanvasSize();
+    this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+    this.statusEl.textContent = 'New painting started.';
+  },
+
+  onPointerDown(e) {
+    e.preventDefault();
+    const pt = this.getCanvasPoint(e);
+    this.canvas.setPointerCapture(e.pointerId);
+    this.placing = { emoji: this.stamp, x: pt.x, y: pt.y };
+    this.redrawCanvas();
+  },
+
+  onPointerMove(e) {
+    if (!this.placing) return;
+    const pt = this.getCanvasPoint(e);
+    this.placing.x = Math.max(0, Math.min(1, pt.x));
+    this.placing.y = Math.max(0, Math.min(1, pt.y));
+    this.redrawCanvas();
+  },
+
+  onPointerUp(e) {
+    if (!this.placing) return;
+    this.stamps.push(this.placing);
+    this.placing = null;
+    this.audioStamp();
+    this.redrawCanvas();
+  },
+
+  drawStamp(emoji, xn, yn, alpha = 1) {
+    this.ctx.save();
+    this.ctx.globalAlpha = alpha;
+    this.ctx.font = `${this.STAMP_SIZE}px "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif`;
+    this.ctx.textAlign = 'center';
+    this.ctx.textBaseline = 'middle';
+    this.ctx.fillText(emoji, this.toCanvasX(xn), this.toCanvasY(yn));
+    this.ctx.restore();
+  },
+
+  redrawCanvas() {
+    this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+    this.stamps.forEach((s) => this.drawStamp(s.emoji, s.x, s.y));
+    // The stamp currently being carried (mid-gesture) isn't committed yet —
+    // show it translucent so the child can see where it will land.
+    if (this.placing) this.drawStamp(this.placing.emoji, this.placing.x, this.placing.y, 0.55);
+  },
+
+  undo() {
+    if (this.stamps.length === 0) return;
+    this.stamps.pop();
+    this.audioSwoosh();
+    this.redrawCanvas();
+  },
+
+  clearCanvas() {
+    if (this.stamps.length === 0 && !this.placing) return;
+    this.stamps = [];
+    this.placing = null;
+    this.audioSwoosh();
+    this.redrawCanvas();
+    this.statusEl.textContent = 'Painting cleared.';
+  },
+
+  downloadPainting() {
+    const a = document.createElement('a');
+    a.href = this.canvas.toDataURL('image/png');
+    a.download = 'emoji-paint.png';
+    a.click();
+    this.statusEl.textContent = 'Painting saved.';
+  },
+
+  openSettings()  { this.settingsOverlay.classList.add('show'); },
+  closeSettings() { this.settingsOverlay.classList.remove('show'); },
+
+  openPicker() {
+    document.querySelectorAll('.emoji-opt').forEach((b) => b.classList.toggle('active', b.dataset.emoji === this.stamp));
+    this.pickerOverlay.classList.add('show');
+  },
+  closePicker() { this.pickerOverlay.classList.remove('show'); },
+
+  selectStamp(emoji) {
+    this.stamp = emoji;
+    this.stampBtn.textContent = emoji;
+    this.audioClick();
+    this.statusEl.textContent = `Stamp selected: ${emoji}`;
+    this.closePicker();
+  },
+
+  setCanvasMode(mode) {
+    if (this.canvasMode === mode) { this.closeSettings(); return; }
+    this.canvasMode = mode;
+    this.updateCanvasModeToggle();
+    this.closeSettings();
+    // Preserve the painting in progress (design principle 9) — stamps are
+    // stored as normalized 0..1 coordinates, the same mechanism that
+    // already survives a window resize, so resizing for the new aspect and
+    // redrawing is enough.
+    this.applyCanvasMode();
+    this.syncCanvasSize();
+    this.redrawCanvas();
+  },
+
+  applyCanvasMode() {
+    this.canvasWrap.classList.toggle('mode-tall', this.canvasMode === 'tall');
+    this.canvasWrap.classList.toggle('mode-wide', this.canvasMode === 'wide');
+  },
+
+  updateCanvasModeToggle() {
+    this.modeTallBtn.classList.toggle('selected', this.canvasMode === 'tall');
+    this.modeWideBtn.classList.toggle('selected', this.canvasMode === 'wide');
+  },
+
+  setupPWA() {
+    const manifest = {
+      name: 'Emoji Paint',
+      short_name: 'Emoji Paint',
+      start_url: '.',
+      display: 'standalone',
+      background_color: '#FFF3F6',
+      theme_color: '#DE7590',
+      icons: [
+        { src: this.makeIcon(192), sizes: '192x192', type: 'image/svg+xml' },
+        { src: this.makeIcon(512), sizes: '512x512', type: 'image/svg+xml' }
+      ]
+    };
+    const blob = new Blob([JSON.stringify(manifest)], { type: 'application/json' });
+    document.getElementById('manifest-link').href = URL.createObjectURL(blob);
+
+    // Service workers must be registered from a real http(s) URL —
+    // browsers reject blob:/data: worker scripts. sw.js lives next to
+    // this file; at file:// there is no service worker support anyway.
+    if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
+      navigator.serviceWorker.register('sw.js').catch(() => {});
+    }
+  },
+
+  makeIcon(size) {
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 100 100">
+      <rect width="100" height="100" fill="#FFF3F6" rx="18"/>
+      <rect x="18" y="14" width="64" height="58" rx="10" fill="#fff" stroke="#DE7590" stroke-width="4"/>
+      <text x="50" y="55" text-anchor="middle" font-size="34">🌟</text>
+    </svg>`;
+    return 'data:image/svg+xml;base64,' + btoa(unescape(encodeURIComponent(svg)));
+  },
+
+  ensureAudio() {
+    if (!this.audioCtx) this.audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    if (this.audioCtx.state === 'suspended') this.audioCtx.resume();
+  },
+
+  playTone({ type = 'sine', freq = 440, duration = 100, startGain = 0.0001, peakGain = 0.15 }) {
+    this.ensureAudio();
+    const ctx = this.audioCtx;
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = type;
+    osc.frequency.setValueAtTime(freq, ctx.currentTime);
+    gain.gain.setValueAtTime(startGain, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(peakGain, ctx.currentTime + 0.01);
+    gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + duration / 1000);
+    osc.connect(gain).connect(ctx.destination);
+    osc.start();
+    osc.stop(ctx.currentTime + duration / 1000 + 0.02);
+  },
+
+  audioStamp() {
+    this.playTone({ type: 'sine', freq: 700 + Math.random() * 220, duration: 90, peakGain: 0.18 });
+  },
+
+  audioClick() {
+    this.playTone({ type: 'sine', freq: 520, duration: 40, peakGain: 0.08 });
+  },
+
+  audioSwoosh() {
+    this.ensureAudio();
+    const ctx = this.audioCtx;
+    const n = Math.floor(ctx.sampleRate * 0.1);
+    const buf = ctx.createBuffer(1, n, ctx.sampleRate);
+    const d = buf.getChannelData(0);
+    for (let i = 0; i < n; i++) d[i] = (Math.random() * 2 - 1) * (1 - i / n);
+    const src = ctx.createBufferSource();
+    src.buffer = buf;
+    const gain = ctx.createGain();
+    gain.gain.setValueAtTime(0.12, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.1);
+    src.connect(gain).connect(ctx.destination);
+    src.start();
+  }
+};
+
+App.init();
+</script>
+</body>
+</html>

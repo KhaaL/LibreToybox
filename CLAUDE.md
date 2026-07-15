@@ -18,6 +18,9 @@ LibreToybox/
 ├── shape-fit/
 │   ├── index.html            — Shape Fit (grid-packing puzzle, 4×4 / 5×5 / 6×6 / 7×7 board)
 │   └── sw.js                 — offline cache worker
+├── emoji-paint/
+│   ├── index.html            — Emoji Paint (free-play canvas, stamp with any emoji from a full browsable set)
+│   └── sw.js                 — offline cache worker
 ├── .github/workflows/
 │   ├── deploy-pages.yml      — auto-deploy to GitHub Pages on push to main
 │   └── ci.yml                — lint (html-validate) + local link check on push/PR
@@ -136,6 +139,18 @@ All decisions must follow `design_principles.txt`. Key ones:
 - **Keyboard parity** (principle 8): Enter/Space on a tray piece picks it up at the first fitting spot, arrows move it cell by cell, Enter places (shake + "hmm" if it doesn't fit), Escape cancels; Enter on a placed piece lifts it off.
 - **No rotation in v1** — pieces arrive in their correct orientation, jigsaw-style (rotation is a possible later hard mode, see plan.md). No timer, no move counter (humane-first).
 - Async timers (fly-back, celebrate) carry a `gameId` generation check so a 🔄 mid-animation can't touch the new board, same as Memory.
+
+## Emoji Paint — Architecture Notes
+
+`emoji-paint/index.html` — a free-play painting canvas with no win state; shares its canvas/stroke architecture with Exquisite Corpse but strips out everything about sections and passing the device between players.
+
+- **Shares with Exquisite Corpse**: normalized 0..1 stroke/stamp coordinates (resize-safe), the Tall/Wide canvas-mode setting (`applyCanvasMode()`/`setCanvasMode()`, same CSS classes), the PWA `setupPWA()` boilerplate, and `playTone()`/`audioSwoosh()` audio helpers. **Does not share**: sections, `currentSection`, peek overlays, fold guides, the automatic section-advance flow, or the reveal/letterbox win screen — there's only one canvas, always fully visible, and no "done."
+- **Color + brush size are replaced by an emoji stamp picker** (design ask: "replace colors and pen size with a menu of different emoji"). `#stamp-btn` shows the currently selected emoji at 64×64 px and opens `#picker-overlay`, a scrollable grid (`EMOJI_CATEGORIES`, ~320 emoji across 8 categories — faces, animals, food, nature, activities, travel, objects, hearts/symbols) the child can sift through; tapping one selects it, marks it `.active` next time the picker reopens, and auto-closes the overlay. Stamp size is fixed (`STAMP_SIZE: 56`) — there is no separate brush-size control.
+- **Placement is tap-to-place, not a continuous brush trail**: `onPointerDown` starts carrying a stamp (`this.placing`) at the pointer location without committing it; `onPointerMove` lets the child drag it to adjust the spot (drawn translucent via `drawStamp(..., 0.55)` so it reads as "not landed yet"); `onPointerUp`/`pointercancel` commits it into the permanent `stamps` array at its final position and plays `audioStamp()`. A quick tap and a drag-then-release both go through the same path — the only difference is how far `placing` moves before commit.
+- **Stamps render via `ctx.fillText`**, not `ctx.strokeStyle` — `drawStamp()` sets `ctx.font` to the stamp size with an emoji-font fallback stack (`"Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif`) and centers on the point (`textAlign`/`textBaseline: middle`). This is the one place in the codebase that draws emoji onto a `<canvas>` rather than as DOM text.
+- **No sections means no reveal step**: `downloadPainting()` exports the live drawing canvas directly (`canvas.toDataURL`), unlike Exquisite Corpse's separate undistorted `artworkCanvas` buffer — there's nothing to letterbox or stitch here.
+- **Header follows the standard convention** (logo + 🏠 back link left, 🔄 New Painting + ⚙️ Settings right) rather than Exquisite Corpse's headerless `#phase-banner` — Emoji Paint has no per-section state to convey, so it doesn't need the reclaimed banner row.
+- Undo (`undo()`) pops the last committed stamp; Clear (`clearCanvas()`) wipes the board; New Painting (header 🔄) does the same reset as Clear plus re-syncs canvas size — there's no puzzle state to regenerate, so all three converge on "empty canvas."
 
 ## Pending Work
 
