@@ -6,7 +6,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
   <title>Shape Fit</title>
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🧸</text></svg>" />
-  <link rel="manifest" id="manifest-link" />
+  <link rel="manifest" id="manifest-link" href="data:application/json,%7B%7D" />
   <meta name="theme-color" content="#2FA98C" />
   <style>
     :root {
@@ -223,7 +223,7 @@
 </head>
 <body>
   <header>
-    <div class="logo" aria-label="Shape Fit" title="Shape Fit">
+    <div class="logo" role="img" aria-label="Shape Fit" title="Shape Fit">
       <svg viewBox="0 0 48 48" width="40" height="40" aria-hidden="true">
         <rect x="4" y="4" width="13" height="13" rx="4" fill="#F7A6B9"/>
         <rect x="4" y="18" width="13" height="13" rx="4" fill="#F7A6B9"/>
@@ -244,9 +244,9 @@
   <main>
     <div class="status" id="status" aria-live="polite"></div>
     <div class="grid-wrap">
-      <div id="board" aria-label="Puzzle board"></div>
+      <div id="board" role="group" aria-label="Puzzle board"></div>
     </div>
-    <div id="tray" aria-label="Piece tray"></div>
+    <div id="tray" role="group" aria-label="Piece tray"></div>
   </main>
 
   <div class="overlay" id="win-overlay" role="dialog" aria-modal="true" aria-label="You won">
