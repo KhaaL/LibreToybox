@@ -69,7 +69,7 @@ All decisions must follow `design_principles.txt`. Key ones:
 - Canvas slides via CSS `translateY` to show the current section
 - `PEEK_PX: 40` — pixels of previous section visible at top as connection guide
 - Two canvas modes: **Tall** (`flex:1`, fills height) and **Wide** (`aspect-ratio: 4/3`)
-- No `<header>` — the top row was reclaimed for the canvas. `#phase-banner` (the row above `#canvas-wrap`) holds only the New Game and Settings buttons now; which section is active is no longer shown as an emoji there — it's conveyed by the grey peek zones on the canvas itself (see below) plus the `#status` `aria-live` announcement for screen readers
+- No `<header>` — the top row was reclaimed for the canvas. `#phase-banner` (the row above `#canvas-wrap`) holds the 🏠 Back link (flush-left, no logo alongside it here) plus a `.top-btns` cluster with New Game and Settings (flush-right); which section is active is no longer shown as an emoji there — it's conveyed by the grey peek zones on the canvas itself (see below) plus the `#status` `aria-live` announcement for screen readers
 - Grey peek zones mark both ends of `#canvas-wrap`: `#peek-overlay` (top) tints the previous section's tail, not drawable; `#next-peek-overlay` (bottom, new) tints this section's own tail — the sliver that becomes the *next* player's top peek once Done is tapped. `updateNextPeek()` shows/hides it based on whether a next section exists (hidden on the last section — no next player to peek for)
 
 ### Toolbar
@@ -148,4 +148,5 @@ See `plan.md` — it is the **single source of truth** for open bugs and feature
 3. No external fonts or CDNs — use the system font stack from the existing games
 4. Follow all 10 design principles in `design_principles.txt`
 5. Game lives in its own subdirectory as `index.html` (+ `sw.js`)
-6. Add pending features to `plan.md`
+6. Every game's header carries a 🏠 **Back** link to the hub as the first, flush-left element — `<a class="top-btn" id="back-btn" href="../index.html" aria-label="Back to LibreToybox home">🏠</a>`, grouped with the logo inside a `.header-left` wrapper (`header { justify-content: space-between }` then has exactly two flex children: `.header-left` on the left, `.top-btns` — New Game + Settings — on the right). Exquisite Corpse has no logo (see its architecture notes below), so its `#phase-banner` puts the Back link alone on the left instead. Keep this placement identical across every game — same corner, same icon, same target.
+7. Add pending features to `plan.md`

@@ -52,8 +52,11 @@
       display: flex;
       align-items: center;
       justify-content: center;
+      text-decoration: none;
+      color: inherit;
     }
     .top-btn:active { transform: translateY(2px); box-shadow: 0 1px 0 var(--shadow); }
+    .top-btns { display: flex; gap: 8px; }
 
     main {
       width: 100%;
@@ -320,8 +323,11 @@
 <main>
   <div id="status" aria-live="polite"></div>
   <div id="phase-banner">
-    <button class="top-btn" id="new-game" aria-label="New Game">🔄</button>
-    <button class="top-btn" id="settings-btn" aria-label="Settings">⚙️</button>
+    <a class="top-btn" id="back-btn" href="../index.html" aria-label="Back to LibreToybox home">🏠</a>
+    <div class="top-btns">
+      <button class="top-btn" id="new-game" aria-label="New Game">🔄</button>
+      <button class="top-btn" id="settings-btn" aria-label="Settings">⚙️</button>
+    </div>
   </div>
   <div id="canvas-wrap">
     <canvas id="drawing-canvas"></canvas>
