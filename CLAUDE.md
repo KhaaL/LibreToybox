@@ -19,12 +19,17 @@ LibreToybox/
 │   ├── index.html            — Shape Fit (grid-packing puzzle, 4×4 / 5×5 / 6×6 / 7×7 board)
 │   └── sw.js                 — offline cache worker
 ├── .github/workflows/
-│   └── deploy-pages.yml      — auto-deploy to GitHub Pages on push to main
+│   ├── deploy-pages.yml      — auto-deploy to GitHub Pages on push to main
+│   └── ci.yml                — lint (html-validate) + local link check on push/PR
+├── scripts/
+│   └── check-links.js        — dependency-free checker: local href/src targets must exist on disk
 ├── index.html                — game hub / landing page (links to all games)
 ├── design_principles.txt     — authoritative design rules (read before any change)
 ├── plan.md                   — pending work (single source of truth)
 ├── done.md                   — completed items, moved out of plan.md
 ├── AUDIT.md                  — repository audit (2026-07-12 snapshot)
+├── package.json               — dev-only CI tooling (html-validate); the games ship with zero dependencies
+├── .htmlvalidate.json        — html-validate config, tuned to this codebase's conventions
 ├── README.md
 ├── LICENSE                   — GNU GPL v3.0
 └── CLAUDE.md                 — this file
@@ -40,6 +45,7 @@ LibreToybox/
 - PWA: local `sw.js` service worker (registered only over http/https — browsers reject blob-URL workers; **stale-while-revalidate**, so deployed updates reach players one visit later with no cache-name bump) + runtime Blob-URL manifest (all games)
 - Zero external dependencies — system font stack, procedural audio, inline SVG icons
 - Hosting: GitHub Pages, deployed automatically by `.github/workflows/deploy-pages.yml` on every push to `main` — no external hosting account, no build step, the whole repo is served as-is
+- CI (dev-only, not shipped): `.github/workflows/ci.yml` runs on every push/PR — `npm run lint:html` (html-validate over `index.html` + `*/index.html`, config in `.htmlvalidate.json`) and `npm run check:links` (`scripts/check-links.js`, a dependency-free script that verifies every local `href`/`src` resolves to a real file; external/`data:`/fragment links are deliberately skipped — see the script's header comment). `package.json` exists purely for this tooling; the games themselves still ship with zero runtime dependencies. Adding a new game as `<dir>/index.html` picks up both checks automatically via the glob.
 
 ## Design Rules (non-negotiable)
 
@@ -63,6 +69,8 @@ All decisions must follow `design_principles.txt`. Key ones:
 - Canvas slides via CSS `translateY` to show the current section
 - `PEEK_PX: 40` — pixels of previous section visible at top as connection guide
 - Two canvas modes: **Tall** (`flex:1`, fills height) and **Wide** (`aspect-ratio: 4/3`)
+- No `<header>` — the top row was reclaimed for the canvas. `#phase-banner` (the row above `#canvas-wrap`) holds only the New Game and Settings buttons now; which section is active is no longer shown as an emoji there — it's conveyed by the grey peek zones on the canvas itself (see below) plus the `#status` `aria-live` announcement for screen readers
+- Grey peek zones mark both ends of `#canvas-wrap`: `#peek-overlay` (top) tints the previous section's tail, not drawable; `#next-peek-overlay` (bottom, new) tints this section's own tail — the sliver that becomes the *next* player's top peek once Done is tapped. `updateNextPeek()` shows/hides it based on whether a next section exists (hidden on the last section — no next player to peek for)
 
 ### Toolbar
 - All controls are ≥64×64 px (design principle 4); `#color-row` and `#tool-row` are `flex-wrap: wrap`, so the six swatches (~424 px in one line) wrap to two rows on narrow phones and the Tall canvas (`flex: 1`) absorbs the extra row — never shrink the controls below 64 px to avoid the wrap

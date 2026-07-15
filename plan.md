@@ -10,7 +10,6 @@ Completed items live in `done.md`.
 ## Exquisite Corpse (`exquisite-corpse/index.html`)
 
 - **Feat: add an animated tutorial**.
-- **Remove the top icon/header to make more room for the canvas** — reclaim that vertical space for drawing. Which section the current player is on should instead be shown via grey horizontal zones at the very top and bottom of the canvas viewport, marking the strips that will be visible (as the peek guide) to the next player.
 - **Long-press to end turn** — the "Done" control that advances to the next section/player should require a long press instead of a single tap, to guard against an accidental tap ending a turn early.
 
 ## Hub (`index.html`)
@@ -26,7 +25,6 @@ Completed items live in `done.md`.
 ## Repository / Infrastructure
 
 - **Feat: mirror to Codeberg** — add a GitHub Action that syncs this repository to <https://codeberg.org/krash/LibreToybox> on every push to `main` (push mirror using a Codeberg access token stored as a GitHub Actions secret, e.g. `git push --mirror` from a scheduled/push-triggered workflow).
-- **Lightweight CI** (AUDIT recommendation): `htmlhint`/`html-validate` over `*/index.html` + a link check; add a `.gitignore` before tooling arrives.
 
 ## Memory (`memory/index.html`)
 
