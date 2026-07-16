@@ -158,6 +158,10 @@
       transition: transform .05s;
     }
     .action-btn:active { transform: translateY(2px); }
+    /* Reddish highlight while the eraser is the active tool — distinct from
+       the game's normal pink accent, so "erase mode" reads as a deliberate,
+       different-from-usual state. */
+    #eraser-btn.active { border-color: #E53935; background: #FFEBEE; }
 
     .overlay {
       position: fixed;
@@ -342,8 +346,7 @@
   <div id="toolbar">
     <div id="tool-row">
       <button class="stamp-btn" id="stamp-btn" aria-label="Choose emoji stamp">🌟</button>
-      <button class="action-btn" id="undo-btn" aria-label="Undo last stamp">↩</button>
-      <button class="action-btn" id="clear-btn" aria-label="Clear painting">🗑️</button>
+      <button class="action-btn" id="eraser-btn" aria-label="Eraser">🧽</button>
       <button class="action-btn" id="save-btn" aria-label="Save painting">💾</button>
     </div>
   </div>
@@ -396,8 +399,10 @@ const App = {
   stamps: [],         // committed stamps: { emoji, x, y } in normalized 0..1 coords
   placing: null,      // stamp being carried by the current gesture, not yet committed
   removing: null,     // { stamp, startX, startY, startTime, raf } — a long-press-to-delete in progress
-  LONG_PRESS_MS: 550,      // hold duration on an existing stamp before it's removed
-  TAP_MOVE_PX: 10,         // finger travel past this cancels a remove-hold
+  erasingStamps: new Set(), // stamps mid-removal-animation — treated as already gone for hit-testing
+  eraserMode: false,       // while true, touching the canvas erases instead of placing
+  LONG_PRESS_MS: 500,      // hold duration on an existing stamp before it's removed — matches Sudoku's press-progress exactly
+  TAP_MOVE_PX: 10,         // finger travel past this cancels a remove-hold — matches Sudoku's threshold
   STAMP_HIT_RADIUS: 0.6,   // fraction of STAMP_SIZE counted as "touching" a placed stamp
   audioCtx: null,
 
@@ -425,6 +430,7 @@ const App = {
     this.modeTallBtn = document.getElementById('mode-tall');
     this.modeWideBtn = document.getElementById('mode-wide');
     this.stampBtn = document.getElementById('stamp-btn');
+    this.eraserBtn = document.getElementById('eraser-btn');
     this.pickerOverlay = document.getElementById('picker-overlay');
     this.closePickerBtn = document.getElementById('close-picker');
     this.pickerNav = document.getElementById('picker-nav');
@@ -543,8 +549,7 @@ const App = {
       if (btn) this.selectStamp(btn.dataset.emoji);
     });
 
-    document.getElementById('undo-btn').addEventListener('click', () => this.undo());
-    document.getElementById('clear-btn').addEventListener('click', () => this.clearCanvas());
+    this.eraserBtn.addEventListener('click', () => this.toggleEraser());
     document.getElementById('save-btn').addEventListener('click', () => this.downloadPainting());
 
     this.canvas.addEventListener('pointerdown', (e) => this.onPointerDown(e));
@@ -588,6 +593,9 @@ const App = {
     this.stamps = [];
     this.placing = null;
     if (this.removing) { cancelAnimationFrame(this.removing.raf); this.removing = null; }
+    this.erasingStamps.clear();
+    this.eraserMode = false;
+    this.eraserBtn.classList.remove('active');
     this.applyCanvasMode();
     this.updateCanvasModeToggle();
     this.syncCanvasSize();
@@ -600,6 +608,11 @@ const App = {
     const pt = this.getCanvasPoint(e);
     this.canvas.setPointerCapture(e.pointerId);
 
+    if (this.eraserMode) {
+      this.eraseAt(pt);
+      return;
+    }
+
     const hit = this.findStampAt(pt);
     if (hit) {
       this.startRemoveHold(hit, pt);
@@ -611,6 +624,11 @@ const App = {
 
   onPointerMove(e) {
     const pt = this.getCanvasPoint(e);
+
+    if (this.eraserMode) {
+      this.eraseAt(pt);
+      return;
+    }
 
     if (this.removing) {
       const distPx = Math.hypot(
@@ -628,6 +646,7 @@ const App = {
   },
 
   onPointerUp(e) {
+    if (this.eraserMode) return; // erasing already happens live in eraseAt()
     if (this.removing) { this.cancelRemoveHold(); return; }
     if (!this.placing) return;
     this.stamps.push(this.placing);
@@ -638,17 +657,37 @@ const App = {
 
   // Nearest placed stamp within touching distance of a point, topmost first
   // (last drawn = last in the array = visually on top, so that's what a tap
-  // on overlapping stamps should mean).
+  // on overlapping stamps should mean). Stamps mid-removal-animation don't
+  // count — they're already "gone" as far as new hits are concerned.
   findStampAt(pt) {
     const radius = this.STAMP_SIZE * this.STAMP_HIT_RADIUS;
     const px = this.toCanvasX(pt.x);
     const py = this.toCanvasY(pt.y);
     for (let i = this.stamps.length - 1; i >= 0; i--) {
       const s = this.stamps[i];
+      if (this.erasingStamps.has(s)) continue;
       const dist = Math.hypot(px - this.toCanvasX(s.x), py - this.toCanvasY(s.y));
       if (dist <= radius) return s;
     }
     return null;
+  },
+
+  // Eraser tool: touching a stamp removes it immediately (no hold needed —
+  // picking up the eraser is itself the deliberate action), and dragging
+  // across several stamps erases each one it passes over in turn.
+  eraseAt(pt) {
+    const hit = this.findStampAt(pt);
+    if (!hit) return;
+    this.erasingStamps.add(hit);
+    this.audioSwoosh();
+    if (navigator.vibrate) navigator.vibrate(40);
+    this.animateRemoval(hit);
+  },
+
+  toggleEraser() {
+    this.eraserMode = !this.eraserMode;
+    this.eraserBtn.classList.toggle('active', this.eraserMode);
+    this.statusEl.textContent = this.eraserMode ? 'Eraser selected.' : 'Eraser off.';
   },
 
   startRemoveHold(stamp, pt) {
@@ -663,32 +702,31 @@ const App = {
     this.redrawCanvas();
   },
 
-  // Canvas port of Sudoku's "about to be removed" feedback: a reddish pulse
-  // behind the stamp plus a shake that both grow with hold progress, in
-  // place of Sudoku's DOM `.conflict`/`flashShake` (there's no cell element
-  // here to attach a CSS animation to — stamps are drawn, not DOM nodes).
+  // Canvas port of Sudoku's long-press-to-clear feedback: a reddish pie that
+  // fills in like a clock over the hold duration (Sudoku's `.press-progress`
+  // conic-gradient, `rgba(255,107,107,0.85)`, 500 ms), drawn on top of the
+  // stamp the same way the DOM overlay sits on top of Sudoku's digit — there's
+  // no cell element here to apply a real conic-gradient to, so this redraws
+  // the wedge as a canvas arc each frame instead.
   tickRemoveHold(now) {
     if (!this.removing) return;
     const progress = Math.min(1, (now - this.removing.startTime) / this.LONG_PRESS_MS);
     const stamp = this.removing.stamp;
 
     this.redrawCanvas({ skip: stamp });
-    const jitter = progress * 4;
-    const cx = this.toCanvasX(stamp.x) + (Math.random() * 2 - 1) * jitter;
-    const cy = this.toCanvasY(stamp.y) + (Math.random() * 2 - 1) * jitter;
+    this.drawStamp(stamp.emoji, stamp.x, stamp.y);
 
+    const cx = this.toCanvasX(stamp.x);
+    const cy = this.toCanvasY(stamp.y);
+    const radius = this.STAMP_SIZE / 2 + 6;
+    const start = -Math.PI / 2;
     this.ctx.save();
     this.ctx.beginPath();
-    this.ctx.arc(cx, cy, (this.STAMP_SIZE / 2 + 6) * (0.7 + 0.3 * progress), 0, Math.PI * 2);
-    this.ctx.fillStyle = `rgba(229, 57, 53, ${0.15 + 0.35 * progress})`;
+    this.ctx.moveTo(cx, cy);
+    this.ctx.arc(cx, cy, radius, start, start + Math.PI * 2 * progress);
+    this.ctx.closePath();
+    this.ctx.fillStyle = 'rgba(255, 107, 107, 0.85)';
     this.ctx.fill();
-    this.ctx.restore();
-
-    this.ctx.save();
-    this.ctx.font = `${this.STAMP_SIZE}px "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif`;
-    this.ctx.textAlign = 'center';
-    this.ctx.textBaseline = 'middle';
-    this.ctx.fillText(stamp.emoji, cx, cy);
     this.ctx.restore();
 
     if (progress >= 1) {
@@ -700,7 +738,9 @@ const App = {
 
   completeRemoval(stamp) {
     this.removing = null;
+    this.erasingStamps.add(stamp);
     this.audioSwoosh();
+    if (navigator.vibrate) navigator.vibrate(40);
     this.animateRemoval(stamp);
   },
 
@@ -719,6 +759,7 @@ const App = {
       } else {
         const idx = this.stamps.indexOf(stamp);
         if (idx !== -1) this.stamps.splice(idx, 1);
+        this.erasingStamps.delete(stamp);
         this.redrawCanvas();
       }
     };
@@ -741,23 +782,6 @@ const App = {
     // The stamp currently being carried (mid-gesture) isn't committed yet —
     // show it translucent so the child can see where it will land.
     if (this.placing) this.drawStamp(this.placing.emoji, this.placing.x, this.placing.y, 0.55);
-  },
-
-  undo() {
-    if (this.stamps.length === 0) return;
-    this.stamps.pop();
-    this.audioSwoosh();
-    this.redrawCanvas();
-  },
-
-  clearCanvas() {
-    if (this.stamps.length === 0 && !this.placing) return;
-    this.stamps = [];
-    this.placing = null;
-    if (this.removing) { cancelAnimationFrame(this.removing.raf); this.removing = null; }
-    this.audioSwoosh();
-    this.redrawCanvas();
-    this.statusEl.textContent = 'Painting cleared.';
   },
 
   downloadPainting() {
@@ -790,6 +814,9 @@ const App = {
     this.stamp = emoji;
     this.stampBtn.textContent = emoji;
     this.addToRecents(emoji);
+    // Picking a new stamp is a "let's draw" action — leave erase mode so a
+    // stray tap on the canvas doesn't erase instead of place.
+    if (this.eraserMode) { this.eraserMode = false; this.eraserBtn.classList.remove('active'); }
     this.audioClick();
     this.statusEl.textContent = `Stamp selected: ${emoji}`;
     this.closePicker();
