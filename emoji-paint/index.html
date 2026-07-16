@@ -273,13 +273,15 @@
       padding-right: 2px;
     }
     .picker-category { display: flex; flex-direction: column; gap: 8px; }
-    .picker-cat-label {
-      margin: 0;
-      font-size: 0.95rem;
-      font-weight: bold;
-      color: var(--text);
-      opacity: 0.8;
-      text-align: left;
+    /* A discreet divider instead of a text label — the nav chips already
+       carry each category's identity, and the emoji themselves make each
+       section self-evident without needing to be read. */
+    .picker-divider {
+      align-self: stretch;
+      height: 1px;
+      background: var(--border);
+      opacity: 0.7;
+      flex-shrink: 0;
     }
     .picker-grid {
       display: flex;
@@ -287,6 +289,15 @@
       gap: 8px;
       justify-content: center;
     }
+    /* Recent stays a single scrollable row instead of wrapping — it's a
+       quick-access strip, not a browsable category. */
+    .recent-grid {
+      flex-wrap: nowrap;
+      overflow-x: auto;
+      justify-content: flex-start;
+      padding-bottom: 4px;
+    }
+    .recent-grid .emoji-opt { flex-shrink: 0; }
     .emoji-opt {
       width: 60px;
       height: 60px;
@@ -384,6 +395,10 @@ const App = {
   STAMP_SIZE: 56,     // px, fixed — replaces the old color+brush-size controls
   stamps: [],         // committed stamps: { emoji, x, y } in normalized 0..1 coords
   placing: null,      // stamp being carried by the current gesture, not yet committed
+  removing: null,     // { stamp, startX, startY, startTime, raf } — a long-press-to-delete in progress
+  LONG_PRESS_MS: 550,      // hold duration on an existing stamp before it's removed
+  TAP_MOVE_PX: 10,         // finger travel past this cancels a remove-hold
+  STAMP_HIT_RADIUS: 0.6,   // fraction of STAMP_SIZE counted as "touching" a placed stamp
   audioCtx: null,
 
   recents: [],        // most-recently-picked stamps, newest first, deduped
@@ -457,13 +472,11 @@ const App = {
     this.recentSection = document.createElement('div');
     this.recentSection.className = 'picker-category empty';
     this.recentSection.dataset.navKey = 'recent';
-    const recentLabel = document.createElement('h3');
-    recentLabel.className = 'picker-cat-label';
-    recentLabel.textContent = '🕒 Recent';
     this.recentGrid = document.createElement('div');
-    this.recentGrid.className = 'picker-grid';
-    this.recentSection.appendChild(recentLabel);
+    this.recentGrid.className = 'picker-grid recent-grid';
     this.recentSection.appendChild(this.recentGrid);
+    // No divider above Recent — it's always the first section when shown,
+    // directly under the nav chips, so there's nothing above it to divide from.
     this.pickerScroll.appendChild(this.recentSection);
     this.sectionObserver.observe(this.recentSection);
 
@@ -481,10 +494,9 @@ const App = {
       section.className = 'picker-category';
       section.dataset.navKey = navKey;
 
-      const h3 = document.createElement('h3');
-      h3.className = 'picker-cat-label';
-      h3.textContent = cat.label;
-      section.appendChild(h3);
+      const divider = document.createElement('div');
+      divider.className = 'picker-divider';
+      section.appendChild(divider);
 
       const grid = document.createElement('div');
       grid.className = 'picker-grid';
@@ -575,6 +587,7 @@ const App = {
   newGame() {
     this.stamps = [];
     this.placing = null;
+    if (this.removing) { cancelAnimationFrame(this.removing.raf); this.removing = null; }
     this.applyCanvasMode();
     this.updateCanvasModeToggle();
     this.syncCanvasSize();
@@ -586,19 +599,36 @@ const App = {
     e.preventDefault();
     const pt = this.getCanvasPoint(e);
     this.canvas.setPointerCapture(e.pointerId);
+
+    const hit = this.findStampAt(pt);
+    if (hit) {
+      this.startRemoveHold(hit, pt);
+      return;
+    }
     this.placing = { emoji: this.stamp, x: pt.x, y: pt.y };
     this.redrawCanvas();
   },
 
   onPointerMove(e) {
-    if (!this.placing) return;
     const pt = this.getCanvasPoint(e);
+
+    if (this.removing) {
+      const distPx = Math.hypot(
+        (pt.x - this.removing.startX) * this.canvas.width,
+        (pt.y - this.removing.startY) * this.canvas.height
+      );
+      if (distPx > this.TAP_MOVE_PX) this.cancelRemoveHold();
+      return;
+    }
+
+    if (!this.placing) return;
     this.placing.x = Math.max(0, Math.min(1, pt.x));
     this.placing.y = Math.max(0, Math.min(1, pt.y));
     this.redrawCanvas();
   },
 
   onPointerUp(e) {
+    if (this.removing) { this.cancelRemoveHold(); return; }
     if (!this.placing) return;
     this.stamps.push(this.placing);
     this.placing = null;
@@ -606,19 +636,108 @@ const App = {
     this.redrawCanvas();
   },
 
-  drawStamp(emoji, xn, yn, alpha = 1) {
+  // Nearest placed stamp within touching distance of a point, topmost first
+  // (last drawn = last in the array = visually on top, so that's what a tap
+  // on overlapping stamps should mean).
+  findStampAt(pt) {
+    const radius = this.STAMP_SIZE * this.STAMP_HIT_RADIUS;
+    const px = this.toCanvasX(pt.x);
+    const py = this.toCanvasY(pt.y);
+    for (let i = this.stamps.length - 1; i >= 0; i--) {
+      const s = this.stamps[i];
+      const dist = Math.hypot(px - this.toCanvasX(s.x), py - this.toCanvasY(s.y));
+      if (dist <= radius) return s;
+    }
+    return null;
+  },
+
+  startRemoveHold(stamp, pt) {
+    this.removing = { stamp, startX: pt.x, startY: pt.y, startTime: performance.now(), raf: null };
+    this.removing.raf = requestAnimationFrame((t) => this.tickRemoveHold(t));
+  },
+
+  cancelRemoveHold() {
+    if (!this.removing) return;
+    cancelAnimationFrame(this.removing.raf);
+    this.removing = null;
+    this.redrawCanvas();
+  },
+
+  // Canvas port of Sudoku's "about to be removed" feedback: a reddish pulse
+  // behind the stamp plus a shake that both grow with hold progress, in
+  // place of Sudoku's DOM `.conflict`/`flashShake` (there's no cell element
+  // here to attach a CSS animation to — stamps are drawn, not DOM nodes).
+  tickRemoveHold(now) {
+    if (!this.removing) return;
+    const progress = Math.min(1, (now - this.removing.startTime) / this.LONG_PRESS_MS);
+    const stamp = this.removing.stamp;
+
+    this.redrawCanvas({ skip: stamp });
+    const jitter = progress * 4;
+    const cx = this.toCanvasX(stamp.x) + (Math.random() * 2 - 1) * jitter;
+    const cy = this.toCanvasY(stamp.y) + (Math.random() * 2 - 1) * jitter;
+
+    this.ctx.save();
+    this.ctx.beginPath();
+    this.ctx.arc(cx, cy, (this.STAMP_SIZE / 2 + 6) * (0.7 + 0.3 * progress), 0, Math.PI * 2);
+    this.ctx.fillStyle = `rgba(229, 57, 53, ${0.15 + 0.35 * progress})`;
+    this.ctx.fill();
+    this.ctx.restore();
+
+    this.ctx.save();
+    this.ctx.font = `${this.STAMP_SIZE}px "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif`;
+    this.ctx.textAlign = 'center';
+    this.ctx.textBaseline = 'middle';
+    this.ctx.fillText(stamp.emoji, cx, cy);
+    this.ctx.restore();
+
+    if (progress >= 1) {
+      this.completeRemoval(stamp);
+    } else {
+      this.removing.raf = requestAnimationFrame((t) => this.tickRemoveHold(t));
+    }
+  },
+
+  completeRemoval(stamp) {
+    this.removing = null;
+    this.audioSwoosh();
+    this.animateRemoval(stamp);
+  },
+
+  // Sudoku's `.cleared`/`suction` keyframe (scale 1 → 0.1, fade to 0) ported
+  // to canvas frames, since there's no element here for a CSS animation to
+  // shrink-and-fade the actual stamp out before it leaves the board.
+  animateRemoval(stamp) {
+    const DURATION = 220;
+    const start = performance.now();
+    const step = (now) => {
+      const t = Math.min(1, (now - start) / DURATION);
+      this.redrawCanvas({ skip: stamp });
+      this.drawStamp(stamp.emoji, stamp.x, stamp.y, 1 - t, 1 - t * 0.9);
+      if (t < 1) {
+        requestAnimationFrame(step);
+      } else {
+        const idx = this.stamps.indexOf(stamp);
+        if (idx !== -1) this.stamps.splice(idx, 1);
+        this.redrawCanvas();
+      }
+    };
+    requestAnimationFrame(step);
+  },
+
+  drawStamp(emoji, xn, yn, alpha = 1, scale = 1) {
     this.ctx.save();
     this.ctx.globalAlpha = alpha;
-    this.ctx.font = `${this.STAMP_SIZE}px "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif`;
+    this.ctx.font = `${this.STAMP_SIZE * scale}px "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif`;
     this.ctx.textAlign = 'center';
     this.ctx.textBaseline = 'middle';
     this.ctx.fillText(emoji, this.toCanvasX(xn), this.toCanvasY(yn));
     this.ctx.restore();
   },
 
-  redrawCanvas() {
+  redrawCanvas(opts = {}) {
     this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
-    this.stamps.forEach((s) => this.drawStamp(s.emoji, s.x, s.y));
+    this.stamps.forEach((s) => { if (s !== opts.skip) this.drawStamp(s.emoji, s.x, s.y); });
     // The stamp currently being carried (mid-gesture) isn't committed yet —
     // show it translucent so the child can see where it will land.
     if (this.placing) this.drawStamp(this.placing.emoji, this.placing.x, this.placing.y, 0.55);
@@ -635,6 +754,7 @@ const App = {
     if (this.stamps.length === 0 && !this.placing) return;
     this.stamps = [];
     this.placing = null;
+    if (this.removing) { cancelAnimationFrame(this.removing.raf); this.removing = null; }
     this.audioSwoosh();
     this.redrawCanvas();
     this.statusEl.textContent = 'Painting cleared.';
