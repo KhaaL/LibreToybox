@@ -160,7 +160,7 @@ All decisions must follow `design_principles.txt`. Key ones:
 - **Stamps render via `ctx.fillText`**, not `ctx.strokeStyle` — `drawStamp()` sets `ctx.font` to the stamp size with an emoji-font fallback stack (`"Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif`) and centers on the point (`textAlign`/`textBaseline: middle`). This is the one place in the codebase that draws emoji onto a `<canvas>` rather than as DOM text.
 - **No sections means no reveal step**: `downloadPainting()` exports the live drawing canvas directly (`canvas.toDataURL`), unlike Exquisite Corpse's separate undistorted `artworkCanvas` buffer — there's nothing to letterbox or stitch here.
 - **Header follows the standard convention** (logo + 🏠 back link left, 🔄 New Painting + ⚙️ Settings right) rather than Exquisite Corpse's headerless `#phase-banner` — Emoji Paint has no per-section state to convey, so it doesn't need the reclaimed banner row.
-- **No separate Clear button** — New Painting (header 🔄) already resets the whole board, so a toolbar Clear/trash button was redundant and was removed; the toolbar is just Stamp, Eraser, Save.
+- **No separate Clear button** — New Painting (header 🔄) already resets the whole board, so a toolbar Clear button was redundant and was removed; the toolbar is just Stamp, Trash (🗑️), Save.
 
 ## Odd One Out — Architecture Notes
 
@@ -185,7 +185,7 @@ See `plan.md` — it is the **single source of truth** for open bugs and feature
 1. Copy the PWA boilerplate from either existing game: `setupPWA()` **and** the sibling `sw.js`. Register the worker with a relative path (`navigator.serviceWorker.register('sw.js')`) — blob-/data-URL worker scripts are rejected by browsers. Give each game its own cache name. The workers are **stale-while-revalidate**: the cached version is served instantly (offline-first), the cache refreshes in the background, and the next visit gets the new version — so routine releases need **no** cache-name bump. Bump the name only as an emergency "everyone must get this immediately" lever.
 2. Copy `playTone()` and audio helpers — don't use external audio files
 3. No external fonts or CDNs — use the system font stack from the existing games
-4. Follow all 10 design principles in `design_principles.txt`
+4. Follow all 11 design principles in `design_principles.txt`
 5. Game lives in its own subdirectory as `index.html` (+ `sw.js`)
 6. Every game's header carries a 🏠 **Back** link to the hub as the first, flush-left element — `<a class="top-btn" id="back-btn" href="../index.html" aria-label="Back to LibreToybox home">🏠</a>`, grouped with the logo inside a `.header-left` wrapper (`header { justify-content: space-between }` then has exactly two flex children: `.header-left` on the left, `.top-btns` — New Game + Settings — on the right). Exquisite Corpse has no logo (see its architecture notes below), so its `#phase-banner` puts the Back link alone on the left instead. Keep this placement identical across every game — same corner, same icon, same target.
 7. Add pending features to `plan.md`

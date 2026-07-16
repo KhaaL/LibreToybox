@@ -372,7 +372,8 @@ const App = {
   canvasMode: 'tall', // 'tall' = portrait (phone), 'wide' = landscape (tablet/computer)
   currentSection: 0,
   color: '#222222',
-  brushSize: 8,
+  brushSize: 4,   // must match a button offered by buildToolbar() ([4, 14]) —
+                  // the thin button is marked active on load, so start there.
   drawing: false,
   currentStroke: null,
   strokes: [],      // strokes for the active section (undo stack)

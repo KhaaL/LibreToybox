@@ -420,6 +420,10 @@ const App = {
   cacheDOM() {
     this.canvas = document.getElementById('drawing-canvas');
     this.ctx = this.canvas.getContext('2d');
+    // Read the theme accent once so canvas-drawn cues (the lift halo) stay in
+    // sync with the CSS --accent variable instead of a duplicated literal.
+    this.accent = (getComputedStyle(document.documentElement)
+      .getPropertyValue('--accent').trim()) || '#DE7590';
     this.canvasWrap = document.getElementById('canvas-wrap');
     this.statusEl = document.getElementById('status');
     this.newGameBtn = document.getElementById('new-game');
@@ -726,6 +730,13 @@ const App = {
     this.updateTrashBtnVisual();
   },
 
+  // Build an rgba-equivalent from the cached --accent hex plus an alpha byte
+  // (8-digit hex is valid as a canvas fillStyle), so the accent lives in one place.
+  accentAlpha(a) {
+    const byte = Math.max(0, Math.min(255, Math.round(a * 255)));
+    return this.accent + byte.toString(16).padStart(2, '0');
+  },
+
   // Canvas port of a "picking this up" cue: a soft accent-colored halo grows
   // in while held (deliberately not red — this hold isn't a delete
   // countdown, just a grab), at a fixed position until the hold completes.
@@ -740,7 +751,7 @@ const App = {
     this.ctx.save();
     this.ctx.beginPath();
     this.ctx.arc(cx, cy, this.STAMP_SIZE / 2 + 6, 0, Math.PI * 2);
-    this.ctx.fillStyle = `rgba(222, 117, 144, ${0.3 * progress})`;
+    this.ctx.fillStyle = this.accentAlpha(0.3 * progress);
     this.ctx.fill();
     this.ctx.restore();
     this.drawStamp(stamp.emoji, stamp.x, stamp.y);

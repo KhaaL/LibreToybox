@@ -110,7 +110,7 @@
       width: 100%;
       height: 100%;
       transform-style: preserve-3d;
-      transition: transform .25s ease;
+      transition: transform var(--flip-ms, 250ms) ease;
     }
     .card.flipped .card-inner { transform: rotateY(180deg); }
 
@@ -287,6 +287,9 @@
 
       init() {
         this.cacheDOM();
+        // Keep the flip animation's duration governed by CONFIG.flipMs (single
+        // source of tuning) rather than a separate hardcoded value in the CSS.
+        document.documentElement.style.setProperty('--flip-ms', CONFIG.flipMs + 'ms');
         this.bindEvents();
         this.newGame(false);
         this.setupPWA();
