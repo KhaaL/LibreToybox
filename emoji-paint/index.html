@@ -3,7 +3,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Emoji Paint</title>
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🌟</text></svg>" />
   <link rel="manifest" id="manifest-link" href="data:application/json,%7B%7D" />
@@ -82,7 +82,9 @@
       min-height: 0;
     }
 
-    #status { font-size: 0; height: 0; overflow: hidden; }
+    /* Visually hidden but available to screen readers (aria-live announcements
+       still fire). Standard clip-based sr-only pattern. */
+    #status { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); clip-path: inset(50%); white-space: nowrap; border: 0; }
 
     #canvas-wrap {
       position: relative;
@@ -355,12 +357,12 @@
 <div class="overlay" id="settings-overlay" role="dialog" aria-modal="true">
   <div class="settings-card">
     <h2>⚙️</h2>
-    <div class="radio-options">
-      <button class="radio-option" id="mode-tall" aria-label="Tall canvas">
+    <div class="radio-options" role="radiogroup" aria-label="Canvas shape">
+      <button class="radio-option" id="mode-tall" role="radio" aria-checked="true" aria-label="Tall canvas">
         <span class="page-icon">📄</span>
         Tall
       </button>
-      <button class="radio-option wide-option" id="mode-wide" aria-label="Wide canvas">
+      <button class="radio-option wide-option" id="mode-wide" role="radio" aria-checked="false" aria-label="Wide canvas">
         <span class="page-icon">📄</span>
         Wide
       </button>
@@ -391,6 +393,47 @@ const EMOJI_CATEGORIES = [
   { label: '🎁 Objects', emojis: '⌚ 📱 💻 📷 📺 🔦 🕯️ 💡 🔑 🔒 📚 📖 ✏️ 🖍️ 🎀 👑 💍 💎 🧸 🪀 🪁 🎁 🧩 🪄 🔋 🛍️ 👓 🎒 🧦 👟 👗 👒 🧢 🌂 ⏰ 🧴'.split(' ') },
   { label: '❤️ Hearts & Symbols', emojis: '❤️ 🧡 💛 💚 💙 💜 🖤 🤍 🤎 💔 💕 💞 💓 💗 💖 💘 💝 💠 ☮️ ♥️ 💯 🔔 🔯 🕉️'.split(' ') }
 ];
+
+// --- Shared modal a11y helper (copied into each game — the suite ships no
+// bundler). Moves focus into an opened overlay, traps Tab within it, closes on
+// Escape, and restores focus to the opener on close (design principle 8). ---
+const Modal = {
+  opener: null, overlay: null, onDismiss: null, handler: null,
+  focusable(el) {
+    return [...el.querySelectorAll('a[href], button:not([disabled]), input, select, textarea, [tabindex]:not([tabindex="-1"])')]
+      .filter(n => n.getClientRects().length > 0);
+  },
+  open(overlay, onDismiss) {
+    this.opener = document.activeElement;
+    this.overlay = overlay;
+    this.onDismiss = onDismiss || null;
+    const items = this.focusable(overlay);
+    (items[0] || overlay).focus({ preventScroll: true });
+    this.handler = (e) => {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        if (this.onDismiss) this.onDismiss(); else this.close();
+      } else if (e.key === 'Tab') {
+        const f = this.focusable(overlay);
+        if (!f.length) { e.preventDefault(); return; }
+        const first = f[0], last = f[f.length - 1];
+        if (e.shiftKey && (document.activeElement === first || !overlay.contains(document.activeElement))) {
+          e.preventDefault(); last.focus();
+        } else if (!e.shiftKey && (document.activeElement === last || !overlay.contains(document.activeElement))) {
+          e.preventDefault(); first.focus();
+        }
+      }
+    };
+    document.addEventListener('keydown', this.handler, true);
+  },
+  close() {
+    if (this.handler) document.removeEventListener('keydown', this.handler, true);
+    this.handler = null;
+    const opener = this.opener;
+    this.opener = this.overlay = this.onDismiss = null;
+    if (opener && opener.focus) opener.focus({ preventScroll: true });
+  }
+};
 
 const App = {
   canvasMode: 'tall', // 'tall' = portrait (phone), 'wide' = landscape (tablet/computer)
@@ -839,8 +882,8 @@ const App = {
     this.statusEl.textContent = 'Painting saved.';
   },
 
-  openSettings()  { this.settingsOverlay.classList.add('show'); },
-  closeSettings() { this.settingsOverlay.classList.remove('show'); },
+  openSettings()  { this.settingsOverlay.classList.add('show'); Modal.open(this.settingsOverlay, () => this.closeSettings()); },
+  closeSettings() { this.settingsOverlay.classList.remove('show'); Modal.close(); },
 
   openPicker() {
     document.querySelectorAll('.emoji-opt').forEach((b) => b.classList.toggle('active', b.dataset.emoji === this.stamp));
@@ -854,8 +897,9 @@ const App = {
     if (firstVisible) {
       document.querySelectorAll('.nav-chip').forEach((c) => c.classList.toggle('active', c.dataset.navKey === firstVisible.dataset.navKey));
     }
+    Modal.open(this.pickerOverlay, () => this.closePicker());
   },
-  closePicker() { this.pickerOverlay.classList.remove('show'); },
+  closePicker() { this.pickerOverlay.classList.remove('show'); Modal.close(); },
 
   selectStamp(emoji) {
     this.stamp = emoji;
@@ -889,8 +933,11 @@ const App = {
   },
 
   updateCanvasModeToggle() {
-    this.modeTallBtn.classList.toggle('selected', this.canvasMode === 'tall');
-    this.modeWideBtn.classList.toggle('selected', this.canvasMode === 'wide');
+    const tall = this.canvasMode === 'tall';
+    this.modeTallBtn.classList.toggle('selected', tall);
+    this.modeWideBtn.classList.toggle('selected', !tall);
+    this.modeTallBtn.setAttribute('aria-checked', tall ? 'true' : 'false');
+    this.modeWideBtn.setAttribute('aria-checked', tall ? 'false' : 'true');
   },
 
   setupPWA() {
