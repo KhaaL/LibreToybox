@@ -114,12 +114,16 @@
     .tile:active { transform: translateY(3px); box-shadow: 0 1px 0 var(--shadow); }
     .tile:focus-visible { outline: 4px solid var(--accent); outline-offset: -4px; }
     .tile.correct { animation: pop .5s ease-out; }
-    .tile.wrong { animation: shake .35s ease; }
+    /* Wrong tap = shake + a red flash (the suite's shared "wrong" cue, e.g.
+       Sudoku's .conflict) so it's unmissable but still non-punitive — the
+       tile settles straight back to neutral (design principle 3). */
+    .tile.wrong { animation: shake .4s ease, wrongFlash .5s ease; }
     /* When a correct pick resolves, the non-odd tiles gently fade back. */
     #board.resolved .tile:not(.correct) { opacity: 0.35; }
 
     @keyframes pop { 0% { transform: scale(1); } 45% { transform: scale(1.25); } 100% { transform: scale(1); } }
-    @keyframes shake { 0%,100% { transform: translateX(0); } 20% { transform: translateX(-7px); } 40% { transform: translateX(7px); } 60% { transform: translateX(-5px); } 80% { transform: translateX(5px); } }
+    @keyframes shake { 0%,100% { transform: translateX(0); } 15% { transform: translateX(-9px); } 30% { transform: translateX(9px); } 45% { transform: translateX(-7px); } 60% { transform: translateX(7px); } 75% { transform: translateX(-4px); } }
+    @keyframes wrongFlash { 0%,100% { border-color: var(--border); background: #fff; } 20%,65% { border-color: #E53935; background: #FFCDD2; } }
     @keyframes pop-in { 0% { transform: scale(0.4); opacity: 0; } 60% { transform: scale(1.12); opacity: 1; } 100% { transform: scale(1); } }
     .tile.deal { animation: pop-in .35s ease-out both; }
     @keyframes fall { 0% { transform: translateY(-10vh) rotate(0deg); opacity: 1; } 100% { transform: translateY(110vh) rotate(720deg); opacity: 0; } }
@@ -421,9 +425,11 @@ const App = {
         }
       }, CONFIG.advanceMs);
     } else {
-      // Wrong — gentle "hmm" + a shake, no penalty. Expected guessing, not a
-      // rule violation, so never the harsh buzz (design principle 3).
+      // Wrong — gentle "hmm" + a shake, a red flash, and a short buzz, no
+      // penalty. Expected guessing, not a rule violation, so never the harsh
+      // buzz sound (design principle 3); the tile settles back to neutral.
       this.audioOops();
+      if (navigator.vibrate) navigator.vibrate(60);
       tile.classList.remove('wrong');
       void tile.offsetWidth;   // reflow so the animation can re-run
       tile.classList.add('wrong');
