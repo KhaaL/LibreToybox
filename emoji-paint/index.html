@@ -233,6 +233,36 @@
       flex-shrink: 0;
     }
     .picker-header h2 { margin: 0; font-size: 1.4rem; }
+    /* Horizontally-scrolling jump chips — one per category (+ Recent, once
+       there's history) — so the child can skip straight to a section
+       instead of scrolling past everything to get there. */
+    .picker-nav {
+      width: 100%;
+      display: flex;
+      gap: 8px;
+      overflow-x: auto;
+      flex-shrink: 0;
+      padding-bottom: 2px;
+    }
+    .nav-chip {
+      width: 48px;
+      height: 48px;
+      flex-shrink: 0;
+      border: 2px solid var(--border);
+      border-radius: 12px;
+      background: #fff;
+      font-size: 1.4rem;
+      padding: 0;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: transform .05s, border-color .1s, background .1s;
+    }
+    .nav-chip.active { border-color: var(--accent); background: #FFE4EC; }
+    .nav-chip:active { transform: scale(0.9); }
+    .nav-chip.hidden { display: none; }
+    .picker-category.empty { display: none; }
     .picker-scroll {
       flex: 1;
       min-height: 0;
@@ -331,6 +361,7 @@
       <h2>Pick a Stamp</h2>
       <button class="top-btn" id="close-picker" aria-label="Close stamp picker">✕</button>
     </div>
+    <div class="picker-nav" id="picker-nav" role="group" aria-label="Jump to category"></div>
     <div class="picker-scroll" id="picker-scroll"></div>
   </div>
 </div>
@@ -355,6 +386,9 @@ const App = {
   placing: null,      // stamp being carried by the current gesture, not yet committed
   audioCtx: null,
 
+  recents: [],        // most-recently-picked stamps, newest first, deduped
+  RECENTS_MAX: 8,
+
   init() {
     this.cacheDOM();
     this.buildPicker();
@@ -378,13 +412,74 @@ const App = {
     this.stampBtn = document.getElementById('stamp-btn');
     this.pickerOverlay = document.getElementById('picker-overlay');
     this.closePickerBtn = document.getElementById('close-picker');
+    this.pickerNav = document.getElementById('picker-nav');
     this.pickerScroll = document.getElementById('picker-scroll');
   },
 
+  createEmojiButton(emoji) {
+    const btn = document.createElement('button');
+    btn.className = 'emoji-opt';
+    btn.textContent = emoji;
+    btn.dataset.emoji = emoji;
+    return btn;
+  },
+
   buildPicker() {
-    EMOJI_CATEGORIES.forEach((cat) => {
+    // Scroll-spy: highlights the jump chip for whichever category section
+    // is currently at the top of the visible scroll area. A short section
+    // (e.g. Recent with only one or two stamps) can intersect the trigger
+    // zone at the same time as the section right after it, so we can't just
+    // trust the last entry in the batch — instead track everything
+    // currently intersecting and always take the one earliest in DOM order.
+    this.visibleSections = new Set();
+    this.sectionObserver = new IntersectionObserver((entries) => {
+      entries.forEach((entry) => {
+        const key = entry.target.dataset.navKey;
+        if (entry.isIntersecting) this.visibleSections.add(key);
+        else this.visibleSections.delete(key);
+      });
+      const sections = this.pickerScroll.querySelectorAll('.picker-category');
+      const topMost = Array.from(sections).find((s) => this.visibleSections.has(s.dataset.navKey));
+      if (topMost) {
+        document.querySelectorAll('.nav-chip').forEach((c) => c.classList.toggle('active', c.dataset.navKey === topMost.dataset.navKey));
+      }
+    }, { root: this.pickerScroll, rootMargin: '0px 0px -70% 0px', threshold: 0 });
+
+    // Recent row — hidden (both section and chip) until the child has
+    // actually picked a stamp; an empty "Recent" section is just confusing.
+    this.recentChip = document.createElement('button');
+    this.recentChip.className = 'nav-chip hidden';
+    this.recentChip.textContent = '🕒';
+    this.recentChip.dataset.navKey = 'recent';
+    this.recentChip.setAttribute('aria-label', 'Jump to recently used stamps');
+    this.pickerNav.appendChild(this.recentChip);
+
+    this.recentSection = document.createElement('div');
+    this.recentSection.className = 'picker-category empty';
+    this.recentSection.dataset.navKey = 'recent';
+    const recentLabel = document.createElement('h3');
+    recentLabel.className = 'picker-cat-label';
+    recentLabel.textContent = '🕒 Recent';
+    this.recentGrid = document.createElement('div');
+    this.recentGrid.className = 'picker-grid';
+    this.recentSection.appendChild(recentLabel);
+    this.recentSection.appendChild(this.recentGrid);
+    this.pickerScroll.appendChild(this.recentSection);
+    this.sectionObserver.observe(this.recentSection);
+
+    EMOJI_CATEGORIES.forEach((cat, i) => {
+      const navKey = 'cat' + i;
+
+      const chip = document.createElement('button');
+      chip.className = 'nav-chip';
+      chip.textContent = cat.label.split(' ')[0];
+      chip.dataset.navKey = navKey;
+      chip.setAttribute('aria-label', 'Jump to ' + cat.label.replace(/^\S+\s/, ''));
+      this.pickerNav.appendChild(chip);
+
       const section = document.createElement('div');
       section.className = 'picker-category';
+      section.dataset.navKey = navKey;
 
       const h3 = document.createElement('h3');
       h3.className = 'picker-cat-label';
@@ -393,17 +488,31 @@ const App = {
 
       const grid = document.createElement('div');
       grid.className = 'picker-grid';
-      cat.emojis.forEach((emoji) => {
-        const btn = document.createElement('button');
-        btn.className = 'emoji-opt';
-        btn.textContent = emoji;
-        btn.dataset.emoji = emoji;
-        grid.appendChild(btn);
-      });
+      cat.emojis.forEach((emoji) => grid.appendChild(this.createEmojiButton(emoji)));
       section.appendChild(grid);
 
       this.pickerScroll.appendChild(section);
+      this.sectionObserver.observe(section);
     });
+
+    this.pickerNav.addEventListener('click', (e) => {
+      const chip = e.target.closest('.nav-chip');
+      if (!chip || chip.classList.contains('hidden')) return;
+      const target = this.pickerScroll.querySelector('.picker-category[data-nav-key="' + chip.dataset.navKey + '"]');
+      if (target) target.scrollIntoView({ block: 'start', behavior: 'smooth' });
+    });
+  },
+
+  addToRecents(emoji) {
+    this.recents = this.recents.filter((e) => e !== emoji);
+    this.recents.unshift(emoji);
+    if (this.recents.length > this.RECENTS_MAX) this.recents.length = this.RECENTS_MAX;
+
+    this.recentGrid.innerHTML = '';
+    this.recents.forEach((e) => this.recentGrid.appendChild(this.createEmojiButton(e)));
+    const hasRecents = this.recents.length > 0;
+    this.recentSection.classList.toggle('empty', !hasRecents);
+    this.recentChip.classList.toggle('hidden', !hasRecents);
   },
 
   bindEvents() {
@@ -544,13 +653,23 @@ const App = {
 
   openPicker() {
     document.querySelectorAll('.emoji-opt').forEach((b) => b.classList.toggle('active', b.dataset.emoji === this.stamp));
+    // A hidden (display:none) element has no scrollbox, so scrollTop must be
+    // set after showing the overlay — setting it first is a silent no-op.
     this.pickerOverlay.classList.add('show');
+    // Always open at the top — with jump chips for fast travel, a
+    // predictable starting point beats remembering the last scroll spot.
+    this.pickerScroll.scrollTop = 0;
+    const firstVisible = this.pickerScroll.querySelector('.picker-category:not(.empty)');
+    if (firstVisible) {
+      document.querySelectorAll('.nav-chip').forEach((c) => c.classList.toggle('active', c.dataset.navKey === firstVisible.dataset.navKey));
+    }
   },
   closePicker() { this.pickerOverlay.classList.remove('show'); },
 
   selectStamp(emoji) {
     this.stamp = emoji;
     this.stampBtn.textContent = emoji;
+    this.addToRecents(emoji);
     this.audioClick();
     this.statusEl.textContent = `Stamp selected: ${emoji}`;
     this.closePicker();
