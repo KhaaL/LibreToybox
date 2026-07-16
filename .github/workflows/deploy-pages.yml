@@ -24,6 +24,20 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      # Gate the deploy on the same checks CI runs, so a lint/link/JS failure
+      # can never ship to Pages (the two workflows used to run independently).
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Verify (lint + links + JS)
+        run: npm run ci
+
       - name: Configure Pages
         uses: actions/configure-pages@v5
 

@@ -13,7 +13,9 @@
   "scripts": {
     "lint:html": "html-validate index.html */index.html",
     "check:links": "node scripts/check-links.js index.html */index.html",
-    "ci": "npm run lint:html && npm run check:links"
+    "check:js": "node scripts/check-js.js index.html */index.html",
+    "check:design": "node scripts/check-design.js */index.html",
+    "ci": "npm run lint:html && npm run check:links && npm run check:js && npm run check:design"
   },
   "devDependencies": {
     "html-validate": "^11.5.6"
