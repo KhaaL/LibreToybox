@@ -26,3 +26,9 @@ jobs:
 
       - name: Check local links
         run: npm run check:links
+
+      - name: Check inline JS parses
+        run: npm run check:js
+
+      - name: Check design conventions
+        run: npm run check:design
