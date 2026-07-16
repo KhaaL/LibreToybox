@@ -39,6 +39,7 @@ Completed items live in `done.md`.
 ## Emoji Paint (`emoji-paint/index.html`)
 
 - **Feat: add an animated tutorial**.
+- **Clear (🗑️) should require a long press** — it currently wipes the whole painting on a single tap; guard it behind a long press like the other destructive/irreversible actions in this codebase (e.g. Exquisite Corpse's planned long-press Done, the general "Reset board" long-press item above), so a stray tap can't destroy the whole painting.
 
 ## Future Games
 
