@@ -41,6 +41,10 @@ Completed items live in `done.md`.
 
 - **Feat: add an animated tutorial**.
 
+## Odd One Out (`odd-one-out/index.html`)
+
+- **Feat: add an animated tutorial**.
+
 ## Future Games
 
 *(candidates discussed 2026-07-12: Four in a Row pass-and-play, pocket xylophone music toy, Simon-style Echo)*

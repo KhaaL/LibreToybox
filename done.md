@@ -2,6 +2,10 @@
 
 Finished items moved out of `plan.md`, newest first within each section.
 
+## Odd One Out (`odd-one-out/index.html`)
+
+- ~~**Implement the game**~~ ✓ (2026-07-16) — sixth game shipped per the scoping conversation: a spot-the-difference puzzle where the child taps the item that doesn't belong, discovering the hidden rule (what the *others* share). A self-verifying `generateRound()` draws the majority from one group and exactly one odd from a **disjoint** other group, so there's always a single unambiguous answer. Two data tiers: disjoint super-categories (`GROUPS`) for the easy/medium/hard levels and sibling sub-categories (`SUBGROUPS`, e.g. a land animal among sea animals) for the subtle 🦁 tier where the rule is genuinely hidden. Difficulty is the one setting (🐣 4 / 🐤 6 / 🐥 9 / 🦁 9-subtle tiles); tiles are deliberately uniform-colored so the emoji's category is the only variable. Progression is sets of 5 correct rounds → the shared confetti + wiggle-emoji party, tracked by visual pips. Feedback is humane-first: correct pops + fills a pip + advances; wrong plays the gentle "hmm" and shakes only the tapped tile with no penalty. Reuses the standard header/settings/audio/PWA scaffolding, `gameId`-guarded advance timer, real-`<button>` tiles for keyboard parity, and a sunny yellow/gold identity. Architecture notes in `CLAUDE.md`.
+
 ## Child Sudoku (`sudoku-for-minis/index.html`)
 
 - ~~**"Wrong numbers" setting covers wrong AND illegal numbers**~~ ✓ (2026-07-13) — the toggle used to react only to rule conflicts; a legal-but-wrong digit slipped through silently. Since every puzzle has a unique solution, "wrong" is now simply "not the solution digit" (`isWrong()`): reject mode flies both kinds back to the pad, keep mode leaves both red until fixed, and switching back to reject clears them with the usual suction. The hint text says so ("Wrong or clashing numbers…"), and it now sits directly under the "Wrong numbers" label, tight against the toggle, instead of floating as a separate centered line. Verified with Playwright: legal-but-wrong placement flies back / stays red / clears on toggle-back, correct digits still place.

@@ -1,0 +1,586 @@
+<!DOCTYPE html>
+<!-- LibreToybox — Odd One Out · Licensed under the GNU GPL v3.0; see ../LICENSE -->
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
+  <title>Odd One Out</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🔍</text></svg>" />
+  <link rel="manifest" id="manifest-link" href="data:application/json,%7B%7D" />
+  <meta name="theme-color" content="#E0A100" />
+  <style>
+    :root {
+      --bg1: #FFFDF2;
+      --bg2: #FFF3C4;
+      --accent: #E0A100;
+      --border: #EAD489;
+      --text: #5A4A1E;
+      --shadow: #E7D69A;
+    }
+
+    * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+    html, body { margin: 0; padding: 0; height: 100%; }
+    /* Own background on html stops the body gradient propagating into
+       overscroll, where it would tile and show the wrong end of the gradient. */
+    html { background: var(--bg1); }
+    body {
+      font-family: ui-rounded, 'Hiragino Maru Gothic ProN', Quicksand, Comfortaa, 'Arial Rounded MT Bold', 'Varela Round', Calibri, sans-serif;
+      background: linear-gradient(180deg, var(--bg1), var(--bg2));
+      color: var(--text);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: flex-start;
+      min-height: 100%;
+      overflow-x: hidden;
+      user-select: none;
+      -webkit-user-select: none;
+      -webkit-touch-callout: none;
+      touch-action: manipulation;
+    }
+
+    header {
+      width: 100%;
+      max-width: 420px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 14px 16px 6px;
+    }
+    .header-left { display: flex; align-items: center; gap: 8px; }
+    .logo { display: flex; align-items: center; }
+    .top-btns { display: flex; gap: 8px; }
+    .top-btn {
+      background: #fff;
+      border: 2px solid var(--border);
+      border-radius: 12px;
+      padding: 6px 10px;
+      font-family: inherit;
+      font-size: 1.3rem;
+      cursor: pointer;
+      box-shadow: 0 3px 0 var(--shadow);
+      transition: transform .05s;
+      min-width: 48px;
+      min-height: 48px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      text-decoration: none;
+      color: inherit;
+    }
+    .top-btn:active { transform: translateY(2px); box-shadow: 0 1px 0 var(--shadow); }
+
+    main { width: 100%; max-width: 420px; padding: 8px 16px 18px; display: flex; flex-direction: column; align-items: center; gap: 16px; }
+
+    .status { font-size: 0; height: 0; overflow: hidden; }
+
+    /* Progress pips — one per round in a set, filled as rounds are solved.
+       Visual only (no numbers), design principle 1. */
+    #pips { display: flex; gap: 10px; margin-top: 4px; }
+    .pip {
+      width: 18px;
+      height: 18px;
+      border-radius: 50%;
+      background: #fff;
+      border: 2px solid var(--border);
+      transition: background .2s, transform .2s;
+    }
+    .pip.filled { background: var(--accent); border-color: var(--accent); transform: scale(1.1); }
+
+    /* The board is a grid of uniform tiles — same neutral background so the
+       ONLY variable a child compares is the emoji's category, never color. */
+    #board {
+      width: 100%;
+      display: grid;
+      gap: 12px;
+      justify-content: center;
+    }
+    .tile {
+      aspect-ratio: 1 / 1;
+      background: #fff;
+      border: 3px solid var(--border);
+      border-radius: 18px;
+      box-shadow: 0 4px 0 var(--shadow);
+      font-size: clamp(2.4rem, 12vw, 3.4rem);
+      line-height: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      padding: 0;
+      font-family: inherit;
+      transition: transform .08s, box-shadow .08s, opacity .25s;
+    }
+    .tile:active { transform: translateY(3px); box-shadow: 0 1px 0 var(--shadow); }
+    .tile:focus-visible { outline: 4px solid var(--accent); outline-offset: -4px; }
+    .tile.correct { animation: pop .5s ease-out; }
+    .tile.wrong { animation: shake .35s ease; }
+    /* When a correct pick resolves, the non-odd tiles gently fade back. */
+    #board.resolved .tile:not(.correct) { opacity: 0.35; }
+
+    @keyframes pop { 0% { transform: scale(1); } 45% { transform: scale(1.25); } 100% { transform: scale(1); } }
+    @keyframes shake { 0%,100% { transform: translateX(0); } 20% { transform: translateX(-7px); } 40% { transform: translateX(7px); } 60% { transform: translateX(-5px); } 80% { transform: translateX(5px); } }
+    @keyframes pop-in { 0% { transform: scale(0.4); opacity: 0; } 60% { transform: scale(1.12); opacity: 1; } 100% { transform: scale(1); } }
+    .tile.deal { animation: pop-in .35s ease-out both; }
+    @keyframes fall { 0% { transform: translateY(-10vh) rotate(0deg); opacity: 1; } 100% { transform: translateY(110vh) rotate(720deg); opacity: 0; } }
+    @keyframes wiggle { 0%, 100% { transform: rotate(0) scale(1); } 25% { transform: rotate(-12deg) scale(1.25); } 55% { transform: rotate(9deg) scale(1.12); } 80% { transform: rotate(-4deg) scale(1.04); } }
+
+    .overlay {
+      position: fixed; inset: 0; display: none;
+      flex-direction: column; align-items: center; justify-content: center;
+      z-index: 100; text-align: center; padding: 20px;
+    }
+    .overlay.show { display: flex; }
+    #win-overlay { background: rgba(255,255,255,0.55); justify-content: flex-end; padding-bottom: 12vh; }
+    #settings-overlay { background: rgba(255,255,255,0.92); }
+
+    .emoji-row { font-size: 4.5rem; display: flex; gap: 18px; margin-bottom: 22px; }
+    .emoji-row button { background: none; border: none; padding: 0; font: inherit; cursor: pointer; animation: pop-in .6s ease-out both; }
+    .emoji-row button:nth-child(2) { animation-delay: .15s; }
+    .emoji-row button:nth-child(3) { animation-delay: .3s; }
+    .emoji-row button:focus-visible { outline: 3px solid var(--text); outline-offset: 2px; border-radius: 12px; }
+    .emoji-row button.wiggle { animation: wiggle .5s ease; }
+
+    .settings-card {
+      background: #fff; border: 3px solid var(--border); border-radius: 18px;
+      padding: 22px 26px; box-shadow: 0 10px 28px rgba(0,0,0,0.15);
+      display: flex; flex-direction: column; align-items: center; gap: 14px; min-width: 260px;
+    }
+    .settings-card h2 { margin: 0; font-size: 2rem; }
+    .size-row { display: flex; flex-wrap: wrap; justify-content: center; gap: 18px; max-width: 200px; }
+    .size-btn {
+      width: 72px; height: 72px; border: 2px solid var(--border); border-radius: 16px;
+      background: #fff; font-family: inherit; font-size: 1.7rem; cursor: pointer;
+      box-shadow: 0 4px 0 var(--shadow); transition: transform .05s;
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      gap: 2px; color: var(--text);
+    }
+    .size-btn small { font-size: 0.72rem; }
+    .size-btn:active { transform: translateY(2px); box-shadow: 0 2px 0 var(--shadow); }
+    .size-btn.active { box-shadow: 0 0 0 4px gold, 0 4px 0 var(--shadow); }
+
+    .confetti { position: fixed; top: 0; left: 0; width: 10px; height: 10px; pointer-events: none; z-index: 101; animation: fall linear forwards; }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="header-left">
+      <a class="top-btn" id="back-btn" href="../index.html" aria-label="Back to LibreToybox home">🏠</a>
+      <div class="logo" role="img" aria-label="Odd One Out" title="Odd One Out">
+        <svg viewBox="0 0 48 48" width="40" height="40" aria-hidden="true">
+          <rect x="4" y="4" width="16" height="16" rx="5" fill="#FFE66D" stroke="#DCBC2E" stroke-width="2"/>
+          <rect x="24" y="4" width="16" height="16" rx="5" fill="#FFE66D" stroke="#DCBC2E" stroke-width="2"/>
+          <rect x="4" y="24" width="16" height="16" rx="5" fill="#8ED3F4" stroke="#54A6D2" stroke-width="2"/>
+          <circle cx="31" cy="31" r="9" fill="none" stroke="#E0A100" stroke-width="3.5"/>
+          <line x1="37.5" y1="37.5" x2="44" y2="44" stroke="#E0A100" stroke-width="3.5" stroke-linecap="round"/>
+        </svg>
+      </div>
+    </div>
+    <div class="top-btns">
+      <button class="top-btn" id="new-game" aria-label="New Game">🔄</button>
+      <button class="top-btn" id="settings-btn" aria-label="Settings">⚙️</button>
+    </div>
+  </header>
+
+  <main>
+    <div class="status" id="status" aria-live="polite"></div>
+    <div id="pips" role="img" aria-label="Progress"></div>
+    <div id="board" role="group" aria-label="Find the one that does not belong"></div>
+  </main>
+
+  <div class="overlay" id="win-overlay" role="dialog" aria-modal="true" aria-label="You won">
+    <div class="emoji-row" id="emoji-row"></div>
+    <button class="top-btn" id="play-again" aria-label="Play Again">🔄</button>
+  </div>
+
+  <div class="overlay" id="settings-overlay" role="dialog" aria-modal="true" aria-label="Settings">
+    <div class="settings-card">
+      <h2>⚙️</h2>
+      <div class="size-row" role="radiogroup" aria-label="Difficulty">
+        <button class="size-btn" data-size="easy"   role="radio" aria-label="Easiest, four tiles">🐣<small>4</small></button>
+        <button class="size-btn" data-size="medium" role="radio" aria-label="Easy, six tiles">🐤<small>6</small></button>
+        <button class="size-btn" data-size="hard"   role="radio" aria-label="Hard, nine tiles">🐥<small>9</small></button>
+        <button class="size-btn" data-size="expert" role="radio" aria-label="Hardest, nine tiles, tricky">🦁<small>9</small></button>
+      </div>
+      <button class="top-btn" id="close-settings" aria-label="Close">✕</button>
+    </div>
+  </div>
+
+<script>
+// Super-categories — mutually disjoint, each ≥8 members so any can be the
+// majority group even on the 9-tile board.
+const GROUPS = {
+  animals:  ['🐶','🐱','🐰','🦊','🐻','🐼','🦁','🐯','🐮','🐷','🐵','🐨','🐭','🐹'],
+  food:     ['🍎','🍌','🍓','🍉','🍇','🍑','🍕','🍔','🍟','🍩','🍪','🧀','🌭','🥕'],
+  vehicles: ['🚗','🚌','🚂','✈️','🚀','🚲','🚁','⛵','🚚','🚕','🏍️','🚓'],
+  nature:   ['🌸','🌻','🌈','⭐','🌙','🌵','🍄','🌲','🌊','🔥','❄️','🌷','🍁','🌴'],
+  faces:    ['😀','😃','😍','😎','🥳','😢','😡','😴','🤔','😜','😇','🤩'],
+  sports:   ['⚽','🏀','🎾','🏈','⚾','🏐','🏓','🏸','🥊','🎱','🎳','🏒'],
+};
+
+// Sibling sub-categories for the subtle "hidden rule" tier. Each set used as
+// a majority is ≥8 members and disjoint from its siblings under the same
+// parent, so the odd one shares the parent but breaks the finer rule.
+const SUBGROUPS = {
+  animals: {
+    land:  ['🐶','🐱','🐰','🦊','🐻','🦁','🐯','🐮','🐷','🐵'],
+    sea:   ['🐟','🐠','🐬','🐳','🦈','🐙','🦀','🦑','🐡','🦭'],
+    birds: ['🐔','🐧','🦉','🦆','🦅','🦜','🐦','🕊️','🦩'],
+    bugs:  ['🐝','🐛','🦋','🐞','🐜','🦗','🕷️','🐌'],
+  },
+  food: {
+    fruit:  ['🍎','🍌','🍓','🍉','🍇','🍑','🍍','🥝','🍒','🥭'],
+    veg:    ['🥕','🌽','🥦','🍅','🥔','🧅','🫑','🥒','🍆','🥬'],
+    sweets: ['🍩','🍪','🍰','🧁','🍫','🍬','🍭','🍦','🎂','🍮'],
+  },
+  vehicles: {
+    road:  ['🚗','🚌','🚕','🚚','🏍️','🚲','🚓','🚑','🚛','🛻'],
+    air:   ['✈️','🚀','🚁','🛸','🪂','🎈'],
+    water: ['⛵','🚤','🚢','⚓','🛶','🦺'],
+  },
+};
+
+const CONFIG = {
+  roundsPerSet: 5,
+  advanceMs: 700,   // pause after a correct pick before the next round (gameId-guarded)
+  sizes: {
+    easy:   { tiles: 4, cols: 2, subtle: false },   // 🐣 2×2
+    medium: { tiles: 6, cols: 3, subtle: false },   // 🐤 2×3  (default)
+    hard:   { tiles: 9, cols: 3, subtle: false },   // 🐥 3×3
+    expert: { tiles: 9, cols: 3, subtle: true }     // 🦁 3×3 sibling sub-categories
+  },
+  // Canonical LibreToybox pastel palette — used for confetti (design principle 11).
+  palette: ['#F7A6B9','#F9C784','#FFE66D','#A8E6CF','#8ED3F4','#C3B4F7','#FFB3A0','#C8E88A']
+};
+
+const App = {
+  size: 'medium',
+  tiles: [],          // current round's emoji, in display order
+  oddIndex: -1,       // which tile is the odd one out
+  solved: 0,          // rounds solved in the current set
+  resolving: false,   // true during the pause between a correct pick and the next round
+  won: false,
+  gameId: 0,
+  audioCtx: null,
+
+  emojiSets: [
+    ['🎉', '🌟', '🏆'],
+    ['🎈', '🌈', '🎊'],
+    ['🥳', '✨', '🍭']
+  ],
+
+  init() {
+    this.cacheDOM();
+    this.bindEvents();
+    this.updateSizeButtons();
+    this.newGame();
+    this.setupPWA();
+  },
+
+  cacheDOM() {
+    this.board = document.getElementById('board');
+    this.pipsEl = document.getElementById('pips');
+    this.status = document.getElementById('status');
+    this.winOverlay = document.getElementById('win-overlay');
+    this.newGameBtn = document.getElementById('new-game');
+    this.playAgainBtn = document.getElementById('play-again');
+    this.settingsOverlay = document.getElementById('settings-overlay');
+    this.settingsBtn = document.getElementById('settings-btn');
+    this.closeSettingsBtn = document.getElementById('close-settings');
+  },
+
+  bindEvents() {
+    this.newGameBtn.addEventListener('click', () => this.newGame(true));
+    this.playAgainBtn.addEventListener('click', () => this.newGame(true));
+    this.settingsBtn.addEventListener('click', () => this.openSettings());
+    this.closeSettingsBtn.addEventListener('click', () => this.closeSettings());
+    this.settingsOverlay.addEventListener('click', (e) => {
+      if (e.target === this.settingsOverlay) this.closeSettings();
+    });
+    this.settingsOverlay.querySelectorAll('.size-btn').forEach(btn => {
+      btn.addEventListener('click', () => this.setSize(btn.dataset.size));
+    });
+    // One delegated handler covers mouse, touch, pen and keyboard (real
+    // <button> tiles fire click on Enter/Space too — keyboard parity, DP8).
+    this.board.addEventListener('click', (e) => {
+      const tile = e.target.closest('.tile');
+      if (tile) this.pickTile(parseInt(tile.dataset.index, 10));
+    });
+  },
+
+  shuffle(arr) {
+    const a = arr.slice();
+    for (let i = a.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [a[i], a[j]] = [a[j], a[i]];
+    }
+    return a;
+  },
+
+  sample(arr, n) { return this.shuffle(arr).slice(0, n); },
+
+  // Build one round. Disjoint groups guarantee exactly one tile from a
+  // different group, so the answer is always single and unambiguous.
+  generateRound() {
+    const { tiles, subtle } = CONFIG.sizes[this.size];
+    let majority, odd;
+
+    if (subtle) {
+      // Pick a family that has a sub-group large enough to be the majority
+      // plus at least one other sibling to draw the odd one from.
+      const families = Object.keys(SUBGROUPS).filter(f => {
+        const subs = Object.values(SUBGROUPS[f]);
+        return subs.filter(s => s.length >= tiles - 1).length >= 1 && subs.length >= 2;
+      });
+      const fam = SUBGROUPS[families[Math.floor(Math.random() * families.length)]];
+      const keys = Object.keys(fam);
+      const majKeys = this.shuffle(keys.filter(k => fam[k].length >= tiles - 1));
+      const majKey = majKeys[0];
+      const oddKey = this.shuffle(keys.filter(k => k !== majKey))[0];
+      majority = this.sample(fam[majKey], tiles - 1);
+      odd = this.sample(fam[oddKey], 1)[0];
+    } else {
+      const cats = Object.keys(GROUPS);
+      const majCat = this.shuffle(cats.filter(c => GROUPS[c].length >= tiles - 1))[0];
+      const oddCat = this.shuffle(cats.filter(c => c !== majCat))[0];
+      majority = this.sample(GROUPS[majCat], tiles - 1);
+      odd = this.sample(GROUPS[oddCat], 1)[0];
+    }
+
+    this.tiles = this.shuffle([...majority, odd]);
+    this.oddIndex = this.tiles.indexOf(odd);
+  },
+
+  newGame(animated) {
+    this.gameId++;
+    this.won = false;
+    this.solved = 0;
+    this.resolving = false;
+    this.winOverlay.classList.remove('show');
+    if (animated) this.audioSwoosh();
+    this.renderPips();
+    this.nextRound(animated);
+  },
+
+  nextRound(animated) {
+    this.resolving = false;
+    this.generateRound();
+    this.renderBoard(animated);
+    this.updateStatus('Which one is different?');
+  },
+
+  renderPips() {
+    this.pipsEl.innerHTML = '';
+    for (let i = 0; i < CONFIG.roundsPerSet; i++) {
+      const pip = document.createElement('div');
+      pip.className = 'pip' + (i < this.solved ? ' filled' : '');
+      this.pipsEl.appendChild(pip);
+    }
+    this.pipsEl.setAttribute('aria-label', `${this.solved} of ${CONFIG.roundsPerSet} found`);
+  },
+
+  renderBoard(animated) {
+    const { cols } = CONFIG.sizes[this.size];
+    this.board.classList.remove('resolved');
+    this.board.style.gridTemplateColumns = `repeat(${cols}, 1fr)`;
+    this.board.innerHTML = '';
+    this.tiles.forEach((emoji, i) => {
+      const btn = document.createElement('button');
+      btn.className = 'tile' + (animated ? ' deal' : '');
+      btn.dataset.index = i;
+      btn.textContent = emoji;
+      btn.setAttribute('aria-label', 'Item ' + (i + 1));
+      if (animated) btn.style.animationDelay = (i * 45) + 'ms';
+      this.board.appendChild(btn);
+    });
+  },
+
+  pickTile(i) {
+    if (this.won || this.resolving) return;
+
+    const tile = this.board.querySelector(`.tile[data-index="${i}"]`);
+    if (!tile) return;
+
+    if (i === this.oddIndex) {
+      // Correct — celebrate the tile, fade the rest, fill a pip, then advance.
+      this.resolving = true;
+      this.audioRight();
+      tile.classList.add('correct');
+      this.board.classList.add('resolved');
+      this.solved++;
+      this.renderPips();
+      this.updateStatus('Yes! That one is different.');
+
+      const gen = this.gameId;
+      setTimeout(() => {
+        if (gen !== this.gameId) return;   // a new game replaced this round
+        if (this.solved >= CONFIG.roundsPerSet) {
+          this.celebrate();
+        } else {
+          this.nextRound(true);
+        }
+      }, CONFIG.advanceMs);
+    } else {
+      // Wrong — gentle "hmm" + a shake, no penalty. Expected guessing, not a
+      // rule violation, so never the harsh buzz (design principle 3).
+      this.audioOops();
+      tile.classList.remove('wrong');
+      void tile.offsetWidth;   // reflow so the animation can re-run
+      tile.classList.add('wrong');
+      this.updateStatus('Not that one. Try again!');
+    }
+  },
+
+  celebrate() {
+    this.won = true;
+    this.audioWin();
+    this.updateStatus('You found all of them! Hooray!');
+    this.renderWinEmojis();
+    this.winOverlay.classList.add('show');
+    for (let i = 0; i < 60; i++) {
+      const conf = document.createElement('div');
+      conf.className = 'confetti';
+      conf.style.left = Math.random() * 100 + 'vw';
+      conf.style.background = CONFIG.palette[Math.floor(Math.random() * CONFIG.palette.length)];
+      conf.style.width = (6 + Math.random() * 8) + 'px';
+      conf.style.height = (6 + Math.random() * 8) + 'px';
+      conf.style.animationDuration = (1.5 + Math.random() * 2) + 's';
+      conf.style.animationDelay = (Math.random() * 0.8) + 's';
+      document.body.appendChild(conf);
+      setTimeout(() => conf.remove(), 4500);
+    }
+  },
+
+  renderWinEmojis() {
+    const row = document.getElementById('emoji-row');
+    const set = this.emojiSets[Math.floor(Math.random() * this.emojiSets.length)];
+    row.innerHTML = set.map(e => `<button>${e}</button>`).join('');
+    // Poking a celebration emoji wiggles it and chirps — a tiny toy.
+    row.querySelectorAll('button').forEach(btn => btn.addEventListener('click', () => {
+      btn.classList.remove('wiggle');
+      void btn.offsetWidth;
+      btn.classList.add('wiggle');
+      this.audioEmoji();
+    }));
+  },
+
+  openSettings() { this.settingsOverlay.classList.add('show'); this.updateSizeButtons(); },
+  closeSettings() { this.settingsOverlay.classList.remove('show'); },
+
+  setSize(size) {
+    if (size === this.size) { this.closeSettings(); return; }
+    this.size = size;
+    this.updateSizeButtons();
+    // Close first so the re-deal is visible, never a silent reset behind the
+    // overlay (design principle 9).
+    this.closeSettings();
+    this.newGame(true);
+  },
+
+  updateSizeButtons() {
+    this.settingsOverlay.querySelectorAll('.size-btn').forEach(btn => {
+      const active = btn.dataset.size === this.size;
+      btn.classList.toggle('active', active);
+      btn.setAttribute('aria-checked', active ? 'true' : 'false');
+    });
+  },
+
+  updateStatus(msg) { this.status.textContent = msg; },
+
+  setupPWA() {
+    const manifest = {
+      name: 'Odd One Out',
+      short_name: 'Odd One Out',
+      start_url: '.',
+      display: 'standalone',
+      background_color: '#FFF3C4',
+      theme_color: '#E0A100',
+      icons: [
+        { src: this.makeIcon(192), sizes: '192x192', type: 'image/svg+xml' },
+        { src: this.makeIcon(512), sizes: '512x512', type: 'image/svg+xml' }
+      ]
+    };
+    const blob = new Blob([JSON.stringify(manifest)], { type: 'application/json' });
+    document.getElementById('manifest-link').href = URL.createObjectURL(blob);
+
+    // Service workers must be registered from a real http(s) URL — browsers
+    // reject blob:/data: worker scripts. sw.js lives next to this file; at
+    // file:// there is no service worker support anyway.
+    if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
+      navigator.serviceWorker.register('sw.js').catch(() => {});
+    }
+  },
+
+  makeIcon(size) {
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 100 100">
+      <rect width="100" height="100" fill="#FFF3C4" rx="18"/>
+      <rect x="14" y="14" width="30" height="30" rx="8" fill="#FFE66D" stroke="#DCBC2E" stroke-width="3"/>
+      <rect x="56" y="14" width="30" height="30" rx="8" fill="#FFE66D" stroke="#DCBC2E" stroke-width="3"/>
+      <rect x="14" y="56" width="30" height="30" rx="8" fill="#8ED3F4" stroke="#54A6D2" stroke-width="3"/>
+      <circle cx="68" cy="68" r="17" fill="none" stroke="#E0A100" stroke-width="6"/>
+      <line x1="80" y1="80" x2="92" y2="92" stroke="#E0A100" stroke-width="6" stroke-linecap="round"/>
+    </svg>`;
+    return 'data:image/svg+xml;base64,' + btoa(unescape(encodeURIComponent(svg)));
+  },
+
+  ensureAudio() {
+    if (!this.audioCtx) this.audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    if (this.audioCtx.state === 'suspended') this.audioCtx.resume();
+  },
+
+  playTone({ type = 'sine', freq = 440, duration = 100, startGain = 0.0001, peakGain = 0.15 }) {
+    this.ensureAudio();
+    const ctx = this.audioCtx;
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = type;
+    osc.frequency.setValueAtTime(freq, ctx.currentTime);
+    gain.gain.setValueAtTime(startGain, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(peakGain, ctx.currentTime + 0.01);
+    gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + duration / 1000);
+    osc.connect(gain).connect(ctx.destination);
+    osc.start();
+    osc.stop(ctx.currentTime + duration / 1000 + 0.02);
+  },
+
+  audioRight() {
+    // Rising two-note chime for a correct find.
+    this.playTone({ type: 'sine', freq: 660, duration: 90, peakGain: 0.16 });
+    setTimeout(() => this.playTone({ type: 'sine', freq: 990, duration: 110, peakGain: 0.14 }), 90);
+  },
+
+  // Gentle "hmm", not a punitive buzz (design principle 3).
+  audioOops() { this.playTone({ type: 'sine', freq: 240, duration: 160, peakGain: 0.1 }); },
+
+  audioEmoji() {
+    const freq = [523, 587, 659, 784, 880][Math.floor(Math.random() * 5)]; // pentatonic chirp
+    this.playTone({ type: 'sine', freq, duration: 140, peakGain: 0.15 });
+  },
+
+  audioSwoosh() {
+    this.ensureAudio();
+    const ctx = this.audioCtx;
+    const bufferSize = ctx.sampleRate * 0.1;
+    const buffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
+    const data = buffer.getChannelData(0);
+    for (let i = 0; i < bufferSize; i++) data[i] = (Math.random() * 2 - 1) * (1 - i / bufferSize);
+    const src = ctx.createBufferSource();
+    src.buffer = buffer;
+    const gain = ctx.createGain();
+    gain.gain.setValueAtTime(0.12, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.1);
+    src.connect(gain).connect(ctx.destination);
+    src.start();
+  },
+
+  audioWin() {
+    [523.25, 659.25, 783.99].forEach((freq, i) => {   // C-E-G major arpeggio
+      setTimeout(() => this.playTone({ type: 'sine', freq, duration: 220, peakGain: 0.18 }), i * 180);
+    });
+  }
+};
+
+App.init();
+</script>
+</body>
+</html>

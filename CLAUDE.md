@@ -21,6 +21,9 @@ LibreToybox/
 ├── emoji-paint/
 │   ├── index.html            — Emoji Paint (free-play canvas, stamp with any emoji from a full browsable set)
 │   └── sw.js                 — offline cache worker
+├── odd-one-out/
+│   ├── index.html            — Odd One Out (tap the item that doesn't belong; hidden-rule spotting, 4/6/9 tiles)
+│   └── sw.js                 — offline cache worker
 ├── .github/workflows/
 │   ├── deploy-pages.yml      — auto-deploy to GitHub Pages on push to main
 │   └── ci.yml                — lint (html-validate) + local link check on push/PR
@@ -158,6 +161,20 @@ All decisions must follow `design_principles.txt`. Key ones:
 - **No sections means no reveal step**: `downloadPainting()` exports the live drawing canvas directly (`canvas.toDataURL`), unlike Exquisite Corpse's separate undistorted `artworkCanvas` buffer — there's nothing to letterbox or stitch here.
 - **Header follows the standard convention** (logo + 🏠 back link left, 🔄 New Painting + ⚙️ Settings right) rather than Exquisite Corpse's headerless `#phase-banner` — Emoji Paint has no per-section state to convey, so it doesn't need the reclaimed banner row.
 - **No separate Clear button** — New Painting (header 🔄) already resets the whole board, so a toolbar Clear/trash button was redundant and was removed; the toolbar is just Stamp, Eraser, Save.
+
+## Odd One Out — Architecture Notes
+
+`odd-one-out/index.html` — a spot-the-difference puzzle: a grid of items where one doesn't belong, and the child taps it. The "rule" is what the *other* items share (all animals, all fruit, …); figuring that out is the puzzle. All tuning lives in the `CONFIG` object at the top of the script.
+
+- **Uniform tiles on purpose**: every tile has the same neutral white background — the emoji's *category* must be the only variable the child compares. If tiles were different pastel colors, a child could reasonably think color is the rule; keeping them identical means the answer is always about what the emoji *is*.
+- **Self-verifying round generator**: `generateRound()` picks a majority group and draws `tiles-1` distinct emoji from it, then draws exactly one "odd" emoji from a **disjoint** other group. Because the groups never share members, there's always exactly one out-of-group tile → one unambiguous answer, by construction (no post-hoc validation needed). `this.oddIndex` records its shuffled position.
+- **Two data tiers**: `GROUPS` are mutually-disjoint super-categories (animals, food, vehicles, nature, faces, sports), each ≥8 members so any can be the majority even on the 9-tile board. `SUBGROUPS` are sibling sub-categories under a shared parent (animals→land/sea/birds/bugs, food→fruit/veg/sweets, vehicles→road/air/water) for the subtle tier — the odd one shares the parent but breaks the finer rule (a land animal among sea animals), so the rule is genuinely "hidden."
+- **Difficulty is the one setting** (size radio, 🐣/🐤/🐥/🦁, same pattern as Memory/Shape Fit/Sudoku): 🐣 4 tiles (2×2) / 🐤 6 tiles (2×3, **the default**) / 🐥 9 tiles (3×3) / 🦁 9 tiles (3×3) **with `subtle: true`** — sibling sub-categories. Subtle mode is bound to the hardest tier rather than a separate toggle, keeping settings simple (principle 9). All four tiers live in `CONFIG.sizes` keyed by the `data-size` strings.
+- **Progression = sets of rounds → a party**: `CONFIG.roundsPerSet` (5) correct rounds fill a row of `#pips` (visual dots, no numbers — principle 1); a full set triggers the shared `celebrate()` (confetti + poke-to-wiggle emoji row + `audioWin`), then 🔄 (header or win overlay) starts a fresh set. This gives the same completion-party arc the other games have, for a game that would otherwise be endless.
+- **Feedback** (principle 3, humane-first): a correct tap pops the tile, fades the rest (`#board.resolved`), fills a pip, and advances after `CONFIG.advanceMs`; a wrong tap plays the gentle `audioOops()` "hmm" (240 Hz sine — **never** Sudoku's harsh buzz, since guessing is expected gameplay here, not a rule violation) and shakes only the tapped tile, with no penalty and no advance — the child just tries again.
+- **Tiles are real `<button>`s** with a single delegated `click` handler (covers mouse/touch/pen **and** Enter/Space — keyboard parity, principle 8; `:focus-visible` outline), same approach as Memory's cards.
+- **`gameId` generation guard**: incremented in `newGame()`; the post-correct advance `setTimeout` captures `gen` and bails if it changed, so a mid-pause 🔄 or size switch can't advance or celebrate onto a freshly dealt board (same pattern as Memory/Shape Fit).
+- Shares the standard scaffolding with the other games: header (🏠 back + logo / 🔄 + ⚙️), settings/win overlays, `playTone()`/`audioSwoosh()`/`audioWin()`/`audioEmoji()` audio kit, and the `setupPWA()` + sibling `sw.js` boilerplate. Color identity is the sunny yellow/gold background family.
 
 ## Pending Work
 
