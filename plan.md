@@ -5,6 +5,7 @@ Completed items live in `done.md`.
 ## Child Sudoku (`sudoku-for-minis/index.html`)
 
 - **Feat: add an animated tutorial**.
+- **Feat: drag and drop tile placement** — a new method for placing digits: drag a digit from the number pad straight onto a cell, as an alternative to the current select-destination-then-digit flow.
 
 ## Exquisite Corpse (`exquisite-corpse/index.html`)
 
@@ -33,10 +34,13 @@ Completed items live in `done.md`.
 ## Emoji Paint (`emoji-paint/index.html`)
 
 - **Feat: add an animated tutorial**.
+- **Bug: drag-to-trash stops at the screen edge (low)** — dragging a stamp toward `#trash-btn` "stops" the emoji once the pointer reaches the edge of the screen, instead of letting the drag continue on to the trash can.
+- **Feat: save and share board state as a link (high)** — ability to save the current painting's state and share it with others via a link.
 
 ## Odd One Out (`odd-one-out/index.html`)
 
 - **Feat: add an animated tutorial**.
+- **Better error feedback for a wrong tap (high)** — the current wrong-tap cue (shake + red flash + gentle "hmm" sound) needs stronger/clearer feedback so the child more reliably notices a wrong guess.
 
 ## Future Games
 

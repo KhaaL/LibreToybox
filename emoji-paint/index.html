@@ -632,9 +632,9 @@ const App = {
         // A quick tap on an existing stamp that never reached the lift
         // threshold: in trash-armed mode that's the delete gesture: outside
         // it, tapping an existing stamp does nothing (no accidental stacking).
+        // Trash mode stays armed after the delete — it's a toggle, not
+        // one-shot — so the next tap deletes another stamp too.
         if (this.trashArmed) {
-          this.trashArmed = false;
-          this.updateTrashBtnVisual();
           this.deleteStamp(stamp);
         } else {
           this.updateTrashBtnVisual();
@@ -679,9 +679,9 @@ const App = {
     return null;
   },
 
-  // Tap-to-arm mode: tap the trash button, then tap any placed stamp to
-  // remove it. One-shot — it disarms itself the moment it's used (see
-  // onPointerUp), and selecting a new stamp from the picker disarms it too.
+  // Tap-to-arm mode: tap the trash button to turn delete mode on — it stays
+  // armed (and shows red) across any number of taps-to-delete, until the
+  // child taps the trash button again or opens the emoji picker.
   toggleTrash() {
     this.trashArmed = !this.trashArmed;
     this.updateTrashBtnVisual();
@@ -814,6 +814,9 @@ const App = {
   },
 
   openPicker() {
+    // Opening the emoji selector is a "let's draw" action — disarm the
+    // trash tool so a stray tap on the canvas afterward doesn't delete.
+    if (this.trashArmed) { this.trashArmed = false; this.updateTrashBtnVisual(); }
     document.querySelectorAll('.emoji-opt').forEach((b) => b.classList.toggle('active', b.dataset.emoji === this.stamp));
     // A hidden (display:none) element has no scrollbox, so scrollTop must be
     // set after showing the overlay — setting it first is a silent no-op.
@@ -833,9 +836,6 @@ const App = {
     this.stamp = emoji;
     this.stampBtn.textContent = emoji;
     this.addToRecents(emoji);
-    // Picking a new stamp is a "let's draw" action — disarm the trash tool
-    // so a stray tap on the canvas doesn't delete instead of place.
-    if (this.trashArmed) { this.trashArmed = false; this.updateTrashBtnVisual(); }
     this.audioClick();
     this.statusEl.textContent = `Stamp selected: ${emoji}`;
     this.closePicker();
