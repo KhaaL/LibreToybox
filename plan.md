@@ -34,7 +34,6 @@ Completed items live in `done.md`.
 ## Odd One Out (`odd-one-out/index.html`)
 
 - **Feat: add an animated tutorial**.
-- **Feat: show all "odd ones" on the win screen** — where the board usually is rather on their own row below the celebratory emoji.
 
 ## Future Games
 

@@ -160,20 +160,11 @@
     .emoji-row button:focus-visible { outline: 3px solid var(--text); outline-offset: 2px; border-radius: 12px; }
     .emoji-row button.wiggle { animation: wiggle .5s ease; }
 
-    /* Recap of the set's 5 odd-one emoji, echoing the board's own tile grid
-       (same column count via CONFIG.sizes[size].cols) but muted/desaturated
-       so it stays secondary to the bright celebration .emoji-row above it. */
-    .odds-recap { display: grid; gap: 8px; justify-content: center; margin-bottom: 18px; }
-    .recap-tile {
-      width: 40px; height: 40px;
-      display: flex; align-items: center; justify-content: center;
-      font-size: 1.4rem;
-      background: rgba(255,255,255,0.5);
-      border: 2px solid var(--border);
-      border-radius: 10px;
-      opacity: 0.6;
-      filter: grayscale(35%);
-    }
+    /* The win-screen recap repopulates the real #board with the set's odd-one
+       emoji (reusing .tile's exact look) rather than a separate strip, so the
+       "answers" land where the game was actually played. Not clickable, so no
+       pointer cursor. */
+    .tile.recap { cursor: default; }
 
     .settings-card {
       background: #fff; border: 3px solid var(--border); border-radius: 18px;
@@ -224,7 +215,6 @@
 
   <div class="overlay" id="win-overlay" role="dialog" aria-modal="true" aria-label="You won">
     <div class="emoji-row" id="emoji-row"></div>
-    <div class="odds-recap" id="odds-recap" role="img" aria-label="The odd ones you found"></div>
     <div class="top-btns">
       <a class="top-btn" id="win-home-btn" href="../index.html" aria-label="Back to LibreToybox home">🏠</a>
       <button class="top-btn" id="play-again" aria-label="Play Again">🔄</button>
@@ -519,6 +509,7 @@ const App = {
   renderBoard(animated) {
     const { cols } = CONFIG.sizes[this.size];
     this.board.classList.remove('resolved');
+    this.board.setAttribute('aria-label', 'Find the one that does not belong');
     this.board.style.gridTemplateColumns = `repeat(${cols}, 1fr)`;
     this.board.innerHTML = '';
     this.tiles.forEach((emoji, i) => {
@@ -594,7 +585,7 @@ const App = {
     this.audioWin();
     this.updateStatus('You found all of them! Hooray!');
     this.renderWinEmojis();
-    this.renderOddsRecap();
+    this.revealOddsOnBoard();
     this.winOverlay.classList.add('show');
     Modal.open(this.winOverlay, () => this.newGame(true));
     for (let i = 0; i < 60; i++) {
@@ -624,15 +615,24 @@ const App = {
     }));
   },
 
-  // Muted recap of the odd-one emoji found this set, laid out with the same
-  // column count as that difficulty's own board — reusing the board's grid
-  // shape is the simplest way to give the recap a tile-like read without any
-  // new layout logic.
-  renderOddsRecap() {
-    const { cols } = CONFIG.sizes[this.size];
-    const wrap = document.getElementById('odds-recap');
-    wrap.style.gridTemplateColumns = `repeat(${Math.min(cols, this.oddsFound.length)}, 1fr)`;
-    wrap.innerHTML = this.oddsFound.map(e => `<div class="recap-tile">${e}</div>`).join('');
+  // Recap of the set's odd-one emoji, shown by repopulating the real #board
+  // (same column count, same .tile look) rather than a separate strip — the
+  // "answers" land where the game was actually played, staggered in like a
+  // fresh deal (mirrors Memory's revealBoard()). Plain non-interactive divs,
+  // not buttons: pickTile() also guards on `this.won`, but there's no tap
+  // action to offer here at all.
+  revealOddsOnBoard() {
+    this.board.classList.remove('resolved');
+    this.board.setAttribute('aria-label', 'The odd ones you found');
+    this.board.innerHTML = '';
+    this.oddsFound.forEach((emoji, i) => {
+      const div = document.createElement('div');
+      div.className = 'tile deal recap';
+      div.textContent = emoji;
+      div.style.animationDelay = (i * 45) + 'ms';
+      div.addEventListener('animationend', () => div.classList.remove('deal'), { once: true });
+      this.board.appendChild(div);
+    });
   },
 
   openSettings() { this.settingsOverlay.classList.add('show'); this.updateSizeButtons(); Modal.open(this.settingsOverlay, () => this.closeSettings()); },
