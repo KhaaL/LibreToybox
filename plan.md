@@ -41,6 +41,7 @@ Completed items live in `done.md`.
 
 - **Feat: add an animated tutorial**.
 - **Better error feedback for a wrong tap (high)** — the current wrong-tap cue (shake + red flash + gentle "hmm" sound) needs stronger/clearer feedback so the child more reliably notices a wrong guess.
+- **Feat: show all "odd ones" on the win screen** — the win/party overlay at the end of a set should recap the odd-one-out emoji from each of the set's rounds, not just the usual celebration.
 
 ## Future Games
 
