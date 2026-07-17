@@ -1,5 +1,5 @@
 # LibreToybox 
-**Self-contained HTML5 games for kids aged 6–8. No tracking, ads or registration - just play.**
+**Simple HTML5 games for kids aged 6–8. No ads, tracking, or registration - just joy.**
 
 Play now: https://toybox.khalid.se/ or https://khaal.github.io/LibreToybox/
 
