@@ -115,6 +115,16 @@
     }
     .tile:active { transform: translateY(3px); box-shadow: 0 1px 0 var(--shadow); }
     .tile:focus-visible { outline: 4px solid var(--accent); outline-offset: -4px; }
+    /* .deal is declared before .correct/.wrong on purpose: it shares their
+       exact specificity (two classes each), and a tile can still be mid-deal
+       when it's tapped. With equal specificity the LATER rule wins the
+       "animation" property outright, so .correct/.wrong must come after
+       .deal in source order to reliably override its pop-in the instant
+       either class is added — not just once .deal's own animationend fires
+       (see the JS-side .deal cleanup in renderBoard() for the belt-and-braces
+       half of this fix). */
+    @keyframes pop-in { 0% { transform: scale(0.4); opacity: 0; } 60% { transform: scale(1.12); opacity: 1; } 100% { transform: scale(1); } }
+    .tile.deal { animation: pop-in .35s ease-out both; }
     .tile.correct { animation: pop .5s ease-out; }
     /* Wrong tap = shake + a red flash (the suite's shared "wrong" cue, e.g.
        Sudoku's .conflict) so it's unmissable but still non-punitive — the
@@ -126,8 +136,6 @@
     @keyframes pop { 0% { transform: scale(1); } 45% { transform: scale(1.25); } 100% { transform: scale(1); } }
     @keyframes shake { 0%,100% { transform: translateX(0); } 15% { transform: translateX(-9px); } 30% { transform: translateX(9px); } 45% { transform: translateX(-7px); } 60% { transform: translateX(7px); } 75% { transform: translateX(-4px); } }
     @keyframes wrongFlash { 0%,100% { border-color: var(--border); background: #fff; } 20%,65% { border-color: #E53935; background: #FFCDD2; } }
-    @keyframes pop-in { 0% { transform: scale(0.4); opacity: 0; } 60% { transform: scale(1.12); opacity: 1; } 100% { transform: scale(1); } }
-    .tile.deal { animation: pop-in .35s ease-out both; }
     @keyframes fall { 0% { transform: translateY(-10vh) rotate(0deg); opacity: 1; } 100% { transform: translateY(110vh) rotate(720deg); opacity: 0; } }
     @keyframes wiggle { 0%, 100% { transform: rotate(0) scale(1); } 25% { transform: rotate(-12deg) scale(1.25); } 55% { transform: rotate(9deg) scale(1.12); } 80% { transform: rotate(-4deg) scale(1.04); } }
 
@@ -146,6 +154,21 @@
     .emoji-row button:nth-child(3) { animation-delay: .3s; }
     .emoji-row button:focus-visible { outline: 3px solid var(--text); outline-offset: 2px; border-radius: 12px; }
     .emoji-row button.wiggle { animation: wiggle .5s ease; }
+
+    /* Recap of the set's 5 odd-one emoji, echoing the board's own tile grid
+       (same column count via CONFIG.sizes[size].cols) but muted/desaturated
+       so it stays secondary to the bright celebration .emoji-row above it. */
+    .odds-recap { display: grid; gap: 8px; justify-content: center; margin-bottom: 18px; }
+    .recap-tile {
+      width: 40px; height: 40px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 1.4rem;
+      background: rgba(255,255,255,0.5);
+      border: 2px solid var(--border);
+      border-radius: 10px;
+      opacity: 0.6;
+      filter: grayscale(35%);
+    }
 
     .settings-card {
       background: #fff; border: 3px solid var(--border); border-radius: 18px;
@@ -196,6 +219,7 @@
 
   <div class="overlay" id="win-overlay" role="dialog" aria-modal="true" aria-label="You won">
     <div class="emoji-row" id="emoji-row"></div>
+    <div class="odds-recap" id="odds-recap" role="img" aria-label="The odd ones you found"></div>
     <div class="top-btns">
       <a class="top-btn" id="win-home-btn" href="../index.html" aria-label="Back to LibreToybox home">🏠</a>
       <button class="top-btn" id="play-again" aria-label="Play Again">🔄</button>
@@ -252,6 +276,7 @@ const SUBGROUPS = {
 const CONFIG = {
   roundsPerSet: 5,
   advanceMs: 700,   // pause after a correct pick before the next round (gameId-guarded)
+  wrongHoldMs: 500, // input lock while the reject shake/flash plays (matches wrongFlash's duration)
   sizes: {
     easy:   { tiles: 4, cols: 2, subtle: false },   // 🐣 2×2
     medium: { tiles: 6, cols: 3, subtle: false },   // 🐤 2×3  (default)
@@ -308,7 +333,9 @@ const App = {
   tiles: [],          // current round's emoji, in display order
   oddIndex: -1,       // which tile is the odd one out
   solved: 0,          // rounds solved in the current set
+  oddsFound: [],      // the odd-one emoji from each solved round this set, in solve order
   resolving: false,   // true during the pause between a correct pick and the next round
+  rejecting: false,   // true while the wrong-tap shake/flash is playing — blocks tap-spam
   won: false,
   gameId: 0,
   audioCtx: null,
@@ -405,7 +432,9 @@ const App = {
     this.gameId++;
     this.won = false;
     this.solved = 0;
+    this.oddsFound = [];
     this.resolving = false;
+    this.rejecting = false;
     this.winOverlay.classList.remove('show');
     Modal.close();
     if (animated) this.audioSwoosh();
@@ -441,13 +470,21 @@ const App = {
       btn.dataset.index = i;
       btn.textContent = emoji;
       btn.setAttribute('aria-label', 'Item ' + (i + 1));
-      if (animated) btn.style.animationDelay = (i * 45) + 'ms';
+      if (animated) {
+        btn.style.animationDelay = (i * 45) + 'ms';
+        // .deal and .wrong/.correct share the same CSS specificity (two
+        // classes each); leaving .deal on the tile after its pop-in
+        // finishes lets it silently win the "animation" property tie by
+        // source order, so the reject/celebrate keyframes never actually
+        // run. Strip it the moment its own animation is done.
+        btn.addEventListener('animationend', () => btn.classList.remove('deal'), { once: true });
+      }
       this.board.appendChild(btn);
     });
   },
 
   pickTile(i) {
-    if (this.won || this.resolving) return;
+    if (this.won || this.resolving || this.rejecting) return;
 
     const tile = this.board.querySelector(`.tile[data-index="${i}"]`);
     if (!tile) return;
@@ -459,6 +496,7 @@ const App = {
       tile.classList.add('correct');
       this.board.classList.add('resolved');
       this.solved++;
+      this.oddsFound.push(this.tiles[this.oddIndex]);
       this.renderPips();
       this.updateStatus('Yes! That one is different.');
 
@@ -475,12 +513,22 @@ const App = {
       // Wrong — gentle "hmm" + a shake, a red flash, and a short buzz, no
       // penalty. Expected guessing, not a rule violation, so never the harsh
       // buzz sound (design principle 3); the tile settles back to neutral.
+      // Input is locked for the animation's duration so rapid repeat-tapping
+      // ("tap spam") can't sneak a pick in — on this tile or any other,
+      // including the correct one — while the reject cue is still playing.
+      this.rejecting = true;
       this.audioOops();
       if (navigator.vibrate) navigator.vibrate(60);
       tile.classList.remove('wrong');
       void tile.offsetWidth;   // reflow so the animation can re-run
       tile.classList.add('wrong');
       this.updateStatus('Not that one. Try again!');
+
+      const gen = this.gameId;
+      setTimeout(() => {
+        if (gen !== this.gameId) return;   // a new game replaced this round
+        this.rejecting = false;
+      }, CONFIG.wrongHoldMs);
     }
   },
 
@@ -489,6 +537,7 @@ const App = {
     this.audioWin();
     this.updateStatus('You found all of them! Hooray!');
     this.renderWinEmojis();
+    this.renderOddsRecap();
     this.winOverlay.classList.add('show');
     Modal.open(this.winOverlay, () => this.newGame(true));
     for (let i = 0; i < 60; i++) {
@@ -516,6 +565,17 @@ const App = {
       btn.classList.add('wiggle');
       this.audioEmoji();
     }));
+  },
+
+  // Muted recap of the odd-one emoji found this set, laid out with the same
+  // column count as that difficulty's own board — reusing the board's grid
+  // shape is the simplest way to give the recap a tile-like read without any
+  // new layout logic.
+  renderOddsRecap() {
+    const { cols } = CONFIG.sizes[this.size];
+    const wrap = document.getElementById('odds-recap');
+    wrap.style.gridTemplateColumns = `repeat(${Math.min(cols, this.oddsFound.length)}, 1fr)`;
+    wrap.innerHTML = this.oddsFound.map(e => `<div class="recap-tile">${e}</div>`).join('');
   },
 
   openSettings() { this.settingsOverlay.classList.add('show'); this.updateSizeButtons(); Modal.open(this.settingsOverlay, () => this.closeSettings()); },
