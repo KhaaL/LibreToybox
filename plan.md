@@ -5,8 +5,8 @@ Completed items live in `done.md`.
 ## Child Sudoku (`sudoku-for-minis/index.html`)
 
 - **Feat: add an animated tutorial**.
-- **Dialog semantics for overlays** (AUDIT B4): add `role="dialog" aria-modal="true"` to the settings and win overlays, matching Exquisite Corpse's settings overlay.
 - **Visually segment the board into its box regions** — the board should visually group its box regions (2×2 at 4×4, 2×3 at 6×6, 2×4 at 8×8) so children can see at a glance which tiles belong together, beyond the current thin box-border lines.
+- **8×8 board cell size** (UI review 2026-07-17): at 8×8, `.grid-wrap`'s `min(92vw, 360px)` sizing puts cells around ~45px — below the 60px chunky-target rule, and unlike Shape Fit's drop-target cells (exempt because placement is forgiving), these are *directly tapped*. Needs a sizing pass at the largest board size, distinct from the box-region grouping item above.
 
 ## Exquisite Corpse (`exquisite-corpse/index.html`)
 
@@ -23,10 +23,12 @@ Completed items live in `done.md`.
 - **"Reset board" button (long press)** — a way to reset the current game's board/puzzle without going through settings, guarded by a long press so it can't be triggered accidentally.
 - **Feat: screen timer** — a visible, parent-configurable play-time timer to help manage screen time. Needs a scoping conversation before implementation: per-game vs. hub-level, whether it interrupts play or just gently notifies, and how it squares with the no-pressure-mechanics rule already in place for in-game timers/counters (e.g. Memory's deliberate "no timer, no move counter").
 - **Canvas games don't use tablet screen space well** — Exquisite Corpse and Emoji Paint both cap their layout at `max-width: 480px` (phone-first), so on a tablet's much larger viewport the canvas stays phone-sized with wasted space around it. Needs a scoping conversation: raise/remove the cap on wide viewports, tie it to the existing Tall/Wide canvas-mode setting, or something else.
+- **Chunky-target upsizing of header chrome** (UI review 2026-07-17): the `.top-btn` header buttons (🏠/🔄/⚙️) are `min 48px` in every game, and Fold-and-Pass's Done/win action buttons are 56px tall — both below the ≥64px tool-button rule (principle 4). Deliberately not changed silently this pass since it touches every game's core chrome layout; needs a visual sizing pass across all six games together so they stay in lockstep.
 
 ## Repository / Infrastructure
 
 - **Feat: mirror to Codeberg** — add a GitHub Action that syncs this repository to <https://codeberg.org/krash/LibreToybox> on every push to `main` (push mirror using a Codeberg access token stored as a GitHub Actions secret, e.g. `git push --mirror` from a scheduled/push-triggered workflow).
+- **No committed automated test suite** (UI review 2026-07-17): verification today is ad-hoc Playwright, run manually per session and never committed or executed in CI — `ci.yml` only runs `lint:html`/`check:links`/`check:js`/`check:design`, none of which exercise actual gameplay in a browser. Worth a follow-up to add a minimal committed Playwright smoke suite (boots clean + one core interaction per game, e.g. place a Sudoku digit, flip a Memory card) wired into `ci.yml`.
 
 ## Memory (`memory/index.html`)
 
