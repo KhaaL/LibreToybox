@@ -102,27 +102,21 @@
       cursor: pointer;
       transition: background .15s, transform .1s;
     }
-    /* Checkerboard box shading — alternates by whole box (row/col parity of
-       the box grid, set once per cell in buildGrid() since geometry never
-       changes mid-game), not by individual cell, so each box reads as one
-       tinted region at a glance, beyond the thin border lines below. Reuses
-       the page's own --bg2 cream (design principle 11 — no new hue), and a
-       blend of --given/--bg2 for given cells so the tint still shows through
-       their bold grey without a third unrelated color. */
-    .cell.box-b { background: var(--bg2); }
-
     .cell.given { background: var(--given); font-weight: bold; cursor: default; }
-    .cell.given.box-b { background: #F4E6CE; }
     .cell.selected { outline: 4px solid var(--accent); outline-offset: -4px; background: #FDEBE5; z-index: 2; }
     .cell:focus-visible { outline: 3px solid var(--text); outline-offset: -3px; z-index: 2; }
     .cell.conflict { background: #FFCDD2; color: #C62828; animation: flashShake .5s ease-in-out; }
     .cell.just-placed { animation: pop .25s ease-out; }
     .cell.cleared { animation: suction .22s ease-in; }
 
-    /* Thick borders between boxes — set per cell from JS (box-l / box-t),
-       since box geometry depends on the board size (2×2, 2×3 or 2×4). */
-    .cell.box-l { border-left-width: 3px; border-left-color: #7A8BA6; }
-    .cell.box-t { border-top-width: 3px; border-top-color: #7A8BA6; }
+    /* Box regions read at a glance via a wider gutter + a bolder line at
+       each box seam — set per cell from JS (box-l / box-t), since box
+       geometry depends on the board size (2×2, 2×3 or 2×4). Spacing/border
+       only, so no cell's fill color ever changes to convey grouping; the
+       margin opens a visibly wider gap than the plain 2px inter-cell gap,
+       with the thick line running through the middle of it. */
+    .cell.box-l { border-left-width: 5px; border-left-color: #5D7290; margin-left: 7px; }
+    .cell.box-t { border-top-width: 5px; border-top-color: #5D7290; margin-top: 7px; }
 
     .pad {
       display: flex;
@@ -883,14 +877,10 @@
             cell.dataset.r = r;
             cell.dataset.c = c;
             cell.setAttribute('role', 'gridcell');
-            // thick border on box boundaries (box geometry varies per size)
+            // thick border + wider gutter on box boundaries (box geometry
+            // varies per size)
             if (c > 0 && c % this.boxC === 0) cell.classList.add('box-l');
             if (r > 0 && r % this.boxR === 0) cell.classList.add('box-t');
-            // Checkerboard box shading — alternate by box row/col parity so
-            // a whole box tints together, not by individual cell.
-            const boxRowIdx = Math.floor(r / this.boxR);
-            const boxColIdx = Math.floor(c / this.boxC);
-            if ((boxRowIdx + boxColIdx) % 2 === 1) cell.classList.add('box-b');
             // Givens are fixed for the life of the board, so tabbability never
             // changes during play — set it once here.
             if (this.givenMask[r][c]) {
