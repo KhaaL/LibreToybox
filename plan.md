@@ -22,7 +22,6 @@ Completed items live in `done.md`.
 - **Instructions for installing as a PWA** — add player/parent-facing guidance (hub and/or each game) on how to install the app to a home screen, since there's currently no in-app hint that this is possible.
 - **"Reset board" button (long press)** — a way to reset the current game's board/puzzle without going through settings, guarded by a long press so it can't be triggered accidentally.
 - **Feat: screen timer** — a visible, parent-configurable play-time timer to help manage screen time. Needs a scoping conversation before implementation: per-game vs. hub-level, whether it interrupts play or just gently notifies, and how it squares with the no-pressure-mechanics rule already in place for in-game timers/counters (e.g. Memory's deliberate "no timer, no move counter").
-- **Canvas games don't use tablet screen space well** — Exquisite Corpse and Emoji Paint both cap their layout at `max-width: 480px` (phone-first), so on a tablet's much larger viewport the canvas stays phone-sized with wasted space around it. Needs a scoping conversation: raise/remove the cap on wide viewports, tie it to the existing Tall/Wide canvas-mode setting, or something else.
 
 ## Repository / Infrastructure
 

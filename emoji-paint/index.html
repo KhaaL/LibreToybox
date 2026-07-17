@@ -38,7 +38,6 @@
 
     header {
       width: 100%;
-      max-width: 480px;
       align-self: center;
       display: flex;
       align-items: center;
@@ -71,7 +70,6 @@
 
     main {
       width: 100%;
-      max-width: 480px;
       align-self: center;
       flex: 1;
       padding: 2px 12px 10px;
@@ -86,9 +84,12 @@
        still fire). Standard clip-based sr-only pattern. */
     #status { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); clip-path: inset(50%); white-space: nowrap; border: 0; }
 
+    /* The canvas always fills the available viewport (minus the small margin
+       from main's padding), in any rotation — no aspect cap, no width cap. */
     #canvas-wrap {
       position: relative;
       width: 100%;
+      flex: 1;
       min-height: 0;
       background: #fff;
       border: 3px solid var(--border);
@@ -96,8 +97,6 @@
       box-shadow: 0 8px 24px rgba(0,0,0,0.13);
       overflow: hidden;
     }
-    #canvas-wrap.mode-tall { flex: 1; aspect-ratio: auto; }
-    #canvas-wrap.mode-wide { flex: none; aspect-ratio: 4/3; }
 
     #drawing-canvas {
       position: absolute;
@@ -178,45 +177,8 @@
     }
     .overlay.show { display: flex; }
 
-    /* Translucent white like every other game's settings overlay */
-    #settings-overlay, #picker-overlay { background: rgba(255,255,255,0.92); }
-    .settings-card {
-      background: #fff;
-      border: 3px solid var(--border);
-      border-radius: 20px;
-      padding: 24px 28px;
-      box-shadow: 0 12px 32px rgba(0,0,0,0.18);
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      gap: 20px;
-      min-width: 270px;
-    }
-    .settings-card h2 { margin: 0; font-size: 2rem; }
-    .radio-options { display: flex; gap: 12px; }
-    .radio-option {
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      gap: 8px;
-      padding: 14px 22px;
-      border: 3px solid var(--border);
-      border-radius: 16px;
-      background: #fff;
-      cursor: pointer;
-      font-family: inherit;
-      font-size: 1rem;
-      color: var(--text);
-      transition: border-color .15s, background .15s;
-      min-width: 90px;
-    }
-    .radio-option .page-icon {
-      font-size: 2.4rem;
-      display: block;
-      transition: transform 0.35s ease;
-    }
-    .radio-option.wide-option .page-icon { transform: rotate(90deg); }
-    .radio-option.selected { border-color: var(--accent); background: #FFE4EC; }
+    /* Translucent white like every other game's overlay */
+    #picker-overlay { background: rgba(255,255,255,0.92); }
 
     /* Emoji stamp picker — a big scrollable grid the child can sift through */
     .picker-card {
@@ -336,7 +298,6 @@
   </div>
   <div class="top-btns">
     <button class="top-btn" id="new-game" aria-label="New Painting">🔄</button>
-    <button class="top-btn" id="settings-btn" aria-label="Settings">⚙️</button>
   </div>
 </header>
 
@@ -353,23 +314,6 @@
     </div>
   </div>
 </main>
-
-<div class="overlay" id="settings-overlay" role="dialog" aria-modal="true">
-  <div class="settings-card">
-    <h2>⚙️</h2>
-    <div class="radio-options" role="radiogroup" aria-label="Canvas shape">
-      <button class="radio-option" id="mode-tall" role="radio" aria-checked="true" aria-label="Tall canvas">
-        <span class="page-icon">📄</span>
-        Tall
-      </button>
-      <button class="radio-option wide-option" id="mode-wide" role="radio" aria-checked="false" aria-label="Wide canvas">
-        <span class="page-icon">📄</span>
-        Wide
-      </button>
-    </div>
-    <button class="top-btn" id="close-settings" aria-label="Close settings">✕</button>
-  </div>
-</div>
 
 <div class="overlay" id="picker-overlay" role="dialog" aria-modal="true" aria-label="Choose an emoji stamp">
   <div class="picker-card">
@@ -436,7 +380,6 @@ const Modal = {
 };
 
 const App = {
-  canvasMode: 'tall', // 'tall' = portrait (phone), 'wide' = landscape (tablet/computer)
   stamp: '🌟',
   STAMP_SIZE: 56,     // px, fixed — replaces the old color+brush-size controls
   stamps: [],         // committed stamps: { emoji, x, y } in normalized 0..1 coords
@@ -470,11 +413,6 @@ const App = {
     this.canvasWrap = document.getElementById('canvas-wrap');
     this.statusEl = document.getElementById('status');
     this.newGameBtn = document.getElementById('new-game');
-    this.settingsBtn = document.getElementById('settings-btn');
-    this.settingsOverlay = document.getElementById('settings-overlay');
-    this.closeSettingsBtn = document.getElementById('close-settings');
-    this.modeTallBtn = document.getElementById('mode-tall');
-    this.modeWideBtn = document.getElementById('mode-wide');
     this.stampBtn = document.getElementById('stamp-btn');
     this.trashBtn = document.getElementById('trash-btn');
     this.pickerOverlay = document.getElementById('picker-overlay');
@@ -581,11 +519,6 @@ const App = {
 
   bindEvents() {
     this.newGameBtn.addEventListener('click', () => this.newGame());
-    this.settingsBtn.addEventListener('click', () => this.openSettings());
-    this.closeSettingsBtn.addEventListener('click', () => this.closeSettings());
-    this.settingsOverlay.addEventListener('click', (e) => { if (e.target === this.settingsOverlay) this.closeSettings(); });
-    this.modeTallBtn.addEventListener('click', () => this.setCanvasMode('tall'));
-    this.modeWideBtn.addEventListener('click', () => this.setCanvasMode('wide'));
 
     this.stampBtn.addEventListener('click', () => this.openPicker());
     this.closePickerBtn.addEventListener('click', () => this.closePicker());
@@ -642,8 +575,6 @@ const App = {
     this.erasingStamps.clear();
     this.trashArmed = false;
     this.updateTrashBtnVisual();
-    this.applyCanvasMode();
-    this.updateCanvasModeToggle();
     this.syncCanvasSize();
     this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
     this.statusEl.textContent = 'New painting started.';
@@ -882,9 +813,6 @@ const App = {
     this.statusEl.textContent = 'Painting saved.';
   },
 
-  openSettings()  { this.settingsOverlay.classList.add('show'); Modal.open(this.settingsOverlay, () => this.closeSettings()); },
-  closeSettings() { this.settingsOverlay.classList.remove('show'); Modal.close(); },
-
   openPicker() {
     document.querySelectorAll('.emoji-opt').forEach((b) => b.classList.toggle('active', b.dataset.emoji === this.stamp));
     // A hidden (display:none) element has no scrollbox, so scrollTop must be
@@ -911,33 +839,6 @@ const App = {
     this.audioClick();
     this.statusEl.textContent = `Stamp selected: ${emoji}`;
     this.closePicker();
-  },
-
-  setCanvasMode(mode) {
-    if (this.canvasMode === mode) { this.closeSettings(); return; }
-    this.canvasMode = mode;
-    this.updateCanvasModeToggle();
-    this.closeSettings();
-    // Preserve the painting in progress (design principle 9) — stamps are
-    // stored as normalized 0..1 coordinates, the same mechanism that
-    // already survives a window resize, so resizing for the new aspect and
-    // redrawing is enough.
-    this.applyCanvasMode();
-    this.syncCanvasSize();
-    this.redrawCanvas();
-  },
-
-  applyCanvasMode() {
-    this.canvasWrap.classList.toggle('mode-tall', this.canvasMode === 'tall');
-    this.canvasWrap.classList.toggle('mode-wide', this.canvasMode === 'wide');
-  },
-
-  updateCanvasModeToggle() {
-    const tall = this.canvasMode === 'tall';
-    this.modeTallBtn.classList.toggle('selected', tall);
-    this.modeWideBtn.classList.toggle('selected', !tall);
-    this.modeTallBtn.setAttribute('aria-checked', tall ? 'true' : 'false');
-    this.modeWideBtn.setAttribute('aria-checked', tall ? 'false' : 'true');
   },
 
   setupPWA() {
