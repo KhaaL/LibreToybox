@@ -5,7 +5,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Child Sudoku</title>
-  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🧸</text></svg>" />
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🪁</text></svg>" />
   <link rel="manifest" href="../manifest.webmanifest" />
   <meta name="theme-color" content="#DE7F66" />
   <style>
@@ -53,6 +53,7 @@
     .logo { display: flex; align-items: center; }
     .top-btns { display: flex; gap: 8px; }
     .top-btn {
+      position: relative;
       background: #fff;
       border: 2px solid var(--border);
       border-radius: 12px;
@@ -71,6 +72,12 @@
       color: inherit;
     }
     .top-btn:active { transform: translateY(2px); box-shadow: 0 1px 0 #dbe3ef; }
+    /* New Game requires a deliberate hold (not a quick tap) so an accidental
+       tap can't silently wipe the board — same pie-wedge mechanic as the
+       per-cell .press-progress delete gesture below, just retargeted onto
+       this button. */
+    .hold-progress { position: absolute; inset: 5px; border-radius: 50%; pointer-events: none; opacity: 0; transition: opacity .1s; }
+    .top-btn.holding .hold-progress { opacity: 1; }
 
     main { width: 100%; max-width: 420px; padding: 8px 16px 18px; display: flex; flex-direction: column; align-items: center; gap: 16px; }
 
@@ -300,7 +307,7 @@
       </div>
     </div>
     <div class="top-btns">
-      <button class="top-btn" id="new-game" aria-label="New Game">🔄</button>
+      <button class="top-btn" id="new-game" aria-label="New Game">🔄<span class="hold-progress" aria-hidden="true"></span></button>
       <button class="top-btn" id="settings-btn" aria-label="Settings">⚙️</button>
     </div>
   </header>
@@ -440,7 +447,7 @@
       },
 
       bindEvents() {
-        this.newGameBtn.addEventListener('click', () => this.newGame());
+        this.bindNewGameHold();
         this.playAgainBtn.addEventListener('click', () => this.newGame());
         this.settingsBtn.addEventListener('click', () => this.openSettings());
         this.closeSettingsBtn.addEventListener('click', () => this.closeSettings());
@@ -532,6 +539,60 @@
           if (!cell) return;
           e.preventDefault();
           this.activateCell(parseInt(cell.dataset.r, 10), parseInt(cell.dataset.c, 10));
+        });
+      },
+
+      // New Game requires a deliberate hold (not a quick tap) so an
+      // accidental tap can't silently wipe the board — same pie-wedge
+      // mechanic as the per-cell long-press above, retargeted onto this
+      // button. A quick tap/keypress does nothing; only a sustained
+      // HOLD_MS hold fires newGame().
+      bindNewGameHold() {
+        const HOLD_MS = 500;
+        const btn = this.newGameBtn;
+        const ring = btn.querySelector('.hold-progress');
+        let timer = null, raf = null, startTime = null, startPt = null, active = false;
+
+        const tick = () => {
+          const pct = Math.min(100, ((performance.now() - startTime) / HOLD_MS) * 100);
+          ring.style.background = `conic-gradient(rgba(222,127,102,0.85) ${pct}%, transparent ${pct}%)`;
+          if (pct < 100) raf = requestAnimationFrame(tick);
+        };
+        const start = () => {
+          if (active) return;
+          active = true;
+          startTime = performance.now();
+          btn.classList.add('holding');
+          tick();
+          timer = setTimeout(() => {
+            active = false;
+            btn.classList.remove('holding');
+            if (navigator.vibrate) navigator.vibrate(40);
+            this.newGame();
+          }, HOLD_MS);
+        };
+        const cancel = () => {
+          if (!active) return;
+          active = false;
+          clearTimeout(timer);
+          if (raf) cancelAnimationFrame(raf);
+          btn.classList.remove('holding');
+          ring.style.background = '';
+        };
+
+        btn.addEventListener('pointerdown', (e) => { startPt = { x: e.clientX, y: e.clientY }; start(); });
+        btn.addEventListener('pointermove', (e) => {
+          if (!active || !startPt) return;
+          if (Math.hypot(e.clientX - startPt.x, e.clientY - startPt.y) > 10) cancel();
+        });
+        btn.addEventListener('pointerup', cancel);
+        btn.addEventListener('pointercancel', cancel);
+        btn.addEventListener('pointerleave', cancel);
+        btn.addEventListener('keydown', (e) => {
+          if ((e.key === 'Enter' || e.key === ' ') && !e.repeat) { e.preventDefault(); start(); }
+        });
+        btn.addEventListener('keyup', (e) => {
+          if (e.key === 'Enter' || e.key === ' ') cancel();
         });
       },
 
