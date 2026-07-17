@@ -11,6 +11,7 @@ Completed items live in `done.md`.
 
 - **Feat: add an animated tutorial**.
 - **Long-press to end turn** — the "Done" control that advances to the next section/player should require a long press instead of a single tap, to guard against an accidental tap ending a turn early.
+- **Bug: top ~3px of the last (3rd) section can't be painted** — the very top strip of the final section appears to reject strokes, unlike the same strip in earlier sections. Worth checking `PEEK_PX` and the per-section `ctx.rect()`/`ctx.clip()` math in `redrawCanvas()`, since that's what carves each section's drawable band — not yet investigated further.
 
 ## All games
 
@@ -33,9 +34,9 @@ Completed items live in `done.md`.
 
 ## Emoji Paint (`emoji-paint/index.html`)
 
+- **Feat: save and share the painting as a link (high) — next up**. The link must be **self-contained** — the painting's full state encoded into the URL itself (e.g. a compressed/base64 query param or fragment), no server round-trip, keeping with the project's zero-backend/offline-first/no-tracking rules — and **short if at all possible**. Note the tension: a genuinely short URL normally means a third-party shortening *service*, which conflicts with those same rules, so this needs the same kind of scoping conversation the "screen timer" bullet (under "All games" above) already calls for before implementation.
 - **Feat: add an animated tutorial**.
 - **Bug: drag-to-trash stops at the screen edge (low)** — dragging a stamp toward `#trash-btn` "stops" the emoji once the pointer reaches the edge of the screen, instead of letting the drag continue on to the trash can.
-- **Feat: save and share board state as a link (high)** — ability to save the current painting's state and share it with others via a link.
 
 ## Odd One Out (`odd-one-out/index.html`)
 
