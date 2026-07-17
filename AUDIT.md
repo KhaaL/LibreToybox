@@ -23,6 +23,14 @@ Full audit of LibreToybox: every file was reviewed and cross-checked against
 > **fixed**. The same pass unified the color system across the hub and
 > all four games — now codified as design principle 11 ("One Color
 > System Across the Toybox"). Still open: **B4** — tracked in `plan.md`.
+>
+> **Update (2026-07-17):** **B4 is fixed** — Sudoku's settings and win
+> overlays both carry `role="dialog" aria-modal="true"` (this had actually
+> landed earlier, in the accessibility pass that also added modal focus
+> management, but `plan.md`/this status banner were never updated to match —
+> pure doc drift, not a re-fix). The rule is now also enforced in CI:
+> `scripts/check-design.js` fails the build if any `.overlay` element is
+> missing `role="dialog"`.
 
 **Severity scale**
 | Level | Meaning |

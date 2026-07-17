@@ -5,8 +5,6 @@ Completed items live in `done.md`.
 ## Child Sudoku (`sudoku-for-minis/index.html`)
 
 - **Feat: add an animated tutorial**.
-- **Dialog semantics for overlays** (AUDIT B4): add `role="dialog" aria-modal="true"` to the settings and win overlays, matching Exquisite Corpse's settings overlay.
-- **Visually segment the board into its box regions** — the board should visually group its box regions (2×2 at 4×4, 2×3 at 6×6, 2×4 at 8×8) so children can see at a glance which tiles belong together, beyond the current thin box-border lines.
 
 ## Exquisite Corpse (`exquisite-corpse/index.html`)
 
