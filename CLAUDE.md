@@ -178,6 +178,14 @@ All decisions must follow `design_principles.txt`. Key ones:
 - **`gameId` generation guard**: incremented in `newGame()`; the post-correct advance `setTimeout` captures `gen` and bails if it changed, so a mid-pause 🔄 or size switch can't advance or celebrate onto a freshly dealt board (same pattern as Memory/Shape Fit).
 - Shares the standard scaffolding with the other games: header (🏠 back + logo / 🔄 + ⚙️), settings/win overlays, `playTone()`/`audioSwoosh()`/`audioWin()`/`audioEmoji()` audio kit, and the `setupPWA()` + sibling `sw.js` boilerplate. Color identity is the sunny yellow/gold background family.
 
+## Hub — Architecture Notes
+
+`index.html` — the game hub/landing page. Plain static markup, no game object and no `init()` (unlike every other page in the repo).
+
+- **PWA boilerplate is a self-contained IIFE**, not a `setupPWA()` method — there's no game object to hang one off of. It's a small, direct adaptation of the exact same pattern every game uses: build the manifest object, `Blob`+`URL.createObjectURL` it onto the placeholder `<link rel="manifest" id="manifest-link">`, then register the sibling `sw.js` only when `location.protocol.startsWith('http')` (browsers reject blob:/data: worker scripts, and `file://` has no service-worker support anyway). Theme-color (`#9480DC`) reuses the hub's own existing hover/focus accent (`a.card:hover`/`:focus-visible`), and the manifest icon (`makeIcon()`) reuses the hub's own 🪁 favicon glyph on a `--bg1`-cream (`#FFF8E7`) rounded background, matching how every game's icon uses that game's own background family.
+- **`sw.js` lives at the repo root**, scoped to `/`. This can't shadow any individual game's own service worker: the browser always resolves to the *longest matching scope* for a given page, so navigating into e.g. `memory/` is still controlled by `memory/sw.js`, not the hub's root-scoped one — both registrations simply coexist.
+- `scripts/check-design.js` (PWA scaffolding + dialog-semantics guard) now runs over the hub too (`package.json`'s `check:design` script), since the hub carries the same PWA scaffolding as every game — it just has no modal overlays, so that half of the check is a no-op here.
+
 ## Pending Work
 
 See `plan.md` — it is the **single source of truth** for open bugs and features. This file intentionally does not duplicate its contents.

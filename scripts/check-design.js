@@ -2,8 +2,9 @@
 // Guards the conventions that have historically drifted across the games (see
 // AUDIT.md / the 2026 review): every game must ship the PWA scaffolding and
 // mark its modal overlays as dialogs. Dependency-free, in the spirit of
-// check-links.js. Run over the game files (*/index.html) — NOT the hub, which
-// deliberately has no PWA yet (tracked in plan.md).
+// check-links.js. Run over every page (index.html plus */index.html) — the
+// hub carries the same PWA scaffolding as each game (it just has no modal
+// overlays, so the dialog-semantics loop below is a no-op for it).
 'use strict';
 
 const fs = require('fs');
