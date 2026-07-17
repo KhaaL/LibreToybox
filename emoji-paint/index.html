@@ -164,6 +164,37 @@
        accent, so "this will delete" reads as a deliberate, different state. */
     #trash-btn.active { border-color: #E53935; background: #FFEBEE; }
 
+    /* Locked (read-only) view for an opened shared-painting link: the whole
+       tool row (stamp/trash/save/share) is replaced by a single Edit
+       affordance until the child taps it — no partial-editable toolbar. */
+    #toolbar.locked #tool-row { display: none; }
+    #locked-banner {
+      display: none;
+      align-items: center;
+      justify-content: center;
+      gap: 12px;
+    }
+    #toolbar.locked #locked-banner { display: flex; }
+    #locked-label { font-size: 1rem; opacity: 0.75; }
+    #edit-btn {
+      height: 64px;
+      padding: 0 22px;
+      border: 3px solid var(--border);
+      border-radius: 12px;
+      background: #fff;
+      font-family: inherit;
+      font-size: 1.1rem;
+      font-weight: 600;
+      color: inherit;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      box-shadow: 0 3px 0 var(--shadow);
+      transition: transform .05s;
+    }
+    #edit-btn:active { transform: translateY(2px); }
+
     .overlay {
       position: fixed;
       inset: 0;
@@ -311,6 +342,11 @@
       <button class="stamp-btn" id="stamp-btn" aria-label="Choose emoji stamp">🌟</button>
       <button class="action-btn" id="trash-btn" aria-label="Trash">🗑️</button>
       <button class="action-btn" id="save-btn" aria-label="Save painting">💾</button>
+      <button class="action-btn" id="share-btn" aria-label="Share painting link">🔗</button>
+    </div>
+    <div id="locked-banner">
+      <span id="locked-label">Shared painting</span>
+      <button id="edit-btn" aria-label="Edit this painting">✏️ Edit</button>
     </div>
   </div>
 </main>
@@ -337,6 +373,114 @@ const EMOJI_CATEGORIES = [
   { label: '🎁 Objects', emojis: '⌚ 📱 💻 📷 📺 🔦 🕯️ 💡 🔑 🔒 📚 📖 ✏️ 🖍️ 🎀 👑 💍 💎 🧸 🪀 🪁 🎁 🧩 🪄 🔋 🛍️ 👓 🎒 🧦 👟 👗 👒 🧢 🌂 ⏰ 🧴'.split(' ') },
   { label: '❤️ Hearts & Symbols', emojis: '❤️ 🧡 💛 💚 💙 💜 🖤 🤍 🤎 💔 💕 💞 💓 💗 💖 💘 💝 💠 ☮️ ♥️ 💯 🔔 🔯 🕉️'.split(' ') }
 ];
+
+// --- Share-link wire format ----------------------------------------------
+// A frozen, append-only snapshot of every emoji ever shareable, independent
+// of EMOJI_CATEGORIES above. Share links reference emoji by INDEX into this
+// list, so EMOJI_CATEGORIES (the picker) is free to be reordered/regrouped
+// later without corrupting old links. NEVER reorder, insert into the middle
+// of, or delete from this list — only append new emoji at the end.
+const EMOJI_MASTER = (
+  '😀 😃 😄 😁 😆 😅 🤣 😂 🙂 🙃 😉 😊 😇 🥰 😍 🤩 😘 😋 😜 🤪 🤑 🤗 🤔 😐 😏 🙄 😴 🤤 😷 🤒 🤢 🥵 🥶 😵 🤯 🥳 😎 🤓 🧐 😢 😭 😡 👻 ' +
+  '🐶 🐱 🐭 🐹 🐰 🦊 🐻 🐼 🐨 🐯 🦁 🐮 🐷 🐸 🐵 🙈 🙉 🙊 🐔 🐧 🐦 🐤 🐥 🦆 🦉 🦇 🐺 🐗 🐴 🦄 🐝 🐛 🦋 🐌 🐞 🐢 🐍 🦎 🐙 🦑 🦀 🐠 🐟 🐬 🐳 🐋 🦈 🐊 🐅 🐆 🦓 🐘 🦒 🐫 ' +
+  '🍏 🍎 🍊 🍋 🍌 🍉 🍇 🍓 🍒 🍑 🥭 🍍 🥥 🥝 🍅 🥑 🌽 🥕 🥐 🍞 🧀 🥚 🍳 🥞 🥓 🍗 🌭 🍔 🍟 🍕 🌮 🌯 🥗 🍝 🍜 🍣 🍱 🍙 🍦 🍩 🍪 🎂 🍰 🍫 🍭 🍬 🍿 🍯 ' +
+  '🌸 🌹 🌻 🌼 🌷 🌱 🌲 🌳 🌴 🌵 🍀 🍁 🍂 🍃 🍄 🌊 💧 ☔ 🌈 ☀️ ⛅ ☁️ 🌧️ ⛈️ ❄️ ☃️ 🌙 🌟 ⭐ 🌠 ⚡ 🔥 ✨ 🌕 🌛 🐚 🪐 ☄️ 🌫️ 💦 ' +
+  '⚽ 🏀 🏈 ⚾ 🎾 🏐 🏓 🏸 🏒 🥊 🥋 🎣 🏹 🎿 🏂 🛹 🎨 🎭 🎪 🎬 🎤 🎧 🎼 🎹 🥁 🎸 🎻 🎲 🎯 🎳 🎮 🎈 🎉 🎊 🏆 🥇 ' +
+  '🚗 🚕 🚙 🚌 🚓 🚑 🚒 🚚 🏍️ 🚲 🛴 🚂 🚆 ✈️ 🚀 🛸 🚁 ⛵ 🚤 🚢 ⚓ 🗺️ 🗽 🏰 🎡 🎢 🎠 ⛲ 🏖️ 🏝️ 🌋 🏔️ ⛰️ 🏠 🏡 🏫 🏥 🕌 🌉 🚦 ' +
+  '⌚ 📱 💻 📷 📺 🔦 🕯️ 💡 🔑 🔒 📚 📖 ✏️ 🖍️ 🎀 👑 💍 💎 🧸 🪀 🪁 🎁 🧩 🪄 🔋 🛍️ 👓 🎒 🧦 👟 👗 👒 🧢 🌂 ⏰ 🧴 ' +
+  '❤️ 🧡 💛 💚 💙 💜 🖤 🤍 🤎 💔 💕 💞 💓 💗 💖 💘 💝 💠 ☮️ ♥️ 💯 🔔 🔯 🕉️'
+).split(' ');
+const EMOJI_INDEX = new Map(EMOJI_MASTER.map((e, i) => [e, i]));
+
+// Non-fatal dev check: catches an emoji added to the picker but never
+// appended to EMOJI_MASTER, which would silently make it un-shareable.
+EMOJI_CATEGORIES.forEach((cat) => cat.emojis.forEach((e) => {
+  if (!EMOJI_INDEX.has(e)) console.warn('[emoji-paint] Emoji missing from EMOJI_MASTER (won\'t survive a share link):', e);
+}));
+
+// Board state packed into location.hash: a version byte, then per stamp a
+// 12-bit EMOJI_MASTER index + 12-bit x + 12-bit y (quantized 0..4095),
+// bit-packed MSB-first and base64url-encoded. The HASH fragment (not a query
+// string) is used deliberately — it never reaches the network, so it never
+// hits GitHub Pages logs and never becomes a distinct service-worker cache
+// key (confirmed against sw.js's fetch handler).
+const WIRE_VERSION = 1;
+const INDEX_BITS = 12;
+const COORD_BITS = 12;
+const COORD_MAX = 4095;
+const STAMP_BITS = INDEX_BITS + COORD_BITS * 2;
+const SHARE_WARN_STAMPS = 250; // soft threshold — sharing still works past this, the link just gets long
+
+function b64urlFromBytes(bytes) {
+  let bin = '';
+  for (const b of bytes) bin += String.fromCharCode(b);
+  return btoa(bin).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+
+function bytesFromB64url(str) {
+  const bin = atob(str.replace(/-/g, '+').replace(/_/g, '/')); // throws on malformed input
+  const out = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+  return out;
+}
+
+function encodeBoard(stamps) {
+  const bits = [];
+  const push = (val, n) => { for (let i = n - 1; i >= 0; i--) bits.push((val >> i) & 1); };
+  stamps.forEach((s) => {
+    const idx = EMOJI_INDEX.get(s.emoji);
+    if (idx === undefined) return; // never emit an unknown emoji
+    const qx = Math.max(0, Math.min(COORD_MAX, Math.round(s.x * COORD_MAX)));
+    const qy = Math.max(0, Math.min(COORD_MAX, Math.round(s.y * COORD_MAX)));
+    push(idx, INDEX_BITS); push(qx, COORD_BITS); push(qy, COORD_BITS);
+  });
+  const bytes = [WIRE_VERSION];
+  for (let i = 0; i < bits.length; i += 8) {
+    let byte = 0;
+    for (let j = 0; j < 8; j++) byte = (byte << 1) | (bits[i + j] || 0);
+    bytes.push(byte);
+  }
+  return b64urlFromBytes(Uint8Array.from(bytes));
+}
+
+// Fully defensive: any malformed, truncated, or tampered payload decodes to
+// [] (blank board) rather than throwing. Unknown emoji indices are dropped
+// but decoding continues; coordinates are clamped to 0..1.
+function decodeBoard(str) {
+  try {
+    if (!str) return [];
+    const bytes = bytesFromB64url(str);
+    if (bytes.length < 1 || bytes[0] !== WIRE_VERSION) return [];
+    let bitPos = 0;
+    const total = (bytes.length - 1) * 8;
+    const read = (n) => {
+      let v = 0;
+      for (let i = 0; i < n; i++) {
+        const p = bitPos + i;
+        const byte = bytes[1 + (p >> 3)];
+        v = (v << 1) | ((byte >> (7 - (p & 7))) & 1);
+      }
+      bitPos += n;
+      return v;
+    };
+    const out = [];
+    while (total - bitPos >= STAMP_BITS) {
+      const idx = read(INDEX_BITS);
+      const qx = read(COORD_BITS);
+      const qy = read(COORD_BITS);
+      const emoji = EMOJI_MASTER[idx];
+      if (emoji === undefined) continue; // drop unknown index, keep decoding
+      out.push({
+        emoji,
+        x: Math.min(1, Math.max(0, qx / COORD_MAX)),
+        y: Math.min(1, Math.max(0, qy / COORD_MAX))
+      });
+    }
+    return out;
+  } catch (e) {
+    return [];
+  }
+}
 
 // --- Shared modal a11y helper (copied into each game — the suite ships no
 // bundler). Moves focus into an opened overlay, traps Tab within it, closes on
@@ -394,13 +538,20 @@ const App = {
   recents: [],        // most-recently-picked stamps, newest first, deduped
   RECENTS_MAX: 8,
 
+  locked: false,       // true while viewing a shared-link board read-only, before Edit is tapped
+  shareFlashTimer: null,
+
   init() {
     this.cacheDOM();
     this.buildPicker();
     this.bindEvents();
     this.setupPWA();
     // defer so layout is complete before we measure canvas dimensions
-    requestAnimationFrame(() => this.newGame());
+    requestAnimationFrame(() => {
+      const shared = location.hash.slice(1); // capture before newGame() would otherwise leave it
+      this.newGame({ keepHash: true });      // sizes canvas, clears state, keeps the hash for now
+      if (shared) this.loadSharedBoard(shared);
+    });
   },
 
   cacheDOM() {
@@ -415,6 +566,9 @@ const App = {
     this.newGameBtn = document.getElementById('new-game');
     this.stampBtn = document.getElementById('stamp-btn');
     this.trashBtn = document.getElementById('trash-btn');
+    this.shareBtn = document.getElementById('share-btn');
+    this.toolbar = document.getElementById('toolbar');
+    this.editBtn = document.getElementById('edit-btn');
     this.pickerOverlay = document.getElementById('picker-overlay');
     this.closePickerBtn = document.getElementById('close-picker');
     this.pickerNav = document.getElementById('picker-nav');
@@ -530,6 +684,8 @@ const App = {
 
     this.trashBtn.addEventListener('click', () => this.toggleTrash());
     document.getElementById('save-btn').addEventListener('click', () => this.downloadPainting());
+    this.shareBtn.addEventListener('click', () => this.shareBoard());
+    this.editBtn.addEventListener('click', () => this.exitLockedView());
 
     this.canvas.addEventListener('pointerdown', (e) => this.onPointerDown(e));
     this.canvas.addEventListener('pointermove', (e) => this.onPointerMove(e));
@@ -568,19 +724,55 @@ const App = {
     this.canvas.style.height = h + 'px';
   },
 
-  newGame() {
+  newGame({ keepHash = false } = {}) {
     this.stamps = [];
     this.placing = null;
     if (this.lifting) { cancelAnimationFrame(this.lifting.raf); this.lifting = null; }
     this.erasingStamps.clear();
     this.trashArmed = false;
     this.updateTrashBtnVisual();
+    this.setLocked(false);
     this.syncCanvasSize();
     this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+    // Keep the hash across the boot-time call (a shared link is still loaded
+    // right after this returns) — but a real 🔄 tap always clears it, so a
+    // later plain reload doesn't reload the old shared board.
+    if (!keepHash) this.clearShareHash();
     this.statusEl.textContent = 'New painting started.';
   },
 
+  setLocked(locked) {
+    this.locked = locked;
+    this.toolbar.classList.toggle('locked', locked);
+  },
+
+  clearShareHash() {
+    if (location.hash) history.replaceState(null, '', location.pathname + location.search);
+  },
+
+  loadSharedBoard(payload) {
+    const loaded = decodeBoard(payload);
+    if (!loaded.length) return; // malformed/empty → normal blank start, no error shown
+    this.stamps = loaded;
+    this.redrawCanvas();
+    this.audioStamp();
+    this.enterLockedView();
+  },
+
+  enterLockedView() {
+    this.setLocked(true);
+    this.statusEl.textContent = 'Shared painting loaded — tap Edit to draw.';
+  },
+
+  exitLockedView() {
+    this.setLocked(false);
+    this.clearShareHash();
+    this.audioClick();
+    this.statusEl.textContent = 'You can draw now!';
+  },
+
   onPointerDown(e) {
+    if (this.locked) return; // read-only until Edit is tapped
     e.preventDefault();
     const pt = this.getCanvasPoint(e);
     this.canvas.setPointerCapture(e.pointerId);
@@ -811,6 +1003,54 @@ const App = {
     a.download = 'emoji-paint.png';
     a.click();
     this.statusEl.textContent = 'Painting saved.';
+  },
+
+  shareBoard() {
+    if (this.stamps.length === 0) {
+      this.audioSwoosh();
+      this.statusEl.textContent = 'Add a stamp before sharing.';
+      return;
+    }
+    const payload = encodeBoard(this.stamps);
+    // location.origin is "null" on file:// — build from href instead, which
+    // works everywhere and already carries the right path.
+    const url = location.href.replace(/#.*$/, '') + '#' + payload;
+    history.replaceState(null, '', url); // reflect the link in the address bar, no reload
+    const bigBoard = this.stamps.length > SHARE_WARN_STAMPS;
+    const sharedMsg = bigBoard ? 'Shared! (Big painting — the link may be long.)' : 'Shared!';
+    const copiedMsg = bigBoard ? 'Link copied! (Big painting — the link may be long.)' : 'Link copied!';
+
+    if (navigator.share) {
+      // Must be called synchronously within the click handler (transient
+      // activation) — no awaiting anything before this.
+      navigator.share({ title: 'Emoji Paint', url })
+        .then(() => { this.flashShare('✅'); this.statusEl.textContent = sharedMsg; })
+        .catch(() => {}); // user cancelled — not an error
+      return;
+    }
+    if (navigator.clipboard && window.isSecureContext) {
+      navigator.clipboard.writeText(url)
+        .then(() => { this.audioClick(); this.flashShare('✅'); this.statusEl.textContent = copiedMsg; })
+        .catch(() => this.promptCopy(url));
+      return;
+    }
+    this.promptCopy(url);
+  },
+
+  // Last-resort fallback (e.g. file://, or no clipboard permission): the link
+  // is already in the address bar via history.replaceState above.
+  promptCopy(url) {
+    this.flashShare('🔗');
+    this.statusEl.textContent = 'Copy the link from the address bar.';
+    try { window.prompt('Copy this link:', url); } catch (e) {}
+  },
+
+  // Kid-friendly confirmation: swap the share button's glyph briefly instead
+  // of a text toast/alert.
+  flashShare(glyph) {
+    clearTimeout(this.shareFlashTimer);
+    this.shareBtn.textContent = glyph;
+    this.shareFlashTimer = setTimeout(() => { this.shareBtn.textContent = '🔗'; }, 1100);
   },
 
   openPicker() {
