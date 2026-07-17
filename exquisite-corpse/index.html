@@ -60,7 +60,6 @@
 
     main {
       width: 100%;
-      max-width: 480px;
       flex: 1;
       padding: 2px 12px 10px;
       display: flex;
@@ -83,18 +82,26 @@
       min-height: 48px;
     }
 
+    /* The area fills all leftover vertical space and centres the paper; the
+       paper (#canvas-wrap) is sized in JS to the largest A4 rectangle that
+       fits — portrait in Tall mode, landscape in Wide — so it uses as much
+       of a tablet's screen as possible without ever distorting. */
+    #canvas-area {
+      flex: 1;
+      min-height: 0;
+      width: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
     #canvas-wrap {
       position: relative;
-      width: 100%;
-      min-height: 0;
       background: #fff;
       border: 3px solid var(--border);
       border-radius: 16px;
       box-shadow: 0 8px 24px rgba(0,0,0,0.13);
       overflow: hidden;
     }
-    #canvas-wrap.mode-tall { flex: 1; aspect-ratio: auto; }
-    #canvas-wrap.mode-wide { flex: none; aspect-ratio: 4/3; }
 
     #drawing-canvas {
       position: absolute;
@@ -148,8 +155,13 @@
       display: none;
     }
 
+    /* On a wide tablet the A4 paper is height-limited and centred, so keep the
+       controls grouped to a comfortable width instead of spreading them across
+       the whole viewport. */
     #toolbar {
       width: 100%;
+      max-width: 560px;
+      align-self: center;
       display: flex;
       flex-direction: column;
       gap: 8px;
@@ -222,6 +234,8 @@
 
     #done-btn {
       width: 100%;
+      max-width: 560px;
+      align-self: center;
       height: 56px;
       border: none;
       border-radius: 16px;
@@ -252,6 +266,8 @@
 
     #win-actions {
       width: 100%;
+      max-width: 560px;
+      align-self: center;
       display: none;
       gap: 12px;
       flex-shrink: 0;
@@ -331,13 +347,15 @@
       <button class="top-btn" id="settings-btn" aria-label="Settings">⚙️</button>
     </div>
   </div>
-  <div id="canvas-wrap">
-    <canvas id="drawing-canvas"></canvas>
-    <div id="peek-overlay"></div>
-    <div id="fold-guide"></div>
-    <div id="next-peek-overlay"></div>
-    <div id="next-fold-guide"></div>
-    <canvas id="reveal-canvas"></canvas>
+  <div id="canvas-area">
+    <div id="canvas-wrap">
+      <canvas id="drawing-canvas"></canvas>
+      <div id="peek-overlay"></div>
+      <div id="fold-guide"></div>
+      <div id="next-peek-overlay"></div>
+      <div id="next-fold-guide"></div>
+      <canvas id="reveal-canvas"></canvas>
+    </div>
   </div>
   <div id="toolbar">
     <div id="color-row"></div>
@@ -447,6 +465,7 @@ const App = {
   cacheDOM() {
     this.canvas = document.getElementById('drawing-canvas');
     this.ctx = this.canvas.getContext('2d');
+    this.canvasArea = document.getElementById('canvas-area');
     this.canvasWrap = document.getElementById('canvas-wrap');
     this.peekOverlay = document.getElementById('peek-overlay');
     this.foldGuide = document.getElementById('fold-guide');
@@ -543,14 +562,11 @@ const App = {
 
     window.addEventListener('resize', () => {
       if (this.won) return;
-      const newW = this.canvasWrap.clientWidth;
-      const newH = this.canvasWrap.clientHeight;
-      const expectedH = newH * this.sections;
-      if (this.canvas.width !== newW || this.canvas.height !== expectedH) {
-        this.canvas.width = newW;
-        this.canvas.height = expectedH;
-        this.canvas.style.width = newW + 'px';
-        this.canvas.style.height = expectedH + 'px';
+      // Only re-size when the fitted A4 dimensions actually change — assigning
+      // canvas.width clears the canvas, so an unchanged resize must be skipped
+      // to avoid a blank paper with no redraw.
+      if (this.canvas.width !== this.computeCanvasSize().w) {
+        this.syncCanvasSize();
         this.redrawCanvas();
         this.updateCanvasOffset(false);
       }
@@ -575,11 +591,27 @@ const App = {
   toCanvasY(yn) { return yn * this.canvas.height; },
   toCanvasX(xn) { return xn * this.canvas.width; },
 
+  // Largest A4 rectangle that fits the available area — portrait (Tall mode,
+  // the default) or landscape (Wide mode). Fit width first, fall back to
+  // height so the paper never overflows or distorts.
+  computeCanvasSize() {
+    const availW = this.canvasArea.clientWidth;
+    const availH = this.canvasArea.clientHeight;
+    const ratio = this.canvasMode === 'wide' ? (297 / 210) : (210 / 297); // w / h
+    let w = availW, h = w / ratio;
+    if (h > availH) { h = availH; w = h * ratio; }
+    return { w: Math.floor(w), h: Math.floor(h) };
+  },
+
+  // Size the visible "paper" (#canvas-wrap) to that A4 rectangle so it grows to
+  // use a tablet's screen. The backing canvas is `sections` times taller than
+  // one wrap (all sections live in one canvas that slides vertically).
   syncCanvasSize() {
-    const w = this.canvasWrap.clientWidth;
-    const h = this.canvasWrap.clientHeight;
+    const { w, h } = this.computeCanvasSize();
+    this.canvasWrap.style.width = w + 'px';
+    this.canvasWrap.style.height = h + 'px';
     this.canvas.width = w;
-    this.canvas.height = h * this.sections;  // canvas is sections times taller than wrap
+    this.canvas.height = h * this.sections;
     this.canvas.style.width = w + 'px';
     this.canvas.style.height = (h * this.sections) + 'px';
   },
@@ -607,7 +639,6 @@ const App = {
     this.nextPeekOverlay.style.height = '0px';
     this.nextFoldGuide.style.display = 'none';
 
-    this.applyCanvasMode();
     this.updateCanvasModeToggle();
     this.syncCanvasSize();
     this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
@@ -922,15 +953,9 @@ const App = {
     // as normalized 0..1 coordinates, the same mechanism that already
     // survives a window resize, so resizing the canvas for the new aspect
     // and redrawing is enough — nothing needs to reset.
-    this.applyCanvasMode();
     this.syncCanvasSize();
     this.redrawCanvas();
     this.updateCanvasOffset(false);
-  },
-
-  applyCanvasMode() {
-    this.canvasWrap.classList.toggle('mode-tall', this.canvasMode === 'tall');
-    this.canvasWrap.classList.toggle('mode-wide', this.canvasMode === 'wide');
   },
 
   updateCanvasModeToggle() {
