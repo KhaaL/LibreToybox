@@ -5,7 +5,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Shape Fit</title>
-  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🧸</text></svg>" />
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🪁</text></svg>" />
   <link rel="manifest" href="../manifest.webmanifest" />
   <meta name="theme-color" content="#2FA98C" />
   <style>
@@ -52,6 +52,7 @@
     .logo { display: flex; align-items: center; }
     .top-btns { display: flex; gap: 8px; }
     .top-btn {
+      position: relative;
       background: #fff;
       border: 2px solid var(--border);
       border-radius: 12px;
@@ -70,6 +71,10 @@
       color: inherit;
     }
     .top-btn:active { transform: translateY(2px); box-shadow: 0 1px 0 #cfe3d8; }
+    /* New Game requires a deliberate hold, not a quick tap, so an accidental
+       tap can't silently wipe the board. */
+    .hold-progress { position: absolute; inset: 5px; border-radius: 50%; pointer-events: none; opacity: 0; transition: opacity .1s; }
+    .top-btn.holding .hold-progress { opacity: 1; }
 
     main { width: 100%; max-width: 420px; padding: 8px 16px 18px; display: flex; flex-direction: column; align-items: center; gap: 14px; }
 
@@ -202,7 +207,7 @@
       min-width: 260px;
     }
     .settings-card h2 { margin: 0; font-size: 2rem; }
-    .size-row { display: flex; flex-wrap: wrap; justify-content: center; gap: 18px; max-width: 162px; }
+    .size-row { display: flex; flex-wrap: wrap; justify-content: center; gap: 18px; max-width: 252px; }
     .size-btn {
       width: 72px;
       height: 72px;
@@ -244,7 +249,7 @@
       </div>
     </div>
     <div class="top-btns">
-      <button class="top-btn" id="new-game" aria-label="New Game">🔄</button>
+      <button class="top-btn" id="new-game" aria-label="New Game">🔄<span class="hold-progress" aria-hidden="true"></span></button>
       <button class="top-btn" id="settings-btn" aria-label="Settings">⚙️</button>
     </div>
   </header>
@@ -272,7 +277,6 @@
         <button class="size-btn" data-size="tiny" role="radio" aria-label="Tiny board, 4 by 4">🐣<small>4×4</small></button>
         <button class="size-btn" data-size="mini" role="radio" aria-label="Mini board, 5 by 5">🐤<small>5×5</small></button>
         <button class="size-btn" data-size="small" role="radio" aria-label="Small board, 6 by 6">🐥<small>6×6</small></button>
-        <button class="size-btn" data-size="large" role="radio" aria-label="Big board, 7 by 7">🦁<small>7×7</small></button>
       </div>
       <button class="top-btn" id="close-settings" aria-label="Close">✕</button>
     </div>
@@ -284,8 +288,7 @@
       sizes: {
         tiny:  { n: 4, minPiece: 3, maxPiece: 4 },
         mini:  { n: 5, minPiece: 3, maxPiece: 5 },
-        small: { n: 6, minPiece: 3, maxPiece: 5 },
-        large: { n: 7, minPiece: 3, maxPiece: 6 }
+        small: { n: 6, minPiece: 3, maxPiece: 5 }
       },
       trayScale: 0.5,
       liftPx: 56,        // grabbed point rides this far above the finger (touch/pen only)
@@ -383,7 +386,7 @@
       },
 
       bindEvents() {
-        this.newGameBtn.addEventListener('click', () => this.newGame(true));
+        this.bindNewGameHold();
         this.playAgainBtn.addEventListener('click', () => this.newGame(true));
         this.settingsBtn.addEventListener('click', () => this.openSettings());
         this.closeSettingsBtn.addEventListener('click', () => this.closeSettings());
@@ -396,6 +399,58 @@
         window.addEventListener('resize', () => {
           this.setCellSize();
           if (this.kb) this.positionKb();
+        });
+      },
+
+      // New Game requires a deliberate hold, not a quick tap, so an
+      // accidental tap can't silently wipe the board. A quick tap/keypress
+      // does nothing; only a sustained HOLD_MS hold re-deals.
+      bindNewGameHold() {
+        const HOLD_MS = 500;
+        const btn = this.newGameBtn;
+        const ring = btn.querySelector('.hold-progress');
+        let timer = null, raf = null, startTime = null, startPt = null, active = false;
+
+        const tick = () => {
+          const pct = Math.min(100, ((performance.now() - startTime) / HOLD_MS) * 100);
+          ring.style.background = `conic-gradient(rgba(47,169,140,0.85) ${pct}%, transparent ${pct}%)`;
+          if (pct < 100) raf = requestAnimationFrame(tick);
+        };
+        const start = () => {
+          if (active) return;
+          active = true;
+          startTime = performance.now();
+          btn.classList.add('holding');
+          tick();
+          timer = setTimeout(() => {
+            active = false;
+            btn.classList.remove('holding');
+            if (navigator.vibrate) navigator.vibrate(40);
+            this.newGame(true);
+          }, HOLD_MS);
+        };
+        const cancel = () => {
+          if (!active) return;
+          active = false;
+          clearTimeout(timer);
+          if (raf) cancelAnimationFrame(raf);
+          btn.classList.remove('holding');
+          ring.style.background = '';
+        };
+
+        btn.addEventListener('pointerdown', (e) => { startPt = { x: e.clientX, y: e.clientY }; start(); });
+        btn.addEventListener('pointermove', (e) => {
+          if (!active || !startPt) return;
+          if (Math.hypot(e.clientX - startPt.x, e.clientY - startPt.y) > 10) cancel();
+        });
+        btn.addEventListener('pointerup', cancel);
+        btn.addEventListener('pointercancel', cancel);
+        btn.addEventListener('pointerleave', cancel);
+        btn.addEventListener('keydown', (e) => {
+          if ((e.key === 'Enter' || e.key === ' ') && !e.repeat) { e.preventDefault(); start(); }
+        });
+        btn.addEventListener('keyup', (e) => {
+          if (e.key === 'Enter' || e.key === ' ') cancel();
         });
       },
 

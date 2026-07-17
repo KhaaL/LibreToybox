@@ -5,7 +5,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Emoji Paint</title>
-  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🌟</text></svg>" />
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🪁</text></svg>" />
   <link rel="manifest" href="../manifest.webmanifest" />
   <meta name="theme-color" content="#DE7590" />
   <style>
@@ -49,6 +49,7 @@
     .logo { display: flex; align-items: center; }
     .top-btns { display: flex; gap: 8px; }
     .top-btn {
+      position: relative;
       background: #fff;
       border: 2px solid var(--border);
       border-radius: 12px;
@@ -67,6 +68,10 @@
       color: inherit;
     }
     .top-btn:active { transform: translateY(2px); box-shadow: 0 1px 0 var(--shadow); }
+    /* New Painting requires a deliberate hold, not a quick tap, so an
+       accidental tap can't silently wipe the canvas. */
+    .hold-progress { position: absolute; inset: 5px; border-radius: 50%; pointer-events: none; opacity: 0; transition: opacity .1s; }
+    .top-btn.holding .hold-progress { opacity: 1; }
 
     main {
       width: 100%;
@@ -328,7 +333,7 @@
     </div>
   </div>
   <div class="top-btns">
-    <button class="top-btn" id="new-game" aria-label="New Painting">🔄</button>
+    <button class="top-btn" id="new-game" aria-label="New Painting">🔄<span class="hold-progress" aria-hidden="true"></span></button>
   </div>
 </header>
 
@@ -672,7 +677,7 @@ const App = {
   },
 
   bindEvents() {
-    this.newGameBtn.addEventListener('click', () => this.newGame());
+    this.bindNewGameHold();
 
     this.stampBtn.addEventListener('click', () => this.openPicker());
     this.closePickerBtn.addEventListener('click', () => this.closePicker());
@@ -700,6 +705,58 @@ const App = {
         this.syncCanvasSize();
         this.redrawCanvas();
       }
+    });
+  },
+
+  // New Painting requires a deliberate hold, not a quick tap, so an
+  // accidental tap can't silently wipe the canvas. A quick tap/keypress
+  // does nothing; only a sustained HOLD_MS hold starts a fresh painting.
+  bindNewGameHold() {
+    const HOLD_MS = 500;
+    const btn = this.newGameBtn;
+    const ring = btn.querySelector('.hold-progress');
+    let timer = null, raf = null, startTime = null, startPt = null, active = false;
+
+    const tick = () => {
+      const pct = Math.min(100, ((performance.now() - startTime) / HOLD_MS) * 100);
+      ring.style.background = `conic-gradient(rgba(222,117,144,0.85) ${pct}%, transparent ${pct}%)`;
+      if (pct < 100) raf = requestAnimationFrame(tick);
+    };
+    const start = () => {
+      if (active) return;
+      active = true;
+      startTime = performance.now();
+      btn.classList.add('holding');
+      tick();
+      timer = setTimeout(() => {
+        active = false;
+        btn.classList.remove('holding');
+        if (navigator.vibrate) navigator.vibrate(40);
+        this.newGame();
+      }, HOLD_MS);
+    };
+    const cancel = () => {
+      if (!active) return;
+      active = false;
+      clearTimeout(timer);
+      if (raf) cancelAnimationFrame(raf);
+      btn.classList.remove('holding');
+      ring.style.background = '';
+    };
+
+    btn.addEventListener('pointerdown', (e) => { startPt = { x: e.clientX, y: e.clientY }; start(); });
+    btn.addEventListener('pointermove', (e) => {
+      if (!active || !startPt) return;
+      if (Math.hypot(e.clientX - startPt.x, e.clientY - startPt.y) > 10) cancel();
+    });
+    btn.addEventListener('pointerup', cancel);
+    btn.addEventListener('pointercancel', cancel);
+    btn.addEventListener('pointerleave', cancel);
+    btn.addEventListener('keydown', (e) => {
+      if ((e.key === 'Enter' || e.key === ' ') && !e.repeat) { e.preventDefault(); start(); }
+    });
+    btn.addEventListener('keyup', (e) => {
+      if (e.key === 'Enter' || e.key === ' ') cancel();
     });
   },
 

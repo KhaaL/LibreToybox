@@ -12,8 +12,6 @@ Completed items live in `done.md`.
 - **Bug: top ~3px of the last (3rd) section can't be painted** — the very top strip of the final section appears to reject strokes, unlike the same strip in earlier sections. Worth checking `PEEK_PX` and the per-section `ctx.rect()`/`ctx.clip()` math in `redrawCanvas()`, since that's what carves each section's drawable band — not yet investigated further.
 
 ## All games
-- Unified favicon: 🪁
-- **"Reset board" button (long press)** — a way to reset the current game's board/puzzle without going through settings, guarded by a long press so it can't be triggered accidentally.
 - **Feat: screen timer** — a visible, parent-configurable play-time timer to help manage screen time. Needs a scoping conversation before implementation: per-game vs. hub-level, whether it interrupts play or just gently notifies, and how it squares with the no-pressure-mechanics rule already in place for in-game timers/counters (e.g. Memory's deliberate "no timer, no move counter").
 
 ## Repository / Infrastructure
@@ -27,11 +25,9 @@ Completed items live in `done.md`.
 
 - **Feat: add an animated tutorial**.
 - **Feat: rotation hard mode** — v1 deliberately ships without rotation (pieces arrive in their correct orientation, jigsaw-style). A later setting could deal pieces randomly rotated and let a tap on a held piece turn it 90°.
-- Remove 7x7 level 
 
 ## Emoji Paint (`emoji-paint/index.html`)
 
-- **Feat: save and share the painting as a link (high) — next up**. The link must be **self-contained** — the painting's full state encoded into the URL itself (e.g. a compressed/base64 query param or fragment), no server round-trip, keeping with the project's zero-backend/offline-first/no-tracking rules — and **short if at all possible**. Note the tension: a genuinely short URL normally means a third-party shortening *service*, which conflicts with those same rules, so this needs the same kind of scoping conversation the "screen timer" bullet (under "All games" above) already calls for before implementation.
 - **Feat: add an animated tutorial**.
 - **Bug: drag-to-trash stops at the screen edge (low)** — dragging a stamp toward `#trash-btn` "stops" the emoji once the pointer reaches the edge of the screen, instead of letting the drag continue on to the trash can.
 
