@@ -6,7 +6,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Memory</title>
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🧸</text></svg>" />
-  <link rel="manifest" id="manifest-link" href="data:application/json,%7B%7D" />
+  <link rel="manifest" href="../manifest.webmanifest" />
   <meta name="theme-color" content="#54A6D2" />
   <style>
     :root {
@@ -602,38 +602,21 @@
       },
 
       setupPWA() {
-        const manifest = {
-          name: 'Memory',
-          short_name: 'Memory',
-          start_url: '.',
-          display: 'standalone',
-          background_color: '#D9E4FF',
-          theme_color: '#54A6D2',
-          icons: [
-            { src: this.makeIcon(192), sizes: '192x192', type: 'image/svg+xml' },
-            { src: this.makeIcon(512), sizes: '512x512', type: 'image/svg+xml' }
-          ]
-        };
-        const blob = new Blob([JSON.stringify(manifest)], { type: 'application/json' });
-        document.getElementById('manifest-link').href = URL.createObjectURL(blob);
-
-        // Service workers must be registered from a real http(s) URL —
-        // browsers reject blob:/data: worker scripts. sw.js lives next to
-        // this file; at file:// there is no service worker support anyway.
+        // The whole toybox is one PWA: a single shared manifest
+        // (../manifest.webmanifest, linked in <head>) and one root-scoped
+        // service worker. Browsers reject blob:/data: worker scripts and
+        // file:// has no SW support, so register only over http(s).
         if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
-          navigator.serviceWorker.register('sw.js').catch(() => {});
+          navigator.serviceWorker.register('../sw.js').then((root) => {
+            // Drop any old per-game worker from before unification so the one
+            // root worker controls this page (longest scope wins).
+            navigator.serviceWorker.getRegistrations().then((regs) =>
+              regs.forEach((r) => {
+                if (r !== root && r.scope.startsWith(root.scope) && r.scope !== root.scope) r.unregister();
+              })
+            );
+          }).catch(() => {});
         }
-      },
-
-      makeIcon(size) {
-        const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 100 100">
-          <rect width="100" height="100" fill="#D9E4FF" rx="18"/>
-          <rect x="14" y="22" width="38" height="52" rx="9" fill="#8ED3F4" stroke="#54A6D2" stroke-width="3" transform="rotate(-8 33 48)"/>
-          <text x="33" y="58" text-anchor="middle" font-family="Arial Rounded MT Bold, Arial, sans-serif" font-size="28" fill="#fff" transform="rotate(-8 33 48)">?</text>
-          <rect x="48" y="26" width="38" height="52" rx="9" fill="#fff" stroke="#54A6D2" stroke-width="4" transform="rotate(8 67 52)"/>
-          <text x="67" y="60" text-anchor="middle" font-size="26" transform="rotate(8 67 52)">🐶</text>
-        </svg>`;
-        return 'data:image/svg+xml;base64,' + btoa(unescape(encodeURIComponent(svg)));
       },
 
       ensureAudio() {

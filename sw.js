@@ -1,8 +1,21 @@
-/* LibreToybox — Hub service worker · GNU GPL v3.0; see LICENSE */
-const CACHE = 'libretoybox-hub-v1';
+/* LibreToybox — unified site service worker · GNU GPL v3.0; see LICENSE */
+// One root-scoped worker for the whole toybox: the hub plus every game. Each
+// game is a single self-contained index.html, so precaching that one file =
+// the whole game offline. This precache array is the single source of truth
+// for the installable bundle — add a new game's paths here (see CLAUDE.md,
+// "Adding a New Game").
+const CACHE = 'libretoybox-v1';
 
 self.addEventListener('install', (e) => {
-  e.waitUntil(caches.open(CACHE).then((c) => c.addAll(['./', './index.html'])));
+  e.waitUntil(caches.open(CACHE).then((c) => c.addAll([
+    './', './index.html',
+    'sudoku-for-minis/', 'sudoku-for-minis/index.html',
+    'exquisite-corpse/', 'exquisite-corpse/index.html',
+    'memory/', 'memory/index.html',
+    'shape-fit/', 'shape-fit/index.html',
+    'emoji-paint/', 'emoji-paint/index.html',
+    'odd-one-out/', 'odd-one-out/index.html'
+  ])));
   self.skipWaiting();
 });
 

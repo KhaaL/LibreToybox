@@ -6,7 +6,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>LibreToybox</title>
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🪁</text></svg>" />
-  <link rel="manifest" id="manifest-link" href="data:application/json,%7B%7D" />
+  <link rel="manifest" href="manifest.webmanifest" />
   <meta name="theme-color" content="#9480DC" />
   <style>
     * { box-sizing: border-box; }
@@ -90,39 +90,21 @@
   <footer><a href="https://github.com/KhaaL/LibreToybox">Source on GitHub</a> · GNU GPL v3.0</footer>
 
   <script>
-    // The hub is plain static markup with no game object/init() to hang a
-    // setupPWA() method off of, so this is a self-contained adaptation of
-    // every game's identical manifest-blob + service-worker pattern.
-    (function () {
-      function makeIcon(size) {
-        const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 100 100">
-          <rect width="100" height="100" fill="#FFF8E7" rx="18"/>
-          <text x="50" y="68" font-size="60" text-anchor="middle">🪁</text>
-        </svg>`;
-        return 'data:image/svg+xml;base64,' + btoa(unescape(encodeURIComponent(svg)));
-      }
-
-      const manifest = {
-        name: 'LibreToybox',
-        short_name: 'LibreToybox',
-        start_url: '.',
-        display: 'standalone',
-        background_color: '#FFF8E7',
-        theme_color: '#9480DC',
-        icons: [
-          { src: makeIcon(192), sizes: '192x192', type: 'image/svg+xml' },
-          { src: makeIcon(512), sizes: '512x512', type: 'image/svg+xml' }
-        ]
-      };
-      const blob = new Blob([JSON.stringify(manifest)], { type: 'application/json' });
-      document.getElementById('manifest-link').href = URL.createObjectURL(blob);
-
-      // Service workers must be registered from a real http(s) URL — browsers
-      // reject blob:/data: worker scripts, and file:// has no SW support anyway.
-      if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
-        navigator.serviceWorker.register('sw.js').catch(() => {});
-      }
-    })();
+    // The whole toybox is one PWA: a single shared manifest (linked above) and
+    // one root-scoped service worker registered here. Service workers must come
+    // from a real http(s) URL — browsers reject blob:/data: worker scripts, and
+    // file:// has no SW support anyway.
+    if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
+      navigator.serviceWorker.register('sw.js').then((root) => {
+        // Drop any old, narrower-scoped worker from before unification so the
+        // one root worker controls the whole site (longest scope wins).
+        navigator.serviceWorker.getRegistrations().then((regs) =>
+          regs.forEach((r) => {
+            if (r !== root && r.scope.startsWith(root.scope) && r.scope !== root.scope) r.unregister();
+          })
+        );
+      }).catch(() => {});
+    }
   </script>
 </body>
 </html>
