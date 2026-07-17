@@ -1,0 +1,14 @@
+{
+  "name": "LibreToybox",
+  "short_name": "LibreToybox",
+  "id": "/",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#FFF8E7",
+  "theme_color": "#9480DC",
+  "icons": [
+    { "src": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxOTIiIGhlaWdodD0iMTkyIiB2aWV3Qm94PSIwIDAgMTAwIDEwMCI+CiAgPHJlY3Qgd2lkdGg9IjEwMCIgaGVpZ2h0PSIxMDAiIGZpbGw9IiNGRkY4RTciIHJ4PSIxOCIvPgogIDx0ZXh0IHg9IjUwIiB5PSI2OCIgZm9udC1zaXplPSI2MCIgdGV4dC1hbmNob3I9Im1pZGRsZSI+8J+qgTwvdGV4dD4KPC9zdmc+", "sizes": "192x192", "type": "image/svg+xml" },
+    { "src": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI1MTIiIGhlaWdodD0iNTEyIiB2aWV3Qm94PSIwIDAgMTAwIDEwMCI+CiAgPHJlY3Qgd2lkdGg9IjEwMCIgaGVpZ2h0PSIxMDAiIGZpbGw9IiNGRkY4RTciIHJ4PSIxOCIvPgogIDx0ZXh0IHg9IjUwIiB5PSI2OCIgZm9udC1zaXplPSI2MCIgdGV4dC1hbmNob3I9Im1pZGRsZSI+8J+qgTwvdGV4dD4KPC9zdmc+", "sizes": "512x512", "type": "image/svg+xml" }
+  ]
+}

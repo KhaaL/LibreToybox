@@ -6,6 +6,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>LibreToybox</title>
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🪁</text></svg>" />
+  <link rel="manifest" href="manifest.webmanifest" />
+  <meta name="theme-color" content="#9480DC" />
   <style>
     * { box-sizing: border-box; }
     html, body { margin: 0; padding: 0; }
@@ -86,5 +88,23 @@
     </a>
   </div>
   <footer><a href="https://github.com/KhaaL/LibreToybox">Source on GitHub</a> · GNU GPL v3.0</footer>
+
+  <script>
+    // The whole toybox is one PWA: a single shared manifest (linked above) and
+    // one root-scoped service worker registered here. Service workers must come
+    // from a real http(s) URL — browsers reject blob:/data: worker scripts, and
+    // file:// has no SW support anyway.
+    if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
+      navigator.serviceWorker.register('sw.js').then((root) => {
+        // Drop any old, narrower-scoped worker from before unification so the
+        // one root worker controls the whole site (longest scope wins).
+        navigator.serviceWorker.getRegistrations().then((regs) =>
+          regs.forEach((r) => {
+            if (r !== root && r.scope.startsWith(root.scope) && r.scope !== root.scope) r.unregister();
+          })
+        );
+      }).catch(() => {});
+    }
+  </script>
 </body>
 </html>
