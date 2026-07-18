@@ -200,6 +200,19 @@
     }
     #edit-btn:active { transform: translateY(2px); }
 
+    /* The lifted-stamp ghost: a floating emoji that tracks the finger anywhere
+       on screen (canvas draws are clipped to the canvas, so a dragged stamp
+       used to stick at the edge instead of reaching the trash button below). */
+    #lift-ghost {
+      position: fixed;
+      z-index: 60;
+      pointer-events: none;
+      transform: translate(-50%, -50%);
+      line-height: 1;
+      filter: drop-shadow(0 4px 6px rgba(0,0,0,0.25));
+      display: none;
+    }
+
     .overlay {
       position: fixed;
       inset: 0;
@@ -355,6 +368,10 @@
     </div>
   </div>
 </main>
+
+<!-- A lifted stamp rides as this floating element, not a canvas draw, so it can
+     follow the finger past the canvas edge all the way onto #trash-btn. -->
+<div id="lift-ghost" aria-hidden="true"></div>
 
 <div class="overlay" id="picker-overlay" role="dialog" aria-modal="true" aria-label="Choose an emoji stamp">
   <div class="picker-card">
@@ -706,6 +723,7 @@ const App = {
     this.newGameBtn = document.getElementById('new-game');
     this.stampBtn = document.getElementById('stamp-btn');
     this.trashBtn = document.getElementById('trash-btn');
+    this.liftGhost = document.getElementById('lift-ghost');
     this.shareBtn = document.getElementById('share-btn');
     this.toolbar = document.getElementById('toolbar');
     this.editBtn = document.getElementById('edit-btn');
@@ -948,6 +966,7 @@ const App = {
     this.artworkAR = null;
     this.artworkStampFrac = null;
     if (this.lifting) { cancelAnimationFrame(this.lifting.raf); this.lifting = null; }
+    this.hideLiftGhost();
     this.erasingStamps.clear();
     this.trashArmed = false;
     this.updateTrashBtnVisual();
@@ -1006,7 +1025,9 @@ const App = {
 
     const hit = this.findStampAt(pt);
     if (hit) {
-      this.lifting = { stamp: hit, x: pt.x, y: pt.y, startTime: performance.now(), lifted: false, hoverTrash: false, raf: null };
+      // clientX/Y are tracked alongside the normalized canvas point so the
+      // floating ghost (see redrawLifted) can follow the finger off-canvas.
+      this.lifting = { stamp: hit, x: pt.x, y: pt.y, clientX: e.clientX, clientY: e.clientY, startTime: performance.now(), lifted: false, hoverTrash: false, raf: null };
       this.lifting.raf = requestAnimationFrame((t) => this.tickLiftTimer(t));
       return;
     }
@@ -1026,6 +1047,10 @@ const App = {
     if (this.lifting) {
       this.lifting.x = pt.x;
       this.lifting.y = pt.y;
+      // Raw screen coords drive the off-canvas ghost; the clamped normalized
+      // point is where the stamp would land if dropped back on the canvas.
+      this.lifting.clientX = e.clientX;
+      this.lifting.clientY = e.clientY;
       if (this.lifting.lifted) {
         this.lifting.x = Math.max(0, Math.min(1, this.lifting.x));
         this.lifting.y = Math.max(0, Math.min(1, this.lifting.y));
@@ -1046,6 +1071,7 @@ const App = {
       const { stamp, lifted, hoverTrash, x, y } = this.lifting;
       cancelAnimationFrame(this.lifting.raf);
       this.lifting = null;
+      this.hideLiftGhost();
 
       if (!lifted) {
         // A quick tap on an existing stamp that never reached the lift
@@ -1152,23 +1178,37 @@ const App = {
     if (progress >= 1) {
       this.lifting.lifted = true;
       this.audioClick();
+      this.showLiftGhost();
       this.redrawLifted();
     } else {
       this.lifting.raf = requestAnimationFrame((t) => this.tickLiftTimer(t));
     }
   },
 
-  // Once lifted, the stamp rides slightly enlarged with a soft drop shadow
-  // at the live drag position, like Shape Fit's pieces riding above the
-  // finger while held.
+  // Once lifted, the stamp rides slightly enlarged with a soft drop shadow as a
+  // floating DOM element (not a canvas draw), so it can follow the finger past
+  // the canvas edge — all the way down onto the trash button — instead of
+  // sticking at the clamped canvas boundary. The underlying stamp stays hidden
+  // (redrawCanvas skips the lifting stamp) while the ghost stands in for it.
+  showLiftGhost() {
+    this.liftGhost.textContent = this.lifting.stamp.emoji;
+    this.liftGhost.style.fontSize = (this.stampPx() * 1.15) + 'px';
+    this.liftGhost.style.display = 'block';
+    this.moveLiftGhost();
+  },
+
+  moveLiftGhost() {
+    this.liftGhost.style.left = this.lifting.clientX + 'px';
+    this.liftGhost.style.top = this.lifting.clientY + 'px';
+  },
+
+  hideLiftGhost() {
+    this.liftGhost.style.display = 'none';
+  },
+
   redrawLifted() {
     this.redrawCanvas();
-    const { stamp, x, y } = this.lifting;
-    this.ctx.save();
-    this.ctx.shadowColor = 'rgba(0,0,0,0.25)';
-    this.ctx.shadowBlur = 10;
-    this.drawStamp(stamp.emoji, x, y, 1, 1.15);
-    this.ctx.restore();
+    this.moveLiftGhost();
   },
 
   deleteStamp(stamp) {
