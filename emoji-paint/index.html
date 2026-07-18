@@ -403,18 +403,40 @@ EMOJI_CATEGORIES.forEach((cat) => cat.emojis.forEach((e) => {
   if (!EMOJI_INDEX.has(e)) console.warn('[emoji-paint] Emoji missing from EMOJI_MASTER (won\'t survive a share link):', e);
 }));
 
-// Board state packed into location.hash: a version byte, then per stamp a
-// 12-bit EMOJI_MASTER index + 12-bit x + 12-bit y (quantized 0..4095),
-// bit-packed MSB-first and base64url-encoded. The HASH fragment (not a query
-// string) is used deliberately — it never reaches the network, so it never
-// hits GitHub Pages logs and never becomes a distinct service-worker cache
-// key (confirmed against sw.js's fetch handler).
-const WIRE_VERSION = 1;
+// Board state packed into location.hash, bit-packed MSB-first and base64url-
+// encoded. The HASH fragment (not a query string) is used deliberately — it
+// never reaches the network, so it never hits GitHub Pages logs and never
+// becomes a distinct service-worker cache key (confirmed against sw.js's
+// fetch handler).
+//
+// Wire v2 (current) — a version byte, then a small header, then the stamps:
+//   header: 12-bit aspect ratio (w/h, fixed-point) + 12-bit stamp fraction
+//           (stamp size ÷ shorter canvas side). These let a recipient rebuild
+//           the painting letterboxed at its ORIGINAL shape instead of
+//           stretching it to their own screen (see frameRect()).
+//   stamp:  1-bit "same emoji as the previous stamp" flag (skips the index
+//           when a run repeats — children stamp the same emoji a lot), then
+//           the 12-bit EMOJI_MASTER index only when that flag is 0, then a
+//           10-bit x + 10-bit y (quantized 0..1023). 10 bits is ≤~1px on the
+//           largest child canvas — imperceptible for a 56px emoji — and,
+//           together with the repeat flag, meaningfully shortens the link vs
+//           v1's flat 36-bit-per-stamp layout.
+// Wire v1 (legacy, still decoded) — no header; per stamp a flat 12-bit index +
+//   12-bit x + 12-bit y. decodeBoard() still reads it so old links keep working.
+const WIRE_VERSION = 2;
 const INDEX_BITS = 12;
-const COORD_BITS = 12;
-const COORD_MAX = 4095;
-const STAMP_BITS = INDEX_BITS + COORD_BITS * 2;
-const SHARE_WARN_STAMPS = 250; // soft threshold — sharing still works past this, the link just gets long
+const COORD_BITS = 10;
+const COORD_MAX = 1023;
+// Legacy v1 coordinate width, needed only to decode old links.
+const COORD_BITS_V1 = 12;
+const COORD_MAX_V1 = 4095;
+const STAMP_BITS_V1 = INDEX_BITS + COORD_BITS_V1 * 2;
+// v2 header fields (bits each) + their fixed-point scales.
+const META_BITS = 12;
+const AR_SCALE = 512;          // aspect ratio w/h as arQ / AR_SCALE (max ≈ 8.0)
+const AR_MIN = 0.2, AR_MAX = 6;
+const FRAC_MAX = (1 << META_BITS) - 1; // stamp fraction over 0..1
+const SHARE_WARN_STAMPS = 400; // soft threshold — v2 packs tighter, so warn later
 
 function b64urlFromBytes(bytes) {
   let bin = '';
@@ -429,15 +451,33 @@ function bytesFromB64url(str) {
   return out;
 }
 
-function encodeBoard(stamps) {
+// Encode a board to a base64url payload (wire v2). `meta` carries the source
+// canvas's aspect ratio + stamp fraction so the far side renders the painting
+// undistorted (see frameRect()); a repeat flag drops the emoji index whenever
+// a stamp reuses the previous one, shrinking runs of the same stamp.
+function encodeBoard(stamps, meta) {
   const bits = [];
   const push = (val, n) => { for (let i = n - 1; i >= 0; i--) bits.push((val >> i) & 1); };
+
+  const ar = Math.max(AR_MIN, Math.min(AR_MAX, meta.ar || 1));
+  const arQ = Math.max(1, Math.min(FRAC_MAX, Math.round(ar * AR_SCALE)));
+  const fracQ = Math.max(1, Math.min(FRAC_MAX, Math.round(Math.max(0, Math.min(1, meta.stampFrac || 0)) * FRAC_MAX)));
+  push(arQ, META_BITS);
+  push(fracQ, META_BITS);
+
+  let prevIdx = -1;
   stamps.forEach((s) => {
     const idx = EMOJI_INDEX.get(s.emoji);
     if (idx === undefined) return; // never emit an unknown emoji
     const qx = Math.max(0, Math.min(COORD_MAX, Math.round(s.x * COORD_MAX)));
     const qy = Math.max(0, Math.min(COORD_MAX, Math.round(s.y * COORD_MAX)));
-    push(idx, INDEX_BITS); push(qx, COORD_BITS); push(qy, COORD_BITS);
+    if (idx === prevIdx) {
+      push(1, 1);                          // repeat: reuse the previous emoji, skip its index
+    } else {
+      push(0, 1); push(idx, INDEX_BITS);
+      prevIdx = idx;
+    }
+    push(qx, COORD_BITS); push(qy, COORD_BITS);
   });
   const bytes = [WIRE_VERSION];
   for (let i = 0; i < bits.length; i += 8) {
@@ -448,14 +488,19 @@ function encodeBoard(stamps) {
   return b64urlFromBytes(Uint8Array.from(bytes));
 }
 
-// Fully defensive: any malformed, truncated, or tampered payload decodes to
-// [] (blank board) rather than throwing. Unknown emoji indices are dropped
-// but decoding continues; coordinates are clamped to 0..1.
+// Fully defensive: any malformed, truncated, or tampered payload decodes to a
+// blank board rather than throwing. Unknown emoji indices are dropped but
+// decoding continues; coordinates are clamped to 0..1. Returns
+// { stamps, ar, stampFrac } — ar/stampFrac are null for v1 links (and blank
+// results), signalling "no fixed frame, fill the canvas as usual".
 function decodeBoard(str) {
+  const EMPTY = { stamps: [], ar: null, stampFrac: null };
   try {
-    if (!str) return [];
+    if (!str) return EMPTY;
     const bytes = bytesFromB64url(str);
-    if (bytes.length < 1 || bytes[0] !== WIRE_VERSION) return [];
+    if (bytes.length < 1) return EMPTY;
+    const version = bytes[0];
+    if (version !== 1 && version !== 2) return EMPTY;
     let bitPos = 0;
     const total = (bytes.length - 1) * 8;
     const read = (n) => {
@@ -468,22 +513,51 @@ function decodeBoard(str) {
       bitPos += n;
       return v;
     };
+    const clamp01 = (v, max) => Math.min(1, Math.max(0, v / max));
+
+    if (version === 1) {
+      const out = [];
+      while (total - bitPos >= STAMP_BITS_V1) {
+        const idx = read(INDEX_BITS);
+        const qx = read(COORD_BITS_V1);
+        const qy = read(COORD_BITS_V1);
+        const emoji = EMOJI_MASTER[idx];
+        if (emoji === undefined) continue; // drop unknown index, keep decoding
+        out.push({ emoji, x: clamp01(qx, COORD_MAX_V1), y: clamp01(qy, COORD_MAX_V1) });
+      }
+      return { stamps: out, ar: null, stampFrac: null };
+    }
+
+    // version 2 — header first, then repeat-flagged stamps.
+    if (total < META_BITS * 2) return EMPTY;
+    const arQ = read(META_BITS);
+    const fracQ = read(META_BITS);
+    const ar = arQ > 0 ? arQ / AR_SCALE : null;
+    const stampFrac = fracQ > 0 ? fracQ / FRAC_MAX : null;
     const out = [];
-    while (total - bitPos >= STAMP_BITS) {
-      const idx = read(INDEX_BITS);
+    let prevIdx = -1;
+    // Smallest stamp is a repeat (1 + 2×COORD_BITS bits); once fewer than that
+    // remain it can only be the byte-padding zeros, so stop.
+    while (total - bitPos >= 1 + COORD_BITS * 2) {
+      const repeat = read(1);
+      let idx;
+      if (repeat) {
+        if (prevIdx < 0) break;            // malformed: repeat with nothing before it
+        idx = prevIdx;
+      } else {
+        if (total - bitPos < INDEX_BITS + COORD_BITS * 2) break; // truncated
+        idx = read(INDEX_BITS);
+        prevIdx = idx;
+      }
       const qx = read(COORD_BITS);
       const qy = read(COORD_BITS);
       const emoji = EMOJI_MASTER[idx];
-      if (emoji === undefined) continue; // drop unknown index, keep decoding
-      out.push({
-        emoji,
-        x: Math.min(1, Math.max(0, qx / COORD_MAX)),
-        y: Math.min(1, Math.max(0, qy / COORD_MAX))
-      });
+      if (emoji === undefined) continue;   // drop unknown index, keep decoding
+      out.push({ emoji, x: clamp01(qx, COORD_MAX), y: clamp01(qy, COORD_MAX) });
     }
-    return out;
+    return { stamps: out, ar, stampFrac };
   } catch (e) {
-    return [];
+    return EMPTY;
   }
 }
 
@@ -546,6 +620,14 @@ const App = {
   locked: false,       // true while viewing a shared-link board read-only, before Edit is tapped
   shareFlashTimer: null,
 
+  // Set only for a board opened from a share link: the painting's original
+  // aspect ratio (w/h) and stamp size as a fraction of the shorter canvas
+  // side. When non-null, the canvas shows a letterboxed "paper" at that shape
+  // so the artwork is never squished to the recipient's screen; null = a fresh
+  // free painting that fills the whole canvas (see frameRect()/stampPx()).
+  artworkAR: null,
+  artworkStampFrac: null,
+
   init() {
     this.cacheDOM();
     this.buildPicker();
@@ -564,8 +646,12 @@ const App = {
     this.ctx = this.canvas.getContext('2d');
     // Read the theme accent once so canvas-drawn cues (the lift halo) stay in
     // sync with the CSS --accent variable instead of a duplicated literal.
-    this.accent = (getComputedStyle(document.documentElement)
-      .getPropertyValue('--accent').trim()) || '#DE7590';
+    const rootStyle = getComputedStyle(document.documentElement);
+    this.accent = (rootStyle.getPropertyValue('--accent').trim()) || '#DE7590';
+    // Same idea for the shared-painting "paper" frame outline + the tint that
+    // backs its letterbox margins (so the white paper reads as a picture).
+    this.border = (rootStyle.getPropertyValue('--border').trim()) || '#F3C3D1';
+    this.frameTint = (rootStyle.getPropertyValue('--bg2').trim()) || '#FFDCE6';
     this.canvasWrap = document.getElementById('canvas-wrap');
     this.statusEl = document.getElementById('status');
     this.newGameBtn = document.getElementById('new-game');
@@ -760,17 +846,42 @@ const App = {
     });
   },
 
-  // Normalize pointer coords to 0..1 so stamps survive canvas resize
+  // Normalize pointer coords to 0..1 within the drawable frame so stamps
+  // survive canvas resize. On a shared board the frame is the letterboxed
+  // paper, so a tap in the margin is clamped onto the paper.
   getCanvasPoint(e) {
     const rect = this.canvas.getBoundingClientRect();
+    const f = this.frameRect();
+    const cx = (e.clientX - rect.left) / rect.width * this.canvas.width;
+    const cy = (e.clientY - rect.top) / rect.height * this.canvas.height;
     return {
-      x: (e.clientX - rect.left) / rect.width,
-      y: (e.clientY - rect.top) / rect.height
+      x: Math.max(0, Math.min(1, (cx - f.ox) / f.w)),
+      y: Math.max(0, Math.min(1, (cy - f.oy) / f.h))
     };
   },
 
-  toCanvasX(xn) { return xn * this.canvas.width; },
-  toCanvasY(yn) { return yn * this.canvas.height; },
+  // The drawable "paper" rectangle in canvas px. A fresh painting fills the
+  // whole canvas; a board opened from a share link is letterboxed (contain-fit)
+  // at its original aspect ratio so it never stretches to the recipient's
+  // screen — shown small if need be, with browser pinch-to-zoom for detail.
+  frameRect() {
+    const cw = this.canvas.width, ch = this.canvas.height;
+    if (!this.artworkAR) return { ox: 0, oy: 0, w: cw, h: ch };
+    let w = cw, h = cw / this.artworkAR;
+    if (h > ch) { h = ch; w = ch * this.artworkAR; }
+    return { ox: (cw - w) / 2, oy: (ch - h) / 2, w, h };
+  },
+
+  // Effective stamp diameter in canvas px: fixed for a free painting; scaled to
+  // the letterboxed frame for a shared board so proportions match the original.
+  stampPx() {
+    if (this.artworkStampFrac == null) return this.STAMP_SIZE;
+    const f = this.frameRect();
+    return this.artworkStampFrac * Math.min(f.w, f.h);
+  },
+
+  toCanvasX(xn) { const f = this.frameRect(); return f.ox + xn * f.w; },
+  toCanvasY(yn) { const f = this.frameRect(); return f.oy + yn * f.h; },
 
   syncCanvasSize() {
     const w = this.canvasWrap.clientWidth;
@@ -784,6 +895,9 @@ const App = {
   newGame({ keepHash = false } = {}) {
     this.stamps = [];
     this.placing = null;
+    // A fresh painting has no fixed frame — it fills the whole canvas again.
+    this.artworkAR = null;
+    this.artworkStampFrac = null;
     if (this.lifting) { cancelAnimationFrame(this.lifting.raf); this.lifting = null; }
     this.erasingStamps.clear();
     this.trashArmed = false;
@@ -808,9 +922,14 @@ const App = {
   },
 
   loadSharedBoard(payload) {
-    const loaded = decodeBoard(payload);
-    if (!loaded.length) return; // malformed/empty → normal blank start, no error shown
-    this.stamps = loaded;
+    const { stamps, ar, stampFrac } = decodeBoard(payload);
+    if (!stamps.length) return; // malformed/empty → normal blank start, no error shown
+    this.stamps = stamps;
+    // A v2 link carries the original shape; render it letterboxed at that
+    // aspect ratio so it isn't squished onto this screen. v1 links have no
+    // frame data and fall back to filling the canvas as before.
+    this.artworkAR = ar;
+    this.artworkStampFrac = stampFrac;
     this.redrawCanvas();
     this.audioStamp();
     this.enterLockedView();
@@ -818,7 +937,9 @@ const App = {
 
   enterLockedView() {
     this.setLocked(true);
-    this.statusEl.textContent = 'Shared painting loaded — tap Edit to draw.';
+    this.statusEl.textContent = this.artworkAR
+      ? 'Shared painting loaded — pinch to zoom, or tap Edit to draw.'
+      : 'Shared painting loaded — tap Edit to draw.';
   },
 
   exitLockedView() {
@@ -916,7 +1037,7 @@ const App = {
   // on overlapping stamps should mean). Stamps mid-removal-animation don't
   // count — they're already "gone" as far as new hits are concerned.
   findStampAt(pt) {
-    const radius = this.STAMP_SIZE * this.STAMP_HIT_RADIUS;
+    const radius = this.stampPx() * this.STAMP_HIT_RADIUS;
     const px = this.toCanvasX(pt.x);
     const py = this.toCanvasY(pt.y);
     for (let i = this.stamps.length - 1; i >= 0; i--) {
@@ -973,7 +1094,7 @@ const App = {
     const cy = this.toCanvasY(stamp.y);
     this.ctx.save();
     this.ctx.beginPath();
-    this.ctx.arc(cx, cy, this.STAMP_SIZE / 2 + 6, 0, Math.PI * 2);
+    this.ctx.arc(cx, cy, this.stampPx() / 2 + 6, 0, Math.PI * 2);
     this.ctx.fillStyle = this.accentAlpha(0.3 * progress);
     this.ctx.fill();
     this.ctx.restore();
@@ -1033,15 +1154,33 @@ const App = {
   drawStamp(emoji, xn, yn, alpha = 1, scale = 1) {
     this.ctx.save();
     this.ctx.globalAlpha = alpha;
-    this.ctx.font = `${this.STAMP_SIZE * scale}px "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif`;
+    this.ctx.font = `${this.stampPx() * scale}px "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif`;
     this.ctx.textAlign = 'center';
     this.ctx.textBaseline = 'middle';
     this.ctx.fillText(emoji, this.toCanvasX(xn), this.toCanvasY(yn));
     this.ctx.restore();
   },
 
+  // A shared board renders on a letterboxed white "paper" so the frame reads
+  // as a picture: the letterbox margins get a soft tint backing, the paper
+  // stays white with a thin border. (#canvas-wrap is itself white, so without
+  // the tint the paper would vanish into its own margins.)
+  drawPaperFrame() {
+    const f = this.frameRect();
+    this.ctx.save();
+    this.ctx.fillStyle = this.frameTint;
+    this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+    this.ctx.fillStyle = '#fff';
+    this.ctx.fillRect(f.ox, f.oy, f.w, f.h);
+    this.ctx.strokeStyle = this.border;
+    this.ctx.lineWidth = 2;
+    this.ctx.strokeRect(f.ox + 1, f.oy + 1, f.w - 2, f.h - 2);
+    this.ctx.restore();
+  },
+
   redrawCanvas(opts = {}) {
     this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+    if (this.artworkAR) this.drawPaperFrame();
     // A stamp being lifted/dragged is drawn separately (see redrawLifted),
     // at the live drag position rather than its resting one.
     const liftingStamp = this.lifting ? this.lifting.stamp : null;
@@ -1068,7 +1207,17 @@ const App = {
       this.statusEl.textContent = 'Add a stamp before sharing.';
       return;
     }
-    const payload = encodeBoard(this.stamps);
+    // Capture the painting's shape so the recipient can rebuild it undistorted.
+    // A board opened from a share link keeps its original frame; a fresh
+    // painting measures this canvas (which fills the viewport).
+    const f = this.frameRect();
+    const meta = {
+      ar: this.artworkAR || (f.w / f.h),
+      stampFrac: this.artworkStampFrac != null
+        ? this.artworkStampFrac
+        : this.STAMP_SIZE / Math.min(f.w, f.h)
+    };
+    const payload = encodeBoard(this.stamps, meta);
     // location.origin is "null" on file:// — build from href instead, which
     // works everywhere and already carries the right path.
     const url = location.href.replace(/#.*$/, '') + '#' + payload;
