@@ -1243,8 +1243,18 @@ const App = {
   },
 
   downloadPainting() {
+    // The live canvas is transparent, so exporting it directly yields a PNG
+    // with a see-through background. Composite it onto a solid white sheet
+    // first so the saved image reads as paper, not checkerboard.
+    const out = document.createElement('canvas');
+    out.width = this.canvas.width;
+    out.height = this.canvas.height;
+    const octx = out.getContext('2d');
+    octx.fillStyle = '#FFFFFF';
+    octx.fillRect(0, 0, out.width, out.height);
+    octx.drawImage(this.canvas, 0, 0);
     const a = document.createElement('a');
-    a.href = this.canvas.toDataURL('image/png');
+    a.href = out.toDataURL('image/png');
     a.download = 'emoji-paint.png';
     a.click();
     this.statusEl.textContent = 'Painting saved.';
