@@ -28,9 +28,7 @@ Completed items live in `done.md`.
 
 ## Emoji Paint (`emoji-paint/index.html`)
 
-- **feat** sharing link should preservea screen size of the original painting. A painting made on a tablet gets squished on a mobile phone screen right now (high)
 - **feat** add ability to paint in emoji paint with normal strokes. Evaluate how this would impact the link sharing feature first.
-- **feat** compress links, currently they look like: https://toybox.khalid.se/emoji-paint/#AQKymyugLDrSkALk3iSQLV6iewL3ESagMIOSbwM5YCEwDquiFxKSf1VhKjwE1RK0s1WxLGBU1RLW8FdBLoCEgQrpYk3Qrq4U7grsFE_wrtvkhQrr6R7QrtiRwwrvKUeQrvDibwrNHHBQq-aXLxA613LxA5oIGRA625rhA8bo8hA8GG9BA4t7ERA6CcEBA5yZ9RA7Yb1RA8arAACIXITwCoXGQAE3GX3hFl1XUAdnTq6waWU5xwaVWpkQaUr3DQaUUpWgaTjongaT82kAaS8G-AaSwI6gaR8n7waRP1FAaQ-YmgaRYGhwaRKRngaQpTxQaSBTxQaRBLEQaRXt6AaQiNGwaQlveQaSIrzQaR6JwwaSsOagaR8veQaTFbwQaSVdawaTmZ7QaUKb7waT5e0gaTttQQaUgt8QaU0vIgaVFLegaVz80AaV7uMwaVBciQaWC7CQaWsOvQaW8tKAaWn77waYMcyAaX6_bQaYs-LwaXpd4AaZVeXQaZJvvAaadN9QaanfwAaaCfPwabb-2wacWOrQab59RQadUdbwadAfaQacrs1Aad_sLQaeCPPwadgOkwaeobDQafDudgaehtRQad3dmQafK8EAaegubgaer_ggafjNoQafpPIgafg6TQaf4L4gafgYfQafr3Jgaf5F2AaegIgQafAJgAaeMJxwadvrEQadg5Sg
 - **feat** experimental new layout: horizontal where left half is a emoji picker, and right half is the canvas. Drag and drops emojis from left to right.
 - **Feat: add an animated tutorial**.
 - **Bug: drag-to-trash stops at the screen edge (low)** — dragging a stamp toward `#trash-btn` "stops" the emoji once the pointer reaches the edge of the screen, instead of letting the drag continue on to the trash can.
