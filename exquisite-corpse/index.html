@@ -238,6 +238,8 @@
     .action-btn:active { transform: translateY(2px); }
 
     #done-btn {
+      position: relative;
+      overflow: hidden;
       width: 100%;
       max-width: 560px;
       align-self: center;
@@ -254,6 +256,20 @@
       flex-shrink: 0;
     }
     #done-btn:active { transform: translateY(3px); box-shadow: 0 2px 0 #43A047; }
+    /* Left-to-right fill while the button is held — Done requires a hold, not a
+       tap, so an accidental brush of the button can't end a turn early. */
+    #done-btn .done-progress {
+      position: absolute;
+      left: 0; top: 0; bottom: 0;
+      width: 0;
+      background: rgba(255,255,255,0.4);
+      pointer-events: none;
+      opacity: 0;
+    }
+    /* Only visible mid-hold, so a residual full bar vanishes the instant the
+       hold completes or cancels (same trick as the New Game ring's opacity). */
+    #done-btn.holding .done-progress { opacity: 1; }
+    #done-btn .done-icon { position: relative; z-index: 1; }
 
     .overlay {
       position: fixed;
@@ -376,7 +392,7 @@
     <div id="color-row"></div>
     <div id="tool-row"></div>
   </div>
-  <button id="done-btn" aria-label="Done with this section">✓</button>
+  <button id="done-btn" aria-label="Hold to finish this section"><span class="done-progress" aria-hidden="true"></span><span class="done-icon" aria-hidden="true">✓</span></button>
   <div id="win-actions">
     <a class="win-btn" id="win-home-btn" href="../index.html" aria-label="Back to LibreToybox home">🏠</a>
     <button class="win-btn" id="download-btn" aria-label="Download painting">💾</button>
@@ -545,7 +561,7 @@ const App = {
     this.bindNewGameHold();
     this.playAgainBtn.addEventListener('click', () => this.newGame());
     this.downloadBtn.addEventListener('click', () => this.downloadPainting());
-    this.doneBtn.addEventListener('click', () => this.doneTapped());
+    this.bindDoneHold();
     this.settingsBtn.addEventListener('click', () => this.openSettings());
     this.closeSettingsBtn.addEventListener('click', () => this.closeSettings());
     this.settingsOverlay.addEventListener('click', (e) => { if (e.target === this.settingsOverlay) this.closeSettings(); });
@@ -592,15 +608,17 @@ const App = {
   // New Game requires a deliberate hold, not a quick tap, so an accidental
   // tap can't silently wipe the drawing in progress. A quick tap/keypress
   // does nothing; only a sustained HOLD_MS hold starts a fresh round.
-  bindNewGameHold() {
+  // Generic press-and-hold binding: the action only fires after the finger
+  // (or Enter/Space) is held on `btn` for HOLD_MS without moving away, guarding
+  // against an accidental tap. `render(pct)` paints the button's own progress
+  // indicator; moving past a small threshold, or lifting early, cancels.
+  bindHold(btn, onComplete, render) {
     const HOLD_MS = 500;
-    const btn = this.newGameBtn;
-    const ring = btn.querySelector('.hold-progress');
     let timer = null, raf = null, startTime = null, startPt = null, active = false;
 
     const tick = () => {
       const pct = Math.min(100, ((performance.now() - startTime) / HOLD_MS) * 100);
-      ring.style.background = `conic-gradient(rgba(148,128,220,0.85) ${pct}%, transparent ${pct}%)`;
+      render(pct);
       if (pct < 100) raf = requestAnimationFrame(tick);
     };
     const start = () => {
@@ -613,7 +631,7 @@ const App = {
         active = false;
         btn.classList.remove('holding');
         if (navigator.vibrate) navigator.vibrate(40);
-        this.newGame();
+        onComplete();
       }, HOLD_MS);
     };
     const cancel = () => {
@@ -622,7 +640,7 @@ const App = {
       clearTimeout(timer);
       if (raf) cancelAnimationFrame(raf);
       btn.classList.remove('holding');
-      ring.style.background = '';
+      render(0);
     };
 
     btn.addEventListener('pointerdown', (e) => { startPt = { x: e.clientX, y: e.clientY }; start(); });
@@ -638,6 +656,20 @@ const App = {
     });
     btn.addEventListener('keyup', (e) => {
       if (e.key === 'Enter' || e.key === ' ') cancel();
+    });
+  },
+
+  bindNewGameHold() {
+    const ring = this.newGameBtn.querySelector('.hold-progress');
+    this.bindHold(this.newGameBtn, () => this.newGame(), (pct) => {
+      ring.style.background = pct ? `conic-gradient(rgba(148,128,220,0.85) ${pct}%, transparent ${pct}%)` : '';
+    });
+  },
+
+  bindDoneHold() {
+    const prog = this.doneBtn.querySelector('.done-progress');
+    this.bindHold(this.doneBtn, () => this.doneTapped(), (pct) => {
+      prog.style.width = pct + '%';
     });
   },
 

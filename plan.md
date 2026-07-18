@@ -4,11 +4,9 @@ Completed items live in `done.md`.
 
 ## Child Sudoku (`sudoku-for-minis/index.html`)
 - **Feat: add an animated tutorial**.
-- **Feat: drag and drop tile placement** — a new method for placing digits: drag a digit from the number pad straight onto a cell, as an alternative to the current select-destination-then-digit flow.
 
 ## Exquisite Corpse (`exquisite-corpse/index.html`)
 - **Feat: add an animated tutorial**.
-- **Long-press to end turn** — the "Done" control that advances to the next section/player should require a long press instead of a single tap, to guard against an accidental tap ending a turn early.
 - **Bug: top ~3px of the last (3rd) section can't be painted** — the very top strip of the final section appears to reject strokes, unlike the same strip in earlier sections. Worth checking `PEEK_PX` and the per-section `ctx.rect()`/`ctx.clip()` math in `redrawCanvas()`, since that's what carves each section's drawable band — not yet investigated further.
 
 ## All games
@@ -31,7 +29,6 @@ Completed items live in `done.md`.
 - **feat** add ability to paint in emoji paint with normal strokes. Evaluate how this would impact the link sharing feature first.
 - **feat** experimental new layout: horizontal where left half is a emoji picker, and right half is the canvas. Drag and drops emojis from left to right.
 - **Feat: add an animated tutorial**.
-- **Bug: drag-to-trash stops at the screen edge (low)** — dragging a stamp toward `#trash-btn` "stops" the emoji once the pointer reaches the edge of the screen, instead of letting the drag continue on to the trash can.
 
 ## Odd One Out (`odd-one-out/index.html`)
 

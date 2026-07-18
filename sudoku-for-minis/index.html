@@ -150,6 +150,21 @@
     }
     .tool:active { transform: translateY(3px); box-shadow: 0 2px 0 rgba(0,0,0,0.15); }
     .tool.active { box-shadow: 0 0 0 4px var(--accent), 0 5px 0 rgba(0,0,0,0.15); }
+    /* touch-action:none so dragging a digit up from the pad onto the grid
+       doesn't scroll the page mid-gesture (drag-to-place, see bindPadDrag). */
+    .tool { touch-action: none; }
+    /* A digit being dragged from the pad rides under the finger — a clone of
+       the pad button, lifted and shadowed, tracking the pointer. */
+    .drag-digit {
+      position: fixed;
+      z-index: 200;
+      pointer-events: none;
+      transform: translate(-50%, -50%) scale(1.05);
+      box-shadow: 0 8px 16px rgba(0,0,0,0.28);
+    }
+    /* Cell currently under a dragged digit — same highlight as a tapped
+       selection, so "this is where it lands" reads identically either way. */
+    .cell.drag-over { outline: 4px solid var(--accent); outline-offset: -4px; background: #FDEBE5; z-index: 2; }
     /* All eight digits use the canonical pastel set with darker same-hue text
        and no text-shadow (design principle 11) — one treatment across the whole
        pad, so a 6×6 or 8×8 board never mixes saturated inks with pastels. */
@@ -460,6 +475,11 @@
         });
 
         this.pad.addEventListener('click', (e) => {
+          // A drag-to-place gesture can synthesize a trailing click on the pad
+          // button it started from; swallow it so a drag doesn't also arm the
+          // tapped-digit selection (bindPadDrag sets the flag; the next real
+          // pointerdown clears any stale value).
+          if (this.suppressPadClick) { this.suppressPadClick = false; return; }
           const t = e.target.closest('.tool');
           if (!t) return;
           this.setTool(t.dataset.tool);
@@ -468,6 +488,8 @@
             this.deselect();
           }
         });
+
+        this.bindPadDrag();
 
         // Pointer Events cover mouse, touch and pen with a single stream —
         // no synthetic-mouse-event double firing after taps.
@@ -594,6 +616,91 @@
         btn.addEventListener('keyup', (e) => {
           if (e.key === 'Enter' || e.key === ' ') cancel();
         });
+      },
+
+      // Drag-to-place: press a pad digit and drag it straight onto a cell, as
+      // an alternative to the select-cell-then-digit flow. A short press that
+      // never crosses the drag threshold falls through to the pad's click
+      // handler (tap-to-select), so both input styles coexist. Keyboard parity
+      // is unaffected — it still uses the select/place path (design principle 8).
+      bindPadDrag() {
+        const THRESHOLD = 8; // px of travel before a press becomes a drag
+        let tool = null, digit = null, startPt = null, ghost = null, dragging = false, overCell = null;
+
+        const cellUnder = (x, y) => {
+          const el = document.elementFromPoint(x, y);
+          const cell = el && el.closest ? el.closest('.cell') : null;
+          // Only droppable cells highlight/accept — givens are fixed, and a
+          // point outside the grid (e.g. back over the pad) is not a target.
+          if (!cell || !this.grid.contains(cell)) return null;
+          if (this.givenMask[cell.dataset.r][cell.dataset.c]) return null;
+          return cell;
+        };
+
+        const clearOver = () => {
+          if (overCell) { overCell.classList.remove('drag-over'); overCell = null; }
+        };
+
+        const moveGhost = (x, y) => {
+          if (ghost) { ghost.style.left = x + 'px'; ghost.style.top = y + 'px'; }
+        };
+
+        const startDrag = () => {
+          dragging = true;
+          ghost = tool.cloneNode(true);
+          ghost.classList.remove('active');
+          ghost.classList.add('drag-digit');
+          ghost.removeAttribute('data-tool');
+          document.body.appendChild(ghost);
+        };
+
+        const cleanup = () => {
+          clearOver();
+          if (ghost) { ghost.remove(); ghost = null; }
+          tool = null; digit = null; dragging = false; startPt = null;
+        };
+
+        this.pad.addEventListener('pointerdown', (e) => {
+          const t = e.target.closest('.tool');
+          if (!t || this.won) return;
+          this.suppressPadClick = false; // drop any stale flag from a prior drag
+          tool = t;
+          digit = parseInt(t.dataset.tool, 10);
+          startPt = { x: e.clientX, y: e.clientY };
+          dragging = false;
+          try { t.setPointerCapture(e.pointerId); } catch (_) {}
+        });
+
+        this.pad.addEventListener('pointermove', (e) => {
+          if (!tool) return;
+          if (!dragging) {
+            if (Math.hypot(e.clientX - startPt.x, e.clientY - startPt.y) < THRESHOLD) return;
+            startDrag();
+          }
+          moveGhost(e.clientX, e.clientY);
+          const cell = cellUnder(e.clientX, e.clientY);
+          if (cell !== overCell) {
+            clearOver();
+            if (cell) { cell.classList.add('drag-over'); overCell = cell; }
+          }
+        });
+
+        this.pad.addEventListener('pointerup', (e) => {
+          if (!tool) return;
+          const wasDragging = dragging;
+          const cell = wasDragging ? cellUnder(e.clientX, e.clientY) : null;
+          const d = digit;
+          cleanup();
+          if (!wasDragging) return; // a tap — let the click handler select it
+          this.suppressPadClick = true; // swallow the drag's trailing click
+          if (cell) {
+            this.tryPlace(parseInt(cell.dataset.r, 10), parseInt(cell.dataset.c, 10), d);
+          } else {
+            this.audioSwoosh(); // dropped off any cell — gentle, no placement
+          }
+        });
+
+        this.pad.addEventListener('pointercancel', cleanup);
       },
 
       activateCell(r, c) {
