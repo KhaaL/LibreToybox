@@ -1094,6 +1094,12 @@ const App = {
       } else {
         stamp.x = x;
         stamp.y = y;
+        // A repositioned stamp rises to the top layer: pull it out of its
+        // current z-order slot and re-push it last (last drawn = on top), so
+        // the emoji the child just picked up lands above everything it's
+        // dropped onto, matching the finger's "I'm holding this one" mental model.
+        const idx = this.stamps.indexOf(stamp);
+        if (idx !== -1) { this.stamps.splice(idx, 1); this.stamps.push(stamp); }
         this.audioClick();
         this.redrawCanvas();
       }
