@@ -172,7 +172,7 @@
       display: flex; flex-direction: column; align-items: center; gap: 14px; min-width: 260px;
     }
     .settings-card h2 { margin: 0; font-size: 2rem; }
-    .size-row { display: flex; flex-wrap: wrap; justify-content: center; gap: 18px; max-width: 200px; }
+    .size-row { display: flex; flex-wrap: wrap; justify-content: center; gap: 18px; max-width: 252px; }
     .size-btn {
       width: 72px; height: 72px; border: 2px solid var(--border); border-radius: 16px;
       background: #fff; font-family: inherit; font-size: 1.7rem; cursor: pointer;
@@ -225,10 +225,9 @@
     <div class="settings-card">
       <h2>⚙️</h2>
       <div class="size-row" role="radiogroup" aria-label="Difficulty">
-        <button class="size-btn" data-size="easy"   role="radio" aria-label="Easiest, four tiles">🐣<small>4</small></button>
-        <button class="size-btn" data-size="medium" role="radio" aria-label="Easy, six tiles">🐤<small>6</small></button>
-        <button class="size-btn" data-size="hard"   role="radio" aria-label="Hard, nine tiles">🐥<small>9</small></button>
-        <button class="size-btn" data-size="expert" role="radio" aria-label="Hardest, nine tiles, tricky">🦁<small>9</small></button>
+        <button class="size-btn" data-size="easy"   role="radio" aria-label="Easy, four tiles">🐣<small>4</small></button>
+        <button class="size-btn" data-size="medium" role="radio" aria-label="Normal, six tiles">🕊️<small>6</small></button>
+        <button class="size-btn" data-size="hard"   role="radio" aria-label="Hard, nine tiles, tricky">🦅<small>9</small></button>
       </div>
       <button class="top-btn" id="close-settings" aria-label="Close">✕</button>
     </div>
@@ -274,9 +273,8 @@ const CONFIG = {
   wrongHoldMs: 500, // input lock while the reject shake/flash plays (matches wrongFlash's duration)
   sizes: {
     easy:   { tiles: 4, cols: 2, subtle: false },   // 🐣 2×2
-    medium: { tiles: 6, cols: 3, subtle: false },   // 🐤 2×3  (default)
-    hard:   { tiles: 9, cols: 3, subtle: false },   // 🐥 3×3
-    expert: { tiles: 9, cols: 3, subtle: true }     // 🦁 3×3 sibling sub-categories
+    medium: { tiles: 6, cols: 3, subtle: false },   // 🕊️ 2×3  (default)
+    hard:   { tiles: 9, cols: 3, subtle: true }     // 🦅 3×3 sibling sub-categories (hidden rule)
   },
   // Canonical LibreToybox pastel palette — used for confetti (design principle 11).
   palette: ['#F7A6B9','#F9C784','#FFE66D','#A8E6CF','#8ED3F4','#C3B4F7','#FFB3A0','#C8E88A']

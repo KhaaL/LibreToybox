@@ -81,6 +81,7 @@ Humane first software: no tracking, spyware, addictive feedback loops or require
 - **Expose only one or two meaningful toggles.** In this game: illegal-number behavior.
 - **Use clear visual controls** like switches with immediate effect.
 - **Changing a setting should not break the current game state unexpectedly.** If switching modes clears illegal cells, do so visibly.
+- **One difficulty scale across the toybox.** Any game that offers difficulty uses **exactly three levels**, always the same emoji trio in the same order: **🐣 Easy / 🕊️ Normal / 🦅 Hard**. Never a fourth level, a different emoji set, or a reordered trio. If a game has an extra difficulty dimension (a hidden-rule mode, a rotation mode), fold it into the Hard level rather than adding a separate tier or toggle — the difficulty setting stays a single three-way choice.
 
 ---
 

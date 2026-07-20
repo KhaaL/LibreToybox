@@ -200,7 +200,7 @@
       min-width: 260px;
     }
     .settings-card h2 { margin: 0; font-size: 2rem; }
-    .size-row { display: flex; gap: 18px; }
+    .size-row { display: flex; flex-wrap: wrap; justify-content: center; gap: 18px; max-width: 252px; }
     .size-btn {
       width: 72px;
       height: 72px;
@@ -260,8 +260,9 @@
     <div class="settings-card">
       <h2>⚙️</h2>
       <div class="size-row" role="radiogroup" aria-label="Board size">
-        <button class="size-btn" data-size="small" role="radio" aria-label="Small board, 4 by 4">🐣<small>4×4</small></button>
-        <button class="size-btn" data-size="large" role="radio" aria-label="Big board, 6 by 4">🦁<small>6×4</small></button>
+        <button class="size-btn" data-size="small" role="radio" aria-label="Easy, 4 by 4">🐣<small>4×4</small></button>
+        <button class="size-btn" data-size="medium" role="radio" aria-label="Normal, 5 by 4">🕊️<small>5×4</small></button>
+        <button class="size-btn" data-size="large" role="radio" aria-label="Hard, 6 by 4">🦅<small>6×4</small></button>
       </div>
       <button class="top-btn" id="close-settings" aria-label="Close">✕</button>
     </div>
@@ -272,6 +273,7 @@
     const CONFIG = {
       sizes: {
         small: { pairs: 8, cols: 4 },
+        medium: { pairs: 10, cols: 4 },
         large: { pairs: 12, cols: 4 }
       },
       flipMs: 250,
