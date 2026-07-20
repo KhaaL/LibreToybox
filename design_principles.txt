@@ -49,6 +49,7 @@ Humane first software: no tracking, spyware, addictive feedback loops or require
 ## 5. Progress Should Be Visible and Celebratory
 
 - **Completion deserves a party.** Use confetti, bouncing emojis, ascending sounds, and bright overlays.
+- **The party grows with the effort.** In a game with a difficulty scale, the win celebration (confetti count, fanfare length) should scale up from Easy to Hard — harder levels earn a bigger celebration. Easy keeps the baseline celebration unchanged; only Normal and Hard add more. This derives automatically from the difficulty already chosen, so it never becomes a separate setting (principle 9).
 
 ---
 
