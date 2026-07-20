@@ -276,6 +276,13 @@ const CONFIG = {
     medium: { tiles: 6, cols: 3, subtle: false },   // 🕊️ 2×3  (default)
     hard:   { tiles: 9, cols: 3, subtle: true }     // 🦅 3×3 sibling sub-categories (hidden rule)
   },
+  // Celebration grows with difficulty — Easy is today's unchanged baseline,
+  // Normal/Hard add more confetti and extra rising notes on the same fanfare.
+  celebrationTiers: [
+    { confetti: 60,  notes: [523.25, 659.25, 783.99] },
+    { confetti: 90,  notes: [523.25, 659.25, 783.99, 1046.50] },
+    { confetti: 130, notes: [523.25, 659.25, 783.99, 1046.50, 1318.51] }
+  ],
   // Canonical LibreToybox pastel palette — used for confetti (design principle 11).
   palette: ['#F7A6B9','#F9C784','#FFE66D','#A8E6CF','#8ED3F4','#C3B4F7','#FFB3A0','#C8E88A']
 };
@@ -580,13 +587,14 @@ const App = {
 
   celebrate() {
     this.won = true;
-    this.audioWin();
+    const tier = CONFIG.celebrationTiers[Object.keys(CONFIG.sizes).indexOf(this.size)];
+    this.audioWin(tier.notes);
     this.updateStatus('You found all of them! Hooray!');
     this.renderWinEmojis();
     this.revealOddsOnBoard();
     this.winOverlay.classList.add('show');
     Modal.open(this.winOverlay, () => this.newGame(true));
-    for (let i = 0; i < 60; i++) {
+    for (let i = 0; i < tier.confetti; i++) {
       const conf = document.createElement('div');
       conf.className = 'confetti';
       conf.style.left = Math.random() * 100 + 'vw';
@@ -724,8 +732,8 @@ const App = {
     src.start();
   },
 
-  audioWin() {
-    [523.25, 659.25, 783.99].forEach((freq, i) => {   // C-E-G major arpeggio
+  audioWin(notes) {
+    notes.forEach((freq, i) => {   // C-E-G major arpeggio, extended at higher difficulty
       setTimeout(() => this.playTone({ type: 'sine', freq, duration: 220, peakGain: 0.18 }), i * 180);
     });
   }

@@ -65,6 +65,7 @@ All decisions must follow `design_principles.txt`. Key ones:
 6. **No tracking, no ads, no online requirement**
 7. **One color system** — Shape Fit's `CONFIG.palette` is the canonical pastel set; per-game identity comes from the background hue family only; interactive elements are flat fill + darker same-hue edge, never gradients (principle 11)
 8. **One difficulty scale** — every game that offers difficulty exposes **exactly three levels**, always the same emoji trio in the same order: **🐣 Easy / 🕊️ Normal / 🦅 Hard**. This is the standard `.size-row` radiogroup (three 72 px buttons, one row, gold ring for the active choice); each button pairs the level emoji with a tiny `<small>` size hint (e.g. `4×4`, `9`), and its `aria-label` leads with the level word ("Easy, 4 by 4"). No game may add a fourth level, use a different emoji set, or reorder the trio — extra difficulty dimensions (Odd One Out's `subtle` hidden-rule mode, a future rotation mode) are folded **into** the Hard level, never surfaced as their own tier or toggle (keeps settings to one control, principle 9)
+9. **Celebration scales with difficulty** — every game with a difficulty scale derives its win celebration from the chosen tier via `CONFIG.celebrationTiers` (a standalone `CELEBRATION_TIERS` in Sudoku, which has no wrapping `CONFIG`): confetti count and the number of rising notes in the win fanfare both grow from Easy → Normal → Hard (Easy is the original unchanged baseline — 60 pieces, 3-note C-E-G chime — so nothing regresses; Normal/Hard only add more confetti and append higher notes onto the same arpeggio). The tier is looked up as `Object.keys(CONFIG.sizes).indexOf(this.size)`, which works because every game's size table is already declared in Easy→Hard order — this derives automatically from the difficulty already chosen, so it introduces no new setting (design_principles.txt's settings-simplicity rule stays satisfied)
 
 ## Exquisite Corpse — Architecture Notes
 
@@ -114,6 +115,7 @@ All decisions must follow `design_principles.txt`. Key ones:
 - Pointer Events only (`pointerdown`/`move`/`up`/`cancel`) — never touch/mouse pairs, which double-fire via synthetic mouse events
 - Web Audio feedback on placement, error, win
 - Confetti win overlay
+- `celebrate()` scales confetti count and fanfare note count with the solved board's tier via `CELEBRATION_TIERS` (design principle 9)
 
 ## Memory — Architecture Notes
 
@@ -129,6 +131,7 @@ All decisions must follow `design_principles.txt`. Key ones:
 - Win overlay is translucent (`rgba(255,255,255,0.55)`, content bottom-anchored) so the completed board stays visible under the confetti
 - `revealBoard()` brings every flown-away `.gone` card back face-up (staggered like the initial deal) right before the overlay shows, so the win screen displays the completed set of pairs instead of an empty board. The bounce (`.matched-pop`) animates the outer `.card`, not `.card-inner` — `.card-inner` already owns the `rotateY` flip transform, and animating `transform` on the same element via a second rule would override the flip for the animation's duration (this was a latent bug in the brief in-game match bounce too, just imperceptible until the reveal made it obvious)
 - Settings ⚙️ has exactly one control: board size (the standard 🐣 Easy 4×4 / 🕊️ Normal 5×4 / 🦅 Hard 6×4 three-level scale). Choosing a size closes the overlay first, then re-deals **visibly** (suction-out + staggered pop-in + swoosh) — never a silent reset (design principle 9)
+- `celebrate()` scales confetti count and fanfare note count with the matched board's tier via `CONFIG.celebrationTiers` (design principle 9)
 
 ## Shape Fit — Architecture Notes
 
@@ -144,6 +147,7 @@ All decisions must follow `design_principles.txt`. Key ones:
 - **Keyboard parity** (principle 8): Enter/Space on a tray piece picks it up at the first fitting spot, arrows move it cell by cell, Enter places (shake + "hmm" if it doesn't fit), Escape cancels; Enter on a placed piece lifts it off.
 - **No rotation in v1** — pieces arrive in their correct orientation, jigsaw-style (rotation is a possible later hard mode, see plan.md). No timer, no move counter (humane-first).
 - Async timers (fly-back, celebrate) carry a `gameId` generation check so a 🔄 mid-animation can't touch the new board, same as Memory.
+- `celebrate()` scales confetti count and fanfare note count with the filled board's tier via `CONFIG.celebrationTiers` (design principle 9)
 
 ## Emoji Paint — Architecture Notes
 
@@ -181,6 +185,7 @@ All decisions must follow `design_principles.txt`. Key ones:
 - **Win-screen "odd ones" recap** (`oddsFound`, `revealOddsOnBoard()`): every correct pick appends `this.tiles[this.oddIndex]` to `oddsFound` (reset in `newGame()` alongside `solved`); `celebrate()` repopulates the real `#board` with those emoji — same `.tile` look, same per-difficulty column count already set by the last `renderBoard()` call — rather than a separate recap strip below the celebration, so the "answers" land where the game was actually played. Tiles pop in staggered, mirroring the initial deal (same `.deal`/`animationend` mechanics `renderBoard()` uses) and mirroring how Memory's `revealBoard()` restages its own board for its win screen. They're plain non-interactive `<div>`s (a `.recap` modifier just drops the pointer cursor) — the board's delegated click handler still matches `.tile`, but `pickTile()`'s `this.won` guard makes any stray tap a no-op. `#board`'s `aria-label` swaps to "The odd ones you found" for the reveal and back to the game prompt at the top of every `renderBoard()` call.
 - **Tiles are real `<button>`s** with a single delegated `click` handler (covers mouse/touch/pen **and** Enter/Space — keyboard parity, principle 8; `:focus-visible` outline), same approach as Memory's cards.
 - **`gameId` generation guard**: incremented in `newGame()`; the post-correct advance `setTimeout` and the `rejecting`-clearing `setTimeout` both capture `gen` and bail if it changed, so a mid-pause 🔄 or size switch can't advance/celebrate onto a freshly dealt board or leave input stuck locked (same pattern as Memory/Shape Fit).
+- `celebrate()` scales confetti count and fanfare note count with the completed set's tier via `CONFIG.celebrationTiers` (design principle 9)
 - Shares the standard scaffolding with the other games: header (🏠 back + logo / 🔄 + ⚙️), settings/win overlays, `playTone()`/`audioSwoosh()`/`audioWin()`/`audioEmoji()` audio kit, and the shared-PWA `setupPWA()` snippet (links the root `manifest.webmanifest`, registers the root `sw.js` — no per-game worker). Color identity is the sunny yellow/gold background family.
 
 ## Hub — Architecture Notes

@@ -372,6 +372,14 @@
       large:  { n: 8, boxR: 2, boxC: 4, givens: 32, numFont: 'clamp(0.95rem, 4.2vw, 1.25rem)' }
     };
 
+    // Celebration grows with difficulty — Easy is today's unchanged baseline,
+    // Normal/Hard add more confetti and extra rising notes on the same fanfare.
+    const CELEBRATION_TIERS = [
+      { confetti: 60,  notes: [523.25, 659.25, 783.99] },
+      { confetti: 90,  notes: [523.25, 659.25, 783.99, 1046.50] },
+      { confetti: 130, notes: [523.25, 659.25, 783.99, 1046.50, 1318.51] }
+    ];
+
     // --- Shared modal a11y helper (copied into each game — the suite ships no
     // bundler). Moves focus into an opened overlay, traps Tab within it, closes
     // on Escape, and restores focus to the opener on close (design principle 8). ---
@@ -888,12 +896,13 @@
 
       celebrate() {
         this.won = true;
-        this.audioWin();
+        const tier = CELEBRATION_TIERS[Object.keys(SIZES).indexOf(this.size)];
+        this.audioWin(tier.notes);
         this.updateStatus('Puzzle solved!');
         this.renderWinEmojis();
         this.overlay.classList.add('show');
         Modal.open(this.overlay, () => this.newGame());
-        for (let i = 0; i < 60; i++) {
+        for (let i = 0; i < tier.confetti; i++) {
           const conf = document.createElement('div');
           conf.className = 'confetti';
           conf.style.left = Math.random() * 100 + 'vw';
@@ -1229,8 +1238,8 @@
         src.connect(gain).connect(ctx.destination);
         src.start();
       },
-      audioWin() {
-        [523.25, 659.25, 783.99].forEach((freq, i) => {
+      audioWin(notes) {
+        notes.forEach((freq, i) => {
           setTimeout(() => this.playTone({ type: 'sine', freq, duration: 220, peakGain: 0.18 }), i * 180);
         });
       }
