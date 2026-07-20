@@ -37,6 +37,7 @@ Completed items live in `done.md`.
 ## Grocery Cashier (`grocery-cashier/index.html`)
 
 - **Feat: add an animated tutorial**.
+- **Feat: horizontal layout for wide screens** — an alternate landscape layout (e.g. order/receipt on one side, register + keypad on the other) so the game uses a tablet's width instead of a single tall column. Default (portrait) layout stays as-is; the wide layout kicks in via a media query on wide/landscape viewports.
 
 ## Future Games
 
