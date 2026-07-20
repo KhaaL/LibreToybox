@@ -34,6 +34,10 @@ Completed items live in `done.md`.
 
 - **Feat: add an animated tutorial**.
 
+## Grocery Cashier (`grocery-cashier/index.html`)
+
+- **Feat: add an animated tutorial**.
+
 ## Future Games
 
 - Simon-style Emoji Echo

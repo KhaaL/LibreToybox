@@ -1,0 +1,887 @@
+<!DOCTYPE html>
+<!-- LibreToybox — Grocery Cashier · Licensed under the GNU GPL v3.0; see ../LICENSE -->
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Grocery Cashier</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🪁</text></svg>" />
+  <link rel="manifest" href="../manifest.webmanifest" />
+  <meta name="theme-color" content="#5CA13A" />
+  <style>
+    :root {
+      --bg1: #F6FBEC;
+      --bg2: #E4F3CD;
+      --accent: #5CA13A;
+      --border: #C4DDA1;
+      --text: #3B5A22;
+      --shadow: #CFE6AE;
+    }
+
+    * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+    html, body { margin: 0; padding: 0; height: 100%; }
+    /* Own background on html stops the body gradient propagating into
+       overscroll, where it would tile and show the wrong end of the gradient. */
+    html { background: var(--bg1); }
+    body {
+      font-family: ui-rounded, 'Hiragino Maru Gothic ProN', Quicksand, Comfortaa, 'Arial Rounded MT Bold', 'Varela Round', Calibri, sans-serif;
+      background: linear-gradient(180deg, var(--bg1), var(--bg2));
+      color: var(--text);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: flex-start;
+      min-height: 100%;
+      overflow-x: hidden;
+      user-select: none;
+      -webkit-user-select: none;
+      -webkit-touch-callout: none;
+      touch-action: manipulation;
+    }
+
+    header {
+      width: 100%;
+      max-width: 420px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 14px 16px 6px;
+    }
+    .header-left { display: flex; align-items: center; gap: 8px; }
+    .logo { display: flex; align-items: center; }
+    .top-btns { display: flex; gap: 8px; }
+    .top-btn {
+      position: relative;
+      background: #fff;
+      border: 2px solid var(--border);
+      border-radius: 12px;
+      padding: 6px 10px;
+      font-family: inherit;
+      font-size: 1.3rem;
+      cursor: pointer;
+      box-shadow: 0 3px 0 var(--shadow);
+      transition: transform .05s;
+      min-width: 48px;
+      min-height: 48px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      text-decoration: none;
+      color: inherit;
+    }
+    .top-btn:active { transform: translateY(2px); box-shadow: 0 1px 0 var(--shadow); }
+    /* New Game requires a deliberate hold, not a quick tap, so an accidental
+       tap can't silently wipe progress. */
+    .hold-progress { position: absolute; inset: 5px; border-radius: 50%; pointer-events: none; opacity: 0; transition: opacity .1s; }
+    .top-btn.holding .hold-progress { opacity: 1; }
+
+    main { width: 100%; max-width: 420px; padding: 8px 16px 18px; display: flex; flex-direction: column; align-items: center; gap: 14px; }
+
+    /* Visually hidden but available to screen readers (aria-live announcements
+       still fire). Standard clip-based sr-only pattern. */
+    .status { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); clip-path: inset(50%); white-space: nowrap; border: 0; }
+
+    /* Progress pips — one per customer in a set, filled as customers are
+       served. Visual only (no numbers), design principle 1. */
+    #pips { display: flex; gap: 10px; margin-top: 2px; }
+    .pip {
+      width: 18px;
+      height: 18px;
+      border-radius: 50%;
+      background: #fff;
+      border: 2px solid var(--border);
+      transition: background .2s, transform .2s;
+    }
+    .pip.filled { background: var(--accent); border-color: var(--accent); transform: scale(1.1); }
+
+    /* The customer + their order card sit together as "the counter". */
+    #counter { display: flex; align-items: center; gap: 12px; width: 100%; }
+    #customer {
+      font-size: 3.2rem;
+      line-height: 1;
+      flex: 0 0 auto;
+      width: 64px;
+      text-align: center;
+    }
+    #customer.deal { animation: pop-in .4s ease-out both; }
+    #customer.happy { animation: pop .5s ease-out; }
+
+    .order-card {
+      flex: 1 1 auto;
+      background: #fff;
+      border: 3px solid var(--border);
+      border-radius: 18px;
+      box-shadow: 0 4px 0 var(--shadow);
+      padding: 6px 4px;
+      min-height: 64px;
+    }
+    .order-card.deal { animation: pop-in .35s ease-out both; }
+    .line {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 7px 12px;
+      font-size: 1.6rem;
+      border-bottom: 2px dashed var(--border);
+    }
+    .line:last-child { border-bottom: none; }
+    .line .item { display: flex; align-items: center; gap: 8px; }
+    .line .emj { font-size: 2rem; line-height: 1; }
+    .qty {
+      font-size: 0.95rem;
+      font-weight: bold;
+      background: var(--bg2);
+      color: var(--text);
+      border-radius: 8px;
+      padding: 2px 8px;
+    }
+    .price { font-weight: bold; font-variant-numeric: tabular-nums; }
+    /* A coupon subtracts — shown as a discount in the accent green. */
+    .line.coupon .price { color: var(--accent); }
+    .line.pay { color: var(--accent); }
+
+    /* The register "screen" the child types the answer into. */
+    #register-wrap { display: flex; align-items: center; gap: 10px; }
+    #reg-icon { font-size: 2rem; line-height: 1; }
+    .register {
+      min-width: 200px;
+      min-height: 66px;
+      background: #F0FBE8;
+      border: 3px solid var(--border);
+      border-radius: 14px;
+      box-shadow: inset 0 2px 6px rgba(0,0,0,0.08);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 4px;
+      padding: 6px 20px;
+      font-size: 2.6rem;
+      font-weight: bold;
+      color: var(--text);
+      font-variant-numeric: tabular-nums;
+    }
+    .register .cur { opacity: 0.55; font-size: 1.9rem; }
+    .register.correct { animation: pop .5s ease, correctFlash .6s ease; }
+    .register.wrong { animation: shake .4s ease, wrongFlash .5s ease; }
+
+    /* Numeric keypad — chunky 64px keys (design principle 4). Digit keys read
+       as a uniform calculator pad; the confirm key is accent-green and the
+       backspace is a muted coral so the three roles are distinct at a glance. */
+    .pad {
+      display: grid;
+      grid-template-columns: repeat(3, 64px);
+      gap: 12px;
+      justify-content: center;
+    }
+    .key {
+      width: 64px;
+      height: 64px;
+      border: 2px solid var(--border);
+      border-radius: 16px;
+      background: #fff;
+      color: var(--text);
+      font-family: inherit;
+      font-size: 1.8rem;
+      font-weight: bold;
+      cursor: pointer;
+      box-shadow: 0 4px 0 var(--shadow);
+      transition: transform .05s, box-shadow .05s;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      touch-action: none;
+    }
+    .key:active { transform: translateY(3px); box-shadow: 0 1px 0 var(--shadow); }
+    .key:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+    .key.confirm { background: var(--accent); color: #fff; border-color: var(--accent); }
+    .key.back { background: #FFB3A0; color: #8A3D2C; border-color: #E58C77; }
+
+    @keyframes pop-in { 0% { transform: scale(0.4); opacity: 0; } 60% { transform: scale(1.12); opacity: 1; } 100% { transform: scale(1); } }
+    @keyframes pop { 0% { transform: scale(1); } 45% { transform: scale(1.25); } 100% { transform: scale(1); } }
+    @keyframes shake { 0%,100% { transform: translateX(0); } 15% { transform: translateX(-9px); } 30% { transform: translateX(9px); } 45% { transform: translateX(-7px); } 60% { transform: translateX(7px); } 75% { transform: translateX(-4px); } }
+    /* The suite's shared red "wrong" cue (cf. Sudoku's .conflict); self-reverts. */
+    @keyframes wrongFlash { 0%,100% { border-color: var(--border); background: #F0FBE8; } 20%,65% { border-color: #E53935; background: #FFCDD2; } }
+    /* Green mirror of wrongFlash for a correct ring-up; self-reverts too. */
+    @keyframes correctFlash { 0%,100% { border-color: var(--border); background: #F0FBE8; } 30%,70% { border-color: var(--accent); background: #DFF5CE; } }
+    @keyframes fall { 0% { transform: translateY(-10vh) rotate(0deg); opacity: 1; } 100% { transform: translateY(110vh) rotate(720deg); opacity: 0; } }
+    @keyframes wiggle { 0%, 100% { transform: rotate(0) scale(1); } 25% { transform: rotate(-12deg) scale(1.25); } 55% { transform: rotate(9deg) scale(1.12); } 80% { transform: rotate(-4deg) scale(1.04); } }
+
+    .overlay {
+      position: fixed; inset: 0; display: none;
+      flex-direction: column; align-items: center; justify-content: center;
+      z-index: 100; text-align: center; padding: 20px;
+    }
+    .overlay.show { display: flex; }
+    #win-overlay { background: rgba(255,255,255,0.55); justify-content: flex-end; padding-bottom: 12vh; }
+    #settings-overlay { background: rgba(255,255,255,0.92); }
+
+    .emoji-row { font-size: 4.5rem; display: flex; gap: 18px; margin-bottom: 22px; }
+    .emoji-row button { background: none; border: none; padding: 0; font: inherit; cursor: pointer; animation: pop-in .6s ease-out both; }
+    .emoji-row button:nth-child(2) { animation-delay: .15s; }
+    .emoji-row button:nth-child(3) { animation-delay: .3s; }
+    .emoji-row button:focus-visible { outline: 3px solid var(--text); outline-offset: 2px; border-radius: 12px; }
+    .emoji-row button.wiggle { animation: wiggle .5s ease; }
+
+    .settings-card {
+      background: #fff; border: 3px solid var(--border); border-radius: 18px;
+      padding: 22px 26px; box-shadow: 0 10px 28px rgba(0,0,0,0.15);
+      display: flex; flex-direction: column; align-items: center; gap: 14px; min-width: 260px;
+    }
+    .settings-card h2 { margin: 0; font-size: 2rem; }
+    .size-row { display: flex; flex-wrap: wrap; justify-content: center; gap: 18px; max-width: 252px; }
+    .size-btn {
+      width: 72px; height: 72px; border: 2px solid var(--border); border-radius: 16px;
+      background: #fff; font-family: inherit; font-size: 1.7rem; cursor: pointer;
+      box-shadow: 0 4px 0 var(--shadow); transition: transform .05s;
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      gap: 2px; color: var(--text);
+    }
+    .size-btn small { font-size: 0.72rem; }
+    .size-btn:active { transform: translateY(2px); box-shadow: 0 2px 0 var(--shadow); }
+    .size-btn.active { box-shadow: 0 0 0 4px var(--accent), 0 4px 0 var(--shadow); }
+
+    .confetti { position: fixed; top: 0; left: 0; width: 10px; height: 10px; pointer-events: none; z-index: 101; animation: fall linear forwards; }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="header-left">
+      <a class="top-btn" id="back-btn" href="../index.html" aria-label="Back to LibreToybox home">🏠</a>
+      <div class="logo" role="img" aria-label="Grocery Cashier" title="Grocery Cashier">
+        <svg viewBox="0 0 48 48" width="40" height="40" aria-hidden="true">
+          <path d="M6 10 h4 l3.2 15 h20 l3 -11 h-23.4" fill="none" stroke="#5CA13A" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+          <circle cx="18" cy="31" r="2.8" fill="#F9C784" stroke="#5CA13A" stroke-width="2"/>
+          <circle cx="31" cy="31" r="2.8" fill="#F9C784" stroke="#5CA13A" stroke-width="2"/>
+        </svg>
+      </div>
+    </div>
+    <div class="top-btns">
+      <button class="top-btn" id="new-game" aria-label="New Game">🔄<span class="hold-progress" aria-hidden="true"></span></button>
+      <button class="top-btn" id="settings-btn" aria-label="Settings">⚙️</button>
+    </div>
+  </header>
+
+  <main>
+    <div class="status" id="status" aria-live="polite"></div>
+    <div id="pips" role="img" aria-label="Progress"></div>
+    <div id="counter">
+      <div id="customer" role="img" aria-label="Customer"></div>
+      <div class="order-card" id="order" role="group" aria-label="Shopping order"></div>
+    </div>
+    <div id="register-wrap">
+      <div id="reg-icon" aria-hidden="true">🧾</div>
+      <div class="register" id="register"><span class="cur">€</span><span id="reg-val"></span></div>
+    </div>
+    <div class="pad" id="pad" role="group" aria-label="Number pad"></div>
+  </main>
+
+  <div class="overlay" id="win-overlay" role="dialog" aria-modal="true" aria-label="You won">
+    <div class="emoji-row" id="emoji-row"></div>
+    <div class="top-btns">
+      <a class="top-btn" id="win-home-btn" href="../index.html" aria-label="Back to LibreToybox home">🏠</a>
+      <button class="top-btn" id="play-again" aria-label="Play Again">🔄</button>
+    </div>
+  </div>
+
+  <div class="overlay" id="settings-overlay" role="dialog" aria-modal="true" aria-label="Settings">
+    <div class="settings-card">
+      <h2>⚙️</h2>
+      <div class="size-row" role="radiogroup" aria-label="Difficulty">
+        <button class="size-btn" data-size="easy"   role="radio" aria-label="Easy, one to three items, adding">🐣<small>1–3</small></button>
+        <button class="size-btn" data-size="medium" role="radio" aria-label="Normal, two to four items, coupons">🕊️<small>2–4</small></button>
+        <button class="size-btn" data-size="hard"   role="radio" aria-label="Hard, three to five items, coupons and change">🦅<small>3–5</small></button>
+      </div>
+      <button class="top-btn" id="close-settings" aria-label="Close">✕</button>
+    </div>
+  </div>
+
+<script>
+const CONFIG = {
+  roundsPerSet: 5,
+  advanceMs: 950,   // pause after a served customer before the next one (gameId-guarded)
+  wrongHoldMs: 500, // input lock while the reject shake/flash plays (matches wrongFlash's duration)
+  priceListSize: 8, // how many groceries get a price this game
+  priceMin: 1,
+  priceMax: 5,
+  payNote: 20,      // the note the customer pays with on the change step
+  // Ordered easy→hard so celebrationTiers[indexOf(size)] picks the tier.
+  //   coupon: subtract a 🎟️ discount   change: pay €20, give change   qty: allow ×2/×3 lines
+  sizes: {
+    easy:   { items: [1, 3], cap: 10, coupon: false, change: false, qty: false },
+    medium: { items: [2, 4], cap: 20, coupon: true,  change: false, qty: true  },
+    hard:   { items: [3, 5], cap: 20, coupon: true,  change: true,  qty: true  }
+  },
+  // Celebration grows with difficulty — Easy is the unchanged baseline,
+  // Normal/Hard add more confetti and extra rising notes on the same fanfare.
+  celebrationTiers: [
+    { confetti: 60,  notes: [523.25, 659.25, 783.99] },
+    { confetti: 90,  notes: [523.25, 659.25, 783.99, 1046.50] },
+    { confetti: 130, notes: [523.25, 659.25, 783.99, 1046.50, 1318.51] }
+  ],
+  // Canonical LibreToybox pastel palette — used for confetti (design principle 11).
+  palette: ['#F7A6B9','#F9C784','#FFE66D','#A8E6CF','#8ED3F4','#C3B4F7','#FFB3A0','#C8E88A'],
+  groceries: ['🍌','🍎','🍞','🥛','🥚','🧀','🍓','🥕','🍅','🥦','🍇','🍊','🥔','🍐','🥐','🍪','🍒','🥑','🌽','🍍','🥬','🧅','🍆','🧃'],
+  customers: ['🧑','👩','👨','👵','👴','🧒','👦','👧','🧑‍🌾','👩‍🍳','🧕','🧑‍🎨','🧑‍🏫','🐻','🐰','🐼','🦊','🐨']
+};
+
+// --- Shared modal a11y helper (copied into each game — the suite ships no
+// bundler). Moves focus into an opened overlay, traps Tab within it, closes on
+// Escape, and restores focus to the opener on close (design principle 8). ---
+const Modal = {
+  opener: null, overlay: null, onDismiss: null, handler: null,
+  focusable(el) {
+    return [...el.querySelectorAll('a[href], button:not([disabled]), input, select, textarea, [tabindex]:not([tabindex="-1"])')]
+      .filter(n => n.getClientRects().length > 0);
+  },
+  open(overlay, onDismiss) {
+    this.opener = document.activeElement;
+    this.overlay = overlay;
+    this.onDismiss = onDismiss || null;
+    const items = this.focusable(overlay);
+    (items[0] || overlay).focus({ preventScroll: true });
+    this.handler = (e) => {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        if (this.onDismiss) this.onDismiss(); else this.close();
+      } else if (e.key === 'Tab') {
+        const f = this.focusable(overlay);
+        if (!f.length) { e.preventDefault(); return; }
+        const first = f[0], last = f[f.length - 1];
+        if (e.shiftKey && (document.activeElement === first || !overlay.contains(document.activeElement))) {
+          e.preventDefault(); last.focus();
+        } else if (!e.shiftKey && (document.activeElement === last || !overlay.contains(document.activeElement))) {
+          e.preventDefault(); first.focus();
+        }
+      }
+    };
+    document.addEventListener('keydown', this.handler, true);
+  },
+  close() {
+    if (this.handler) document.removeEventListener('keydown', this.handler, true);
+    this.handler = null;
+    const opener = this.opener;
+    this.opener = this.overlay = this.onDismiss = null;
+    if (opener && opener.focus) opener.focus({ preventScroll: true });
+  }
+};
+
+const App = {
+  size: 'easy',
+  priceList: [],      // this game's [{emoji, price}] — stable across the set so prices can be learned
+  customer: '🧑',
+  order: null,        // { lines:[{emoji,price,qty}], sum, coupon, net, paid }
+  step: 'total',      // 'total' → enter (sum − coupon); 'change' (hard only) → enter 20 − net
+  expected: 0,        // the number that rings up correctly for the current step
+  entry: '',          // digits typed into the register
+  solved: 0,          // customers served in the current set
+  resolving: false,   // true during the pause between a served customer and the next
+  rejecting: false,   // true while the wrong-entry shake/flash plays — blocks input
+  won: false,
+  gameId: 0,
+  audioCtx: null,
+
+  emojiSets: [
+    ['🎉', '🌟', '🏆'],
+    ['🎈', '🌈', '🎊'],
+    ['🥳', '✨', '🍭']
+  ],
+
+  init() {
+    this.cacheDOM();
+    this.buildPad();
+    this.bindEvents();
+    this.updateSizeButtons();
+    this.newGame();
+    this.setupPWA();
+  },
+
+  cacheDOM() {
+    this.pipsEl = document.getElementById('pips');
+    this.customerEl = document.getElementById('customer');
+    this.orderEl = document.getElementById('order');
+    this.register = document.getElementById('register');
+    this.regVal = document.getElementById('reg-val');
+    this.regIcon = document.getElementById('reg-icon');
+    this.pad = document.getElementById('pad');
+    this.status = document.getElementById('status');
+    this.winOverlay = document.getElementById('win-overlay');
+    this.newGameBtn = document.getElementById('new-game');
+    this.playAgainBtn = document.getElementById('play-again');
+    this.settingsOverlay = document.getElementById('settings-overlay');
+    this.settingsBtn = document.getElementById('settings-btn');
+    this.closeSettingsBtn = document.getElementById('close-settings');
+  },
+
+  buildPad() {
+    const keys = ['1','2','3','4','5','6','7','8','9','back','0','ok'];
+    this.pad.innerHTML = '';
+    keys.forEach(k => {
+      const b = document.createElement('button');
+      b.dataset.key = k;
+      if (k === 'back') { b.className = 'key back'; b.textContent = '⌫'; b.setAttribute('aria-label', 'Delete'); }
+      else if (k === 'ok') { b.className = 'key confirm'; b.textContent = '✓'; b.setAttribute('aria-label', 'Ring up'); }
+      else { b.className = 'key'; b.textContent = k; b.setAttribute('aria-label', 'Number ' + k); }
+      this.pad.appendChild(b);
+    });
+  },
+
+  bindEvents() {
+    this.bindNewGameHold();
+    this.playAgainBtn.addEventListener('click', () => this.newGame(true));
+    this.settingsBtn.addEventListener('click', () => this.openSettings());
+    this.closeSettingsBtn.addEventListener('click', () => this.closeSettings());
+    this.settingsOverlay.addEventListener('click', (e) => {
+      if (e.target === this.settingsOverlay) this.closeSettings();
+    });
+    this.settingsOverlay.querySelectorAll('.size-btn').forEach(btn => {
+      btn.addEventListener('click', () => this.setSize(btn.dataset.size));
+    });
+    // One delegated handler covers mouse, touch and pen; real <button> keys also
+    // fire click on Enter/Space, so keyboard users on a focused key work too.
+    this.pad.addEventListener('click', (e) => {
+      const key = e.target.closest('.key');
+      if (key) this.onKey(key.dataset.key);
+    });
+    // Physical-keyboard parity (design principle 8): digits, Backspace, Enter.
+    document.addEventListener('keydown', (e) => {
+      if (this.settingsOverlay.classList.contains('show')) return;   // Modal owns keys while settings is open
+      const k = e.key;
+      if (k >= '0' && k <= '9') { this.onKey(k); }
+      else if (k === 'Backspace') { e.preventDefault(); this.onKey('back'); }
+      else if (k === 'Enter') {
+        // Let a focused button (New Game, a keypad key, size, close) handle its
+        // own Enter so we don't double-fire; a bare Enter elsewhere rings up.
+        if (document.activeElement && document.activeElement.tagName === 'BUTTON') return;
+        this.onKey('ok');
+      }
+    });
+  },
+
+  // New Game requires a deliberate hold, not a quick tap, so an accidental
+  // tap can't silently wipe progress. A quick tap/keypress does nothing;
+  // only a sustained HOLD_MS hold starts a fresh set.
+  bindNewGameHold() {
+    const HOLD_MS = 500;
+    const btn = this.newGameBtn;
+    const ring = btn.querySelector('.hold-progress');
+    let timer = null, raf = null, startTime = null, startPt = null, active = false;
+
+    const tick = () => {
+      const pct = Math.min(100, ((performance.now() - startTime) / HOLD_MS) * 100);
+      ring.style.background = `conic-gradient(rgba(92,161,58,0.85) ${pct}%, transparent ${pct}%)`;
+      if (pct < 100) raf = requestAnimationFrame(tick);
+    };
+    const start = () => {
+      if (active) return;
+      active = true;
+      startTime = performance.now();
+      btn.classList.add('holding');
+      tick();
+      timer = setTimeout(() => {
+        active = false;
+        btn.classList.remove('holding');
+        if (navigator.vibrate) navigator.vibrate(40);
+        this.newGame(true);
+      }, HOLD_MS);
+    };
+    const cancel = () => {
+      if (!active) return;
+      active = false;
+      clearTimeout(timer);
+      if (raf) cancelAnimationFrame(raf);
+      btn.classList.remove('holding');
+      ring.style.background = '';
+    };
+
+    btn.addEventListener('pointerdown', (e) => { startPt = { x: e.clientX, y: e.clientY }; start(); });
+    btn.addEventListener('pointermove', (e) => {
+      if (!active || !startPt) return;
+      if (Math.hypot(e.clientX - startPt.x, e.clientY - startPt.y) > 10) cancel();
+    });
+    btn.addEventListener('pointerup', cancel);
+    btn.addEventListener('pointercancel', cancel);
+    btn.addEventListener('pointerleave', cancel);
+    btn.addEventListener('keydown', (e) => {
+      if ((e.key === 'Enter' || e.key === ' ') && !e.repeat) { e.preventDefault(); start(); }
+    });
+    btn.addEventListener('keyup', (e) => {
+      if (e.key === 'Enter' || e.key === ' ') cancel();
+    });
+  },
+
+  shuffle(arr) {
+    const a = arr.slice();
+    for (let i = a.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [a[i], a[j]] = [a[j], a[i]];
+    }
+    return a;
+  },
+
+  sample(arr, n) { return this.shuffle(arr).slice(0, n); },
+
+  // A fresh, stable price list for the whole set — the child can learn that
+  // 🍎 is €2 across several customers ("randomized per game").
+  buildPriceList() {
+    this.priceList = this.sample(CONFIG.groceries, CONFIG.priceListSize).map(emoji => ({
+      emoji,
+      price: CONFIG.priceMin + Math.floor(Math.random() * (CONFIG.priceMax - CONFIG.priceMin + 1))
+    }));
+  },
+
+  // Build one customer's order. Greedy item-picking keeps the running sum at or
+  // under the tier's cap by construction, so a valid order always exists; the
+  // coupon is always < sum and, on the change tier, net = sum − coupon is kept
+  // in 1..(payNote−1) so the change (20 − net) is a positive, sensible number.
+  generateRound() {
+    const cfg = CONFIG.sizes[this.size];
+    const [minN, maxN] = cfg.items;
+    const cap = cfg.cap;
+
+    const build = () => {
+      const targetN = minN + Math.floor(Math.random() * (maxN - minN + 1));
+      const pool = this.shuffle(this.priceList);
+      const lines = [];
+      let sum = 0;
+      for (const item of pool) {
+        if (lines.length >= targetN) break;
+        let qty = 1;
+        if (cfg.qty) { const r = Math.random(); qty = r < 0.6 ? 1 : r < 0.9 ? 2 : 3; }
+        if (sum + item.price * qty > cap) qty = 1;         // scale the line back before giving up
+        if (sum + item.price * qty > cap) continue;        // still doesn't fit — skip this item
+        lines.push({ emoji: item.emoji, price: item.price, qty });
+        sum += item.price * qty;
+      }
+      return { lines, sum };
+    };
+
+    for (let attempt = 0; attempt < 60; attempt++) {
+      const { lines, sum } = build();
+      if (lines.length < minN || sum < 2) continue;
+      let coupon = 0;
+      if (cfg.coupon) {
+        coupon = 1 + Math.floor(Math.random() * (sum - 1));   // 1..sum-1, never exceeds the total
+      }
+      const net = sum - coupon;
+      if (net < 1) continue;
+      if (cfg.change && net > CONFIG.payNote - 1) continue;   // guarantee change ≥ 1
+      this.order = { lines, sum, coupon, net, paid: cfg.change ? CONFIG.payNote : 0 };
+      this.step = 'total';
+      this.expected = net;
+      return;
+    }
+
+    // Fallback (extremely unlikely) — a single cheapest item, no coupon.
+    const cheapest = this.priceList.slice().sort((a, b) => a.price - b.price)[0];
+    this.order = { lines: [{ emoji: cheapest.emoji, price: cheapest.price, qty: 1 }], sum: cheapest.price, coupon: 0, net: cheapest.price, paid: 0 };
+    this.step = 'total';
+    this.expected = cheapest.price;
+  },
+
+  newGame(animated) {
+    this.gameId++;
+    this.won = false;
+    this.solved = 0;
+    this.resolving = false;
+    this.rejecting = false;
+    this.entry = '';
+    this.winOverlay.classList.remove('show');
+    Modal.close();
+    this.buildPriceList();
+    if (animated) this.audioSwoosh();
+    this.renderPips();
+    this.nextCustomer(animated);
+  },
+
+  nextCustomer(animated) {
+    this.resolving = false;
+    this.entry = '';
+    this.customer = this.sample(CONFIG.customers, 1)[0];
+    this.generateRound();
+    this.updatePrompt();
+    this.register.classList.remove('correct', 'wrong');
+    this.renderCustomer(animated);
+    this.renderOrder(animated);
+    this.renderRegister();
+    this.updateStatus(this.promptText());
+  },
+
+  renderPips() {
+    this.pipsEl.innerHTML = '';
+    for (let i = 0; i < CONFIG.roundsPerSet; i++) {
+      const pip = document.createElement('div');
+      pip.className = 'pip' + (i < this.solved ? ' filled' : '');
+      this.pipsEl.appendChild(pip);
+    }
+    this.pipsEl.setAttribute('aria-label', `${this.solved} of ${CONFIG.roundsPerSet} served`);
+  },
+
+  renderCustomer(animated) {
+    this.customerEl.textContent = this.customer;
+    this.customerEl.classList.remove('happy', 'deal');
+    if (animated) {
+      void this.customerEl.offsetWidth;
+      this.customerEl.classList.add('deal');
+      this.customerEl.addEventListener('animationend', () => this.customerEl.classList.remove('deal'), { once: true });
+    }
+  },
+
+  renderOrder(animated) {
+    const o = this.order;
+    let html = '';
+    o.lines.forEach(l => {
+      const qty = l.qty > 1 ? `<span class="qty">×${l.qty}</span>` : '';
+      html += `<div class="line"><span class="item"><span class="emj">${l.emoji}</span>${qty}</span><span class="price">€${l.price}</span></div>`;
+    });
+    if (o.coupon > 0) {
+      html += `<div class="line coupon"><span class="item"><span class="emj">🎟️</span></span><span class="price">−€${o.coupon}</span></div>`;
+    }
+    if (this.step === 'change') {
+      html += `<div class="line pay"><span class="item"><span class="emj">💵</span></span><span class="price">€${o.paid}</span></div>`;
+    }
+    this.orderEl.innerHTML = html;
+    this.orderEl.classList.remove('deal');
+    if (animated) { void this.orderEl.offsetWidth; this.orderEl.classList.add('deal'); }
+  },
+
+  renderRegister() {
+    this.regVal.textContent = this.entry;
+  },
+
+  updatePrompt() {
+    // 🧾 = ring up the receipt total; 💰 = give the change.
+    this.regIcon.textContent = this.step === 'change' ? '💰' : '🧾';
+  },
+
+  promptText() {
+    if (this.step === 'change') return 'Give the change from twenty euros.';
+    if (this.order && this.order.coupon > 0) return 'Add up the order, take off the coupon, and type the total.';
+    return 'Add up the order and type the total.';
+  },
+
+  onKey(k) {
+    if (this.won || this.resolving || this.rejecting) return;
+    if (k === 'ok') { this.checkEntry(); return; }
+    if (k === 'back') {
+      if (this.entry.length) {
+        this.entry = this.entry.slice(0, -1);
+        this.playTone({ freq: 300, duration: 60, peakGain: 0.07 });
+        this.renderRegister();
+      }
+      return;
+    }
+    // digit
+    if (this.entry.length >= 3) return;          // answers never exceed two digits, but leave slack
+    if (this.entry === '' && k === '0') return;  // no leading zero
+    this.entry += k;
+    this.playTone({ freq: 520, duration: 60, peakGain: 0.1 });
+    this.renderRegister();
+  },
+
+  checkEntry() {
+    if (this.entry === '') return;
+    if (parseInt(this.entry, 10) === this.expected) this.onCorrect();
+    else this.onWrong();
+  },
+
+  onCorrect() {
+    const reg = this.register;
+    reg.classList.remove('correct', 'wrong');
+    void reg.offsetWidth;
+    reg.classList.add('correct');
+
+    // Hard: a correct total isn't the end — the customer pays €20 and the
+    // child gives change. Advance to the change step instead of serving.
+    if (this.step === 'total' && this.order.paid > 0) {
+      this.audioDing();
+      this.step = 'change';
+      this.expected = this.order.paid - this.order.net;   // 20 − net
+      this.entry = '';
+      this.updatePrompt();
+      this.renderOrder();      // now includes the 💵 €20 line
+      this.renderRegister();
+      this.updateStatus(this.promptText());
+      return;
+    }
+
+    // Final step — customer served.
+    this.resolving = true;
+    this.audioChaChing();
+    this.customerEl.classList.remove('happy');
+    void this.customerEl.offsetWidth;
+    this.customerEl.classList.add('happy');
+    this.solved++;
+    this.renderPips();
+    this.updateStatus('Correct! Here comes the next customer.');
+
+    const gen = this.gameId;
+    setTimeout(() => {
+      if (gen !== this.gameId) return;   // a new game replaced this set
+      if (this.solved >= CONFIG.roundsPerSet) this.celebrate();
+      else this.nextCustomer(true);
+    }, CONFIG.advanceMs);
+  },
+
+  onWrong() {
+    // Wrong ring-up = gentle "hmm" + shake + red flash + a short buzz, no
+    // penalty (design principle 3). Input locks for the cue's duration so
+    // tap-spam can't sneak a pick in, then the entry clears for a fresh try.
+    this.rejecting = true;
+    this.audioOops();
+    if (navigator.vibrate) navigator.vibrate(60);
+    const reg = this.register;
+    reg.classList.remove('wrong');
+    void reg.offsetWidth;
+    reg.classList.add('wrong');
+    this.updateStatus('Not quite — try again!');
+
+    const gen = this.gameId;
+    setTimeout(() => {
+      if (gen !== this.gameId) return;   // a new game replaced this set
+      this.rejecting = false;
+      reg.classList.remove('wrong');
+      this.entry = '';
+      this.renderRegister();
+    }, CONFIG.wrongHoldMs);
+  },
+
+  celebrate() {
+    this.won = true;
+    const tier = CONFIG.celebrationTiers[Object.keys(CONFIG.sizes).indexOf(this.size)];
+    this.audioWin(tier.notes);
+    this.updateStatus('You served everyone! Hooray!');
+    this.renderWinEmojis();
+    this.winOverlay.classList.add('show');
+    Modal.open(this.winOverlay, () => this.newGame(true));
+    for (let i = 0; i < tier.confetti; i++) {
+      const conf = document.createElement('div');
+      conf.className = 'confetti';
+      conf.style.left = Math.random() * 100 + 'vw';
+      conf.style.background = CONFIG.palette[Math.floor(Math.random() * CONFIG.palette.length)];
+      conf.style.width = (6 + Math.random() * 8) + 'px';
+      conf.style.height = (6 + Math.random() * 8) + 'px';
+      conf.style.animationDuration = (1.5 + Math.random() * 2) + 's';
+      conf.style.animationDelay = (Math.random() * 0.8) + 's';
+      document.body.appendChild(conf);
+      setTimeout(() => conf.remove(), 4500);
+    }
+  },
+
+  renderWinEmojis() {
+    const row = document.getElementById('emoji-row');
+    const set = this.emojiSets[Math.floor(Math.random() * this.emojiSets.length)];
+    row.innerHTML = set.map(e => `<button>${e}</button>`).join('');
+    // Poking a celebration emoji wiggles it and chirps — a tiny toy.
+    row.querySelectorAll('button').forEach(btn => btn.addEventListener('click', () => {
+      btn.classList.remove('wiggle');
+      void btn.offsetWidth;
+      btn.classList.add('wiggle');
+      this.audioEmoji();
+    }));
+  },
+
+  openSettings() { this.settingsOverlay.classList.add('show'); this.updateSizeButtons(); Modal.open(this.settingsOverlay, () => this.closeSettings()); },
+  closeSettings() { this.settingsOverlay.classList.remove('show'); Modal.close(); },
+
+  setSize(size) {
+    if (size === this.size) { this.closeSettings(); return; }
+    this.size = size;
+    this.updateSizeButtons();
+    // Close first so the re-deal is visible, never a silent reset behind the
+    // overlay (design principle 9).
+    this.closeSettings();
+    this.newGame(true);
+  },
+
+  updateSizeButtons() {
+    this.settingsOverlay.querySelectorAll('.size-btn').forEach(btn => {
+      const active = btn.dataset.size === this.size;
+      btn.classList.toggle('active', active);
+      btn.setAttribute('aria-checked', active ? 'true' : 'false');
+    });
+  },
+
+  updateStatus(msg) { this.status.textContent = msg; },
+
+  setupPWA() {
+    // The whole toybox is one PWA: a single shared manifest
+    // (../manifest.webmanifest, linked in <head>) and one root-scoped
+    // service worker. Browsers reject blob:/data: worker scripts and
+    // file:// has no SW support, so register only over http(s).
+    if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
+      navigator.serviceWorker.register('../sw.js').then((root) => {
+        // Drop any old per-game worker from before unification so the one
+        // root worker controls this page (longest scope wins).
+        navigator.serviceWorker.getRegistrations().then((regs) =>
+          regs.forEach((r) => {
+            if (r !== root && r.scope.startsWith(root.scope) && r.scope !== root.scope) r.unregister();
+          })
+        );
+      }).catch(() => {});
+    }
+  },
+
+  ensureAudio() {
+    if (!this.audioCtx) this.audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    if (this.audioCtx.state === 'suspended') this.audioCtx.resume();
+  },
+
+  playTone({ type = 'sine', freq = 440, duration = 100, startGain = 0.0001, peakGain = 0.15 }) {
+    this.ensureAudio();
+    const ctx = this.audioCtx;
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = type;
+    osc.frequency.setValueAtTime(freq, ctx.currentTime);
+    gain.gain.setValueAtTime(startGain, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(peakGain, ctx.currentTime + 0.01);
+    gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + duration / 1000);
+    osc.connect(gain).connect(ctx.destination);
+    osc.start();
+    osc.stop(ctx.currentTime + duration / 1000 + 0.02);
+  },
+
+  // Single bright note when a correct total advances to the change step.
+  audioDing() { this.playTone({ type: 'sine', freq: 880, duration: 150, peakGain: 0.14 }); },
+
+  // A bright two-note "cha-ching" when a customer is served.
+  audioChaChing() {
+    this.playTone({ type: 'triangle', freq: 1319, duration: 80, peakGain: 0.12 });
+    setTimeout(() => this.playTone({ type: 'triangle', freq: 1760, duration: 150, peakGain: 0.12 }), 80);
+  },
+
+  // Gentle "hmm", not a punitive buzz (design principle 3).
+  audioOops() { this.playTone({ type: 'sine', freq: 240, duration: 160, peakGain: 0.1 }); },
+
+  audioEmoji() {
+    const freq = [523, 587, 659, 784, 880][Math.floor(Math.random() * 5)]; // pentatonic chirp
+    this.playTone({ type: 'sine', freq, duration: 140, peakGain: 0.15 });
+  },
+
+  audioSwoosh() {
+    this.ensureAudio();
+    const ctx = this.audioCtx;
+    const bufferSize = ctx.sampleRate * 0.1;
+    const buffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
+    const data = buffer.getChannelData(0);
+    for (let i = 0; i < bufferSize; i++) data[i] = (Math.random() * 2 - 1) * (1 - i / bufferSize);
+    const src = ctx.createBufferSource();
+    src.buffer = buffer;
+    const gain = ctx.createGain();
+    gain.gain.setValueAtTime(0.12, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.1);
+    src.connect(gain).connect(ctx.destination);
+    src.start();
+  },
+
+  audioWin(notes) {
+    notes.forEach((freq, i) => {   // C-E-G major arpeggio, extended at higher difficulty
+      setTimeout(() => this.playTone({ type: 'sine', freq, duration: 220, peakGain: 0.18 }), i * 180);
+    });
+  }
+};
+
+App.init();
+</script>
+</body>
+</html>
