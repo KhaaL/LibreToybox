@@ -28,12 +28,33 @@ self.addEventListener('activate', (e) => {
   );
 });
 
-// Stale-while-revalidate: answer from cache instantly (offline-first, no
-// network wait), refresh the cache in the background — the next visit gets
-// the new version. Bumping CACHE is only needed as an emergency
-// "everyone must get this now" lever.
+// Page navigations (launching the hub, opening a game, hopping between them)
+// go network-first: a player who's online always lands on the latest deploy
+// the instant they launch, not one visit later. Offline (or a network
+// failure) falls back to the cached page, so nothing is lost.
+//
+// Everything else (manifest, icons) stays stale-while-revalidate: answer
+// from cache instantly, refresh the cache in the background for next time —
+// these change rarely, so instant-from-cache is the right tradeoff there.
+// Bumping CACHE is only needed as an emergency "everyone must get this now"
+// lever.
 self.addEventListener('fetch', (e) => {
   if (e.request.method !== 'GET') return;
+
+  if (e.request.mode === 'navigate') {
+    e.respondWith(
+      caches.open(CACHE).then((cache) =>
+        fetch(e.request)
+          .then((resp) => {
+            if (resp && resp.ok) cache.put(e.request, resp.clone());
+            return resp;
+          })
+          .catch(() => cache.match(e.request).then((cached) => cached || cache.match('./')))
+      )
+    );
+    return;
+  }
+
   e.respondWith(
     caches.open(CACHE).then((cache) =>
       cache.match(e.request).then((cached) => {
