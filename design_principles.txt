@@ -2,7 +2,6 @@
 
 A collection of games for children aged 6–8 implemented in a lightweight stack.
 
-
 Gameplay is easy to get into and enjoy.
 Interaction with the child should be visual and transcend written language. 
 Elements should be self-describing through shape, color, emoji, or simple icons.
@@ -23,7 +22,7 @@ Humane first software: no tracking, spyware, addictive feedback loops or require
 
 ## 2. Direct Manipulation
 
-- **Tap the target, then the action** - the child selects a destination first, then chooses the tool.
+- Allow for multiple interactions: drag-to-drop, or Tap the target then the action, or tap the action, then the target. Long click or long-tapping is used for deletion or irreversible major events.
 - **Avoid latent selection.** After an action completes, no tile or tool should remain pre-selected. The board returns to a neutral state, preventing accidental repeated actions.
 - **Immediate feedback.** Every tap produces a visible or audible response: color change, animation with a sound.
 
@@ -31,10 +30,9 @@ Humane first software: no tracking, spyware, addictive feedback loops or require
 ## 3. Mistakes Are Playful, Not Punitive
 
 - **Illegal moves should explain themselves visually.** Use red flashes, shakes, or animated rejection instead of error messages.
-- **Let children experiment.** Offer a toggle between:
-  - **Reject mode:** illegal numbers are rejected automatically and may animate back to their source.
-  - **Keep mode:** illegal numbers remain on the board, highlighted red, until the child fixes them.
+- **Let children experiment.** 
 - **Reversal is easy.** Provide multiple, discoverable ways to undo: long-press, tool-based erase, or automatic replacement.
+- **No pressure** - there should never be a time-boxed events that pressures decision-making.
 
 ---
 
@@ -79,7 +77,7 @@ Humane first software: no tracking, spyware, addictive feedback loops or require
 
 ## 9. Settings Should Be Simple and Safe
 
-- **Expose only one or two meaningful toggles.** In this game: illegal-number behavior.
+- **Expose few but meaningful toggles.**
 - **Use clear visual controls** like switches with immediate effect.
 - **Changing a setting should not break the current game state unexpectedly.** If switching modes clears illegal cells, do so visibly.
 - **One difficulty scale across the toybox.** Any game that offers difficulty uses **exactly three levels**, always the same emoji trio in the same order: **🐣 Easy / 🕊️ Normal / 🦅 Hard**. Never a fourth level, a different emoji set, or a reordered trio. If a game has an extra difficulty dimension (a hidden-rule mode, a rotation mode), fold it into the Hard level rather than adding a separate tier or toggle — the difficulty setting stays a single three-way choice.
