@@ -1,0 +1,773 @@
+<!DOCTYPE html>
+<!-- LibreToybox — What Comes Next? · Licensed under the GNU GPL v3.0; see ../LICENSE -->
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>What Comes Next?</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🪁</text></svg>" />
+  <link rel="manifest" href="../manifest.webmanifest" />
+  <meta name="theme-color" content="#5B6FD8" />
+  <style>
+    :root {
+      --bg1: #F2F2FF;
+      --bg2: #DEE2FF;
+      --accent: #5B6FD8;
+      --border: #C7CBF2;
+      --text: #35335F;
+      --shadow: #BEC3EA;
+    }
+
+    * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+    html, body { margin: 0; padding: 0; height: 100%; }
+    /* Own background on html stops the body gradient propagating into
+       overscroll, where it would tile and show the wrong end of the gradient. */
+    html { background: var(--bg1); }
+    body {
+      font-family: ui-rounded, 'Hiragino Maru Gothic ProN', Quicksand, Comfortaa, 'Arial Rounded MT Bold', 'Varela Round', Calibri, sans-serif;
+      background: linear-gradient(180deg, var(--bg1), var(--bg2));
+      color: var(--text);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: flex-start;
+      min-height: 100%;
+      overflow-x: hidden;
+      user-select: none;
+      -webkit-user-select: none;
+      -webkit-touch-callout: none;
+      touch-action: manipulation;
+    }
+
+    header {
+      width: 100%;
+      max-width: 420px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 14px 16px 6px;
+    }
+    .header-left { display: flex; align-items: center; gap: 8px; }
+    .logo { display: flex; align-items: center; }
+    .top-btns { display: flex; gap: 8px; }
+    .top-btn {
+      position: relative;
+      background: #fff;
+      border: 2px solid var(--border);
+      border-radius: 12px;
+      padding: 6px 10px;
+      font-family: inherit;
+      font-size: 1.3rem;
+      cursor: pointer;
+      box-shadow: 0 3px 0 var(--shadow);
+      transition: transform .05s;
+      min-width: 48px;
+      min-height: 48px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      text-decoration: none;
+      color: inherit;
+    }
+    .top-btn:active { transform: translateY(2px); box-shadow: 0 1px 0 var(--shadow); }
+    /* New Game requires a deliberate hold, not a quick tap, so an accidental
+       tap can't silently wipe progress. */
+    .hold-progress { position: absolute; inset: 5px; border-radius: 50%; pointer-events: none; opacity: 0; transition: opacity .1s; }
+    .top-btn.holding .hold-progress { opacity: 1; }
+
+    main { width: 100%; max-width: 420px; padding: 8px 16px 18px; display: flex; flex-direction: column; align-items: center; gap: 18px; }
+
+    /* Visually hidden but available to screen readers (aria-live announcements
+       still fire). Standard clip-based sr-only pattern. */
+    .status { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); clip-path: inset(50%); white-space: nowrap; border: 0; }
+
+    /* Progress pips — one per round in a set, filled as rounds are solved.
+       Visual only (no numbers), design principle 1. */
+    #pips { display: flex; gap: 10px; margin-top: 4px; }
+    .pip {
+      width: 18px;
+      height: 18px;
+      border-radius: 50%;
+      background: #fff;
+      border: 2px solid var(--border);
+      transition: background .2s, transform .2s;
+    }
+    .pip.filled { background: var(--accent); border-color: var(--accent); transform: scale(1.1); }
+
+    /* The pattern strip is display-only, never tapped — like Shape Fit's board
+       cells vs. its draggable pieces, these tiles are exempt from the ≥60px
+       interactive-target rule (principle 4 covers TAP targets) so an 8-item
+       Hard sequence can still wrap cleanly on a phone width. */
+    #sequence {
+      width: 100%;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      justify-content: center;
+    }
+    .seq-tile {
+      flex: 0 0 auto;
+      width: 54px;
+      height: 54px;
+      background: #fff;
+      border: 3px solid var(--border);
+      border-radius: 14px;
+      box-shadow: 0 3px 0 var(--shadow);
+      font-size: 1.8rem;
+      line-height: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    /* The mystery slot — dashed border + accent tint marks it as "not yet
+       known" until a correct pick resolves it into the real answer. */
+    .seq-tile.blank { border-style: dashed; background: var(--bg2); color: var(--accent); font-size: 1.5rem; }
+    /* Not clickable (win-screen recap only), so no pointer cursor. */
+    .seq-tile.recap { cursor: default; }
+
+    /* The answer options — real, tappable ≥60px tiles, same look/feel/
+       animation classes as every other guessing game in the suite. */
+    #options {
+      width: 100%;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      justify-content: center;
+    }
+    .tile {
+      width: 72px;
+      height: 72px;
+      background: #fff;
+      border: 3px solid var(--border);
+      border-radius: 18px;
+      box-shadow: 0 4px 0 var(--shadow);
+      font-size: clamp(2rem, 10vw, 2.6rem);
+      line-height: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      padding: 0;
+      font-family: inherit;
+      transition: transform .08s, box-shadow .08s, opacity .25s;
+    }
+    .tile:active { transform: translateY(3px); box-shadow: 0 1px 0 var(--shadow); }
+    .tile:focus-visible { outline: 4px solid var(--accent); outline-offset: -4px; }
+    /* .deal is declared before .correct/.wrong/.revealed on purpose: it shares
+       their exact specificity (two classes each), and a tile can still be
+       mid-deal when it's tapped. With equal specificity the LATER rule wins
+       the "animation" property outright, so those must come after .deal in
+       source order to reliably override its pop-in the instant either class
+       is added — not just once .deal's own animationend fires (see the
+       JS-side .deal cleanup for the belt-and-braces half of this fix). */
+    @keyframes pop-in { 0% { transform: scale(0.4); opacity: 0; } 60% { transform: scale(1.12); opacity: 1; } 100% { transform: scale(1); } }
+    .seq-tile.deal, .tile.deal { animation: pop-in .35s ease-out both; }
+    .seq-tile.revealed { animation: pop .5s ease-out; }
+    .tile.correct { animation: pop .5s ease-out; }
+    /* Wrong tap = shake + a red flash (the suite's shared "wrong" cue, e.g.
+       Sudoku's .conflict) so it's unmissable but still non-punitive — the
+       tile settles straight back to neutral (design principle 3). */
+    .tile.wrong { animation: shake .4s ease, wrongFlash .5s ease; }
+    /* When a correct pick resolves, the other options gently fade back. */
+    #options.resolved .tile:not(.correct) { opacity: 0.35; }
+
+    @keyframes pop { 0% { transform: scale(1); } 45% { transform: scale(1.25); } 100% { transform: scale(1); } }
+    @keyframes shake { 0%,100% { transform: translateX(0); } 15% { transform: translateX(-9px); } 30% { transform: translateX(9px); } 45% { transform: translateX(-7px); } 60% { transform: translateX(7px); } 75% { transform: translateX(-4px); } }
+    @keyframes wrongFlash { 0%,100% { border-color: var(--border); background: #fff; } 20%,65% { border-color: #E53935; background: #FFCDD2; } }
+    @keyframes fall { 0% { transform: translateY(-10vh) rotate(0deg); opacity: 1; } 100% { transform: translateY(110vh) rotate(720deg); opacity: 0; } }
+    @keyframes wiggle { 0%, 100% { transform: rotate(0) scale(1); } 25% { transform: rotate(-12deg) scale(1.25); } 55% { transform: rotate(9deg) scale(1.12); } 80% { transform: rotate(-4deg) scale(1.04); } }
+
+    .overlay {
+      position: fixed; inset: 0; display: none;
+      flex-direction: column; align-items: center; justify-content: center;
+      z-index: 100; text-align: center; padding: 20px;
+    }
+    .overlay.show { display: flex; }
+    #win-overlay { background: rgba(255,255,255,0.55); justify-content: flex-end; padding-bottom: 12vh; }
+    #settings-overlay { background: rgba(255,255,255,0.92); }
+
+    .emoji-row { font-size: 4.5rem; display: flex; gap: 18px; margin-bottom: 22px; }
+    .emoji-row button { background: none; border: none; padding: 0; font: inherit; cursor: pointer; animation: pop-in .6s ease-out both; }
+    .emoji-row button:nth-child(2) { animation-delay: .15s; }
+    .emoji-row button:nth-child(3) { animation-delay: .3s; }
+    .emoji-row button:focus-visible { outline: 3px solid var(--text); outline-offset: 2px; border-radius: 12px; }
+    .emoji-row button.wiggle { animation: wiggle .5s ease; }
+
+    .settings-card {
+      background: #fff; border: 3px solid var(--border); border-radius: 18px;
+      padding: 22px 26px; box-shadow: 0 10px 28px rgba(0,0,0,0.15);
+      display: flex; flex-direction: column; align-items: center; gap: 14px; min-width: 260px;
+    }
+    .settings-card h2 { margin: 0; font-size: 2rem; }
+    .size-row { display: flex; flex-wrap: wrap; justify-content: center; gap: 18px; max-width: 252px; }
+    .size-btn {
+      width: 72px; height: 72px; border: 2px solid var(--border); border-radius: 16px;
+      background: #fff; font-family: inherit; font-size: 1.7rem; cursor: pointer;
+      box-shadow: 0 4px 0 var(--shadow); transition: transform .05s;
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      gap: 2px; color: var(--text);
+    }
+    .size-btn small { font-size: 0.72rem; }
+    .size-btn:active { transform: translateY(2px); box-shadow: 0 2px 0 var(--shadow); }
+    .size-btn.active { box-shadow: 0 0 0 4px var(--accent), 0 4px 0 var(--shadow); }
+
+    .confetti { position: fixed; top: 0; left: 0; width: 10px; height: 10px; pointer-events: none; z-index: 101; animation: fall linear forwards; }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="header-left">
+      <a class="top-btn" id="back-btn" href="../index.html" aria-label="Back to LibreToybox home">🏠</a>
+      <div class="logo" role="img" aria-label="What Comes Next?" title="What Comes Next?">
+        <svg viewBox="0 0 48 48" width="40" height="40" aria-hidden="true">
+          <circle cx="8" cy="24" r="6" fill="#8ED3F4" stroke="#54A6D2" stroke-width="2"/>
+          <circle cx="24" cy="24" r="6" fill="#FFE66D" stroke="#DCBC2E" stroke-width="2"/>
+          <circle cx="40" cy="24" r="7" fill="none" stroke="#5B6FD8" stroke-width="3" stroke-dasharray="4 3"/>
+          <text x="40" y="28.5" font-size="12" text-anchor="middle" fill="#5B6FD8" font-family="ui-rounded, sans-serif" font-weight="bold">?</text>
+        </svg>
+      </div>
+    </div>
+    <div class="top-btns">
+      <button class="top-btn" id="new-game" aria-label="New Game">🔄<span class="hold-progress" aria-hidden="true"></span></button>
+      <button class="top-btn" id="settings-btn" aria-label="Settings">⚙️</button>
+    </div>
+  </header>
+
+  <main>
+    <div class="status" id="status" aria-live="polite"></div>
+    <div id="pips" role="img" aria-label="Progress"></div>
+    <div id="sequence" role="img" aria-label="Pattern"></div>
+    <div id="options" role="group" aria-label="Which comes next?"></div>
+  </main>
+
+  <div class="overlay" id="win-overlay" role="dialog" aria-modal="true" aria-label="You won">
+    <div class="emoji-row" id="emoji-row"></div>
+    <div class="top-btns">
+      <a class="top-btn" id="win-home-btn" href="../index.html" aria-label="Back to LibreToybox home">🏠</a>
+      <button class="top-btn" id="play-again" aria-label="Play Again">🔄</button>
+    </div>
+  </div>
+
+  <div class="overlay" id="settings-overlay" role="dialog" aria-modal="true" aria-label="Settings">
+    <div class="settings-card">
+      <h2>⚙️</h2>
+      <div class="size-row" role="radiogroup" aria-label="Difficulty">
+        <button class="size-btn" data-size="easy"   role="radio" aria-label="Easy, four in a row, simple pattern">🐣<small>4</small></button>
+        <button class="size-btn" data-size="medium" role="radio" aria-label="Normal, six in a row">🕊️<small>6</small></button>
+        <button class="size-btn" data-size="hard"   role="radio" aria-label="Hard, eight in a row, tricky">🦅<small>8</small></button>
+      </div>
+      <button class="top-btn" id="close-settings" aria-label="Close">✕</button>
+    </div>
+  </div>
+
+<script>
+// Small, mutually-independent thematic sets. Each round picks ONE set, so
+// overlap between sets (e.g. ⭐ appearing in both "shapes" and "sky") is
+// harmless — only one set is ever in play at a time. Every set needs at
+// least period(3) + decoys(1) = 4 distinct members; 5 gives headroom.
+const PATTERN_SETS = [
+  ['☀️','🌧️','⛈️','❄️','🌈'],   // weather
+  ['🔴','🔺','🟦','⭐','🟣'],   // shapes
+  ['🍎','🍌','🍇','🍊','🍓'],   // fruit
+  ['🐱','🐶','🐰','🐻','🦊'],   // animals
+  ['🌙','⭐','☁️','🌈','☀️'],   // sky
+  ['🐠','🐳','🦀','🐙','🦐'],   // sea
+];
+
+const CONFIG = {
+  roundsPerSet: 5,
+  advanceMs: 700,   // pause after a correct pick before the next round (gameId-guarded)
+  wrongHoldMs: 500, // input lock while the reject shake/flash plays (matches wrongFlash's duration)
+  sizes: {
+    easy:   { seqLength: 4, period: 2, options: 3 },  // 🐣 4 shown, guess the 5th
+    medium: { seqLength: 6, period: 3, options: 3 },  // 🕊️ 6 shown, guess the 7th (default)
+    hard:   { seqLength: 8, period: 3, options: 4 }   // 🦅 8 shown, guess the 9th, +1 same-theme decoy
+  },
+  // Celebration grows with difficulty — Easy is today's unchanged baseline,
+  // Normal/Hard add more confetti and extra rising notes on the same fanfare.
+  celebrationTiers: [
+    { confetti: 60,  notes: [523.25, 659.25, 783.99] },
+    { confetti: 90,  notes: [523.25, 659.25, 783.99, 1046.50] },
+    { confetti: 130, notes: [523.25, 659.25, 783.99, 1046.50, 1318.51] }
+  ],
+  // Canonical LibreToybox pastel palette — used for confetti (design principle 11).
+  palette: ['#F7A6B9','#F9C784','#FFE66D','#A8E6CF','#8ED3F4','#C3B4F7','#FFB3A0','#C8E88A']
+};
+
+// --- Shared modal a11y helper (copied into each game — the suite ships no
+// bundler). Moves focus into an opened overlay, traps Tab within it, closes on
+// Escape, and restores focus to the opener on close (design principle 8). ---
+const Modal = {
+  opener: null, overlay: null, onDismiss: null, handler: null,
+  focusable(el) {
+    return [...el.querySelectorAll('a[href], button:not([disabled]), input, select, textarea, [tabindex]:not([tabindex="-1"])')]
+      .filter(n => n.getClientRects().length > 0);
+  },
+  open(overlay, onDismiss) {
+    this.opener = document.activeElement;
+    this.overlay = overlay;
+    this.onDismiss = onDismiss || null;
+    const items = this.focusable(overlay);
+    (items[0] || overlay).focus({ preventScroll: true });
+    this.handler = (e) => {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        if (this.onDismiss) this.onDismiss(); else this.close();
+      } else if (e.key === 'Tab') {
+        const f = this.focusable(overlay);
+        if (!f.length) { e.preventDefault(); return; }
+        const first = f[0], last = f[f.length - 1];
+        if (e.shiftKey && (document.activeElement === first || !overlay.contains(document.activeElement))) {
+          e.preventDefault(); last.focus();
+        } else if (!e.shiftKey && (document.activeElement === last || !overlay.contains(document.activeElement))) {
+          e.preventDefault(); first.focus();
+        }
+      }
+    };
+    document.addEventListener('keydown', this.handler, true);
+  },
+  close() {
+    if (this.handler) document.removeEventListener('keydown', this.handler, true);
+    this.handler = null;
+    const opener = this.opener;
+    this.opener = this.overlay = this.onDismiss = null;
+    if (opener && opener.focus) opener.focus({ preventScroll: true });
+  }
+};
+
+const App = {
+  size: 'medium',
+  sequence: [],       // shown pattern items, in display order (excludes the blank)
+  answer: null,       // the correct next emoji
+  options: [],        // this round's answer choices, in display order
+  blankTile: null,    // the "?" element in #sequence, so a correct pick can reveal it
+  solved: 0,          // rounds solved in the current set
+  answersFound: [],   // the correct answer from each solved round this set, in solve order
+  resolving: false,   // true during the pause between a correct pick and the next round
+  rejecting: false,   // true while the wrong-tap shake/flash is playing — blocks tap-spam
+  won: false,
+  gameId: 0,
+  audioCtx: null,
+
+  emojiSets: [
+    ['🎉', '🌟', '🏆'],
+    ['🎈', '🌈', '🎊'],
+    ['🥳', '✨', '🍭']
+  ],
+
+  init() {
+    this.cacheDOM();
+    this.bindEvents();
+    this.updateSizeButtons();
+    this.newGame();
+    this.setupPWA();
+  },
+
+  cacheDOM() {
+    this.sequenceEl = document.getElementById('sequence');
+    this.optionsEl = document.getElementById('options');
+    this.pipsEl = document.getElementById('pips');
+    this.status = document.getElementById('status');
+    this.winOverlay = document.getElementById('win-overlay');
+    this.newGameBtn = document.getElementById('new-game');
+    this.playAgainBtn = document.getElementById('play-again');
+    this.settingsOverlay = document.getElementById('settings-overlay');
+    this.settingsBtn = document.getElementById('settings-btn');
+    this.closeSettingsBtn = document.getElementById('close-settings');
+  },
+
+  bindEvents() {
+    this.bindNewGameHold();
+    this.playAgainBtn.addEventListener('click', () => this.newGame(true));
+    this.settingsBtn.addEventListener('click', () => this.openSettings());
+    this.closeSettingsBtn.addEventListener('click', () => this.closeSettings());
+    this.settingsOverlay.addEventListener('click', (e) => {
+      if (e.target === this.settingsOverlay) this.closeSettings();
+    });
+    this.settingsOverlay.querySelectorAll('.size-btn').forEach(btn => {
+      btn.addEventListener('click', () => this.setSize(btn.dataset.size));
+    });
+    // One delegated handler covers mouse, touch, pen and keyboard (real
+    // <button> tiles fire click on Enter/Space too — keyboard parity, DP8).
+    this.optionsEl.addEventListener('click', (e) => {
+      const tile = e.target.closest('.tile');
+      if (tile) this.pickAnswer(parseInt(tile.dataset.index, 10));
+    });
+  },
+
+  // New Game requires a deliberate hold, not a quick tap, so an accidental
+  // tap can't silently wipe progress. A quick tap/keypress does nothing;
+  // only a sustained HOLD_MS hold starts a fresh round.
+  bindNewGameHold() {
+    const HOLD_MS = 500;
+    const btn = this.newGameBtn;
+    const ring = btn.querySelector('.hold-progress');
+    let timer = null, raf = null, startTime = null, startPt = null, active = false;
+
+    const tick = () => {
+      const pct = Math.min(100, ((performance.now() - startTime) / HOLD_MS) * 100);
+      ring.style.background = `conic-gradient(rgba(91,111,216,0.85) ${pct}%, transparent ${pct}%)`;
+      if (pct < 100) raf = requestAnimationFrame(tick);
+    };
+    const start = () => {
+      if (active) return;
+      active = true;
+      startTime = performance.now();
+      btn.classList.add('holding');
+      tick();
+      timer = setTimeout(() => {
+        active = false;
+        btn.classList.remove('holding');
+        if (navigator.vibrate) navigator.vibrate(40);
+        this.newGame(true);
+      }, HOLD_MS);
+    };
+    const cancel = () => {
+      if (!active) return;
+      active = false;
+      clearTimeout(timer);
+      if (raf) cancelAnimationFrame(raf);
+      btn.classList.remove('holding');
+      ring.style.background = '';
+    };
+
+    btn.addEventListener('pointerdown', (e) => { startPt = { x: e.clientX, y: e.clientY }; start(); });
+    btn.addEventListener('pointermove', (e) => {
+      if (!active || !startPt) return;
+      if (Math.hypot(e.clientX - startPt.x, e.clientY - startPt.y) > 10) cancel();
+    });
+    btn.addEventListener('pointerup', cancel);
+    btn.addEventListener('pointercancel', cancel);
+    btn.addEventListener('pointerleave', cancel);
+    btn.addEventListener('keydown', (e) => {
+      if ((e.key === 'Enter' || e.key === ' ') && !e.repeat) { e.preventDefault(); start(); }
+    });
+    btn.addEventListener('keyup', (e) => {
+      if (e.key === 'Enter' || e.key === ' ') cancel();
+    });
+  },
+
+  shuffle(arr) {
+    const a = arr.slice();
+    for (let i = a.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [a[i], a[j]] = [a[j], a[i]];
+    }
+    return a;
+  },
+
+  // Build one round. A random theme's members are shuffled; the first
+  // `period` become the repeating cycle (distinct by construction), and the
+  // sequence is that cycle repeated to `seqLength` plus one hidden position —
+  // so there is always exactly one correct next item. When more options are
+  // needed than the cycle has members, the extra slots are filled with other,
+  // unused members of the SAME theme: a closer distractor (same visual
+  // family, never appeared in the sequence) than an obviously-unrelated one.
+  generateRound() {
+    const { seqLength, period, options } = CONFIG.sizes[this.size];
+    const theme = this.shuffle(PATTERN_SETS[Math.floor(Math.random() * PATTERN_SETS.length)]);
+    const cycle = theme.slice(0, period);
+
+    this.sequence = [];
+    for (let i = 0; i < seqLength; i++) this.sequence.push(cycle[i % period]);
+    this.answer = cycle[seqLength % period];
+
+    const decoysNeeded = options - period;
+    const decoys = theme.slice(period, period + decoysNeeded);
+    this.options = this.shuffle([...cycle, ...decoys]);
+  },
+
+  newGame(animated) {
+    this.gameId++;
+    this.won = false;
+    this.solved = 0;
+    this.answersFound = [];
+    this.resolving = false;
+    this.rejecting = false;
+    this.winOverlay.classList.remove('show');
+    Modal.close();
+    if (animated) this.audioSwoosh();
+    this.renderPips();
+    this.nextRound(animated);
+  },
+
+  nextRound(animated) {
+    this.resolving = false;
+    this.generateRound();
+    this.renderSequence(animated);
+    this.renderOptions(animated);
+    this.updateStatus('What comes next?');
+  },
+
+  renderPips() {
+    this.pipsEl.innerHTML = '';
+    for (let i = 0; i < CONFIG.roundsPerSet; i++) {
+      const pip = document.createElement('div');
+      pip.className = 'pip' + (i < this.solved ? ' filled' : '');
+      this.pipsEl.appendChild(pip);
+    }
+    this.pipsEl.setAttribute('aria-label', `${this.solved} of ${CONFIG.roundsPerSet} found`);
+  },
+
+  // #sequence tiles are non-interactive (never tappable), so a screen reader
+  // user has no way to inspect them unless the container's aria-label spells
+  // out the pattern itself.
+  renderSequence(animated) {
+    this.sequenceEl.setAttribute('aria-label', 'Pattern: ' + this.sequence.join(', ') + ', then what comes next?');
+    this.sequenceEl.innerHTML = '';
+    this.sequence.forEach((emoji, i) => {
+      const div = document.createElement('div');
+      div.className = 'seq-tile' + (animated ? ' deal' : '');
+      div.textContent = emoji;
+      if (animated) {
+        div.style.animationDelay = (i * 45) + 'ms';
+        div.addEventListener('animationend', () => div.classList.remove('deal'), { once: true });
+      }
+      this.sequenceEl.appendChild(div);
+    });
+
+    const blank = document.createElement('div');
+    blank.className = 'seq-tile blank' + (animated ? ' deal' : '');
+    blank.textContent = '❓';
+    if (animated) {
+      blank.style.animationDelay = (this.sequence.length * 45) + 'ms';
+      blank.addEventListener('animationend', () => blank.classList.remove('deal'), { once: true });
+    }
+    this.sequenceEl.appendChild(blank);
+    this.blankTile = blank;
+  },
+
+  renderOptions(animated) {
+    this.optionsEl.classList.remove('resolved');
+    this.optionsEl.innerHTML = '';
+    this.options.forEach((emoji, i) => {
+      const btn = document.createElement('button');
+      btn.className = 'tile' + (animated ? ' deal' : '');
+      btn.dataset.index = i;
+      btn.textContent = emoji;
+      btn.setAttribute('aria-label', 'Option ' + (i + 1));
+      if (animated) {
+        btn.style.animationDelay = (i * 45) + 'ms';
+        // .deal and .wrong/.correct share the same CSS specificity (two
+        // classes each); leaving .deal on the tile after its pop-in
+        // finishes lets it silently win the "animation" property tie by
+        // source order, so the reject/celebrate keyframes never actually
+        // run. Strip it the moment its own animation is done.
+        btn.addEventListener('animationend', () => btn.classList.remove('deal'), { once: true });
+      }
+      this.optionsEl.appendChild(btn);
+    });
+  },
+
+  pickAnswer(i) {
+    if (this.won || this.resolving || this.rejecting) return;
+
+    const tile = this.optionsEl.querySelector(`.tile[data-index="${i}"]`);
+    if (!tile) return;
+    const picked = this.options[i];
+
+    if (picked === this.answer) {
+      // Correct — reveal the "?" slot as the real answer, fade the other
+      // options, fill a pip, then advance.
+      this.resolving = true;
+      this.audioRight();
+      tile.classList.add('correct');
+      this.optionsEl.classList.add('resolved');
+      this.blankTile.textContent = this.answer;
+      this.blankTile.classList.remove('blank');
+      this.blankTile.classList.add('revealed');
+      this.solved++;
+      this.answersFound.push(this.answer);
+      this.renderPips();
+      this.updateStatus('Yes! That comes next.');
+
+      const gen = this.gameId;
+      setTimeout(() => {
+        if (gen !== this.gameId) return;   // a new game replaced this round
+        if (this.solved >= CONFIG.roundsPerSet) {
+          this.celebrate();
+        } else {
+          this.nextRound(true);
+        }
+      }, CONFIG.advanceMs);
+    } else {
+      // Wrong — gentle "hmm" + a shake, a red flash, and a short buzz, no
+      // penalty. Expected guessing, not a rule violation, so never the harsh
+      // buzz sound (design principle 3); the tile settles back to neutral.
+      // Input is locked for the animation's duration so rapid repeat-tapping
+      // ("tap spam") can't sneak a pick in — on this tile or any other,
+      // including the correct one — while the reject cue is still playing.
+      this.rejecting = true;
+      this.audioOops();
+      if (navigator.vibrate) navigator.vibrate(60);
+      tile.classList.remove('wrong');
+      void tile.offsetWidth;   // reflow so the animation can re-run
+      tile.classList.add('wrong');
+      this.updateStatus('Not that one. Try again!');
+
+      const gen = this.gameId;
+      setTimeout(() => {
+        if (gen !== this.gameId) return;   // a new game replaced this round
+        this.rejecting = false;
+      }, CONFIG.wrongHoldMs);
+    }
+  },
+
+  celebrate() {
+    this.won = true;
+    const tier = CONFIG.celebrationTiers[Object.keys(CONFIG.sizes).indexOf(this.size)];
+    this.audioWin(tier.notes);
+    this.updateStatus('You found the pattern every time! Hooray!');
+    this.renderWinEmojis();
+    this.revealAnswersOnSequence();
+    this.winOverlay.classList.add('show');
+    Modal.open(this.winOverlay, () => this.newGame(true));
+    for (let i = 0; i < tier.confetti; i++) {
+      const conf = document.createElement('div');
+      conf.className = 'confetti';
+      conf.style.left = Math.random() * 100 + 'vw';
+      conf.style.background = CONFIG.palette[Math.floor(Math.random() * CONFIG.palette.length)];
+      conf.style.width = (6 + Math.random() * 8) + 'px';
+      conf.style.height = (6 + Math.random() * 8) + 'px';
+      conf.style.animationDuration = (1.5 + Math.random() * 2) + 's';
+      conf.style.animationDelay = (Math.random() * 0.8) + 's';
+      document.body.appendChild(conf);
+      setTimeout(() => conf.remove(), 4500);
+    }
+  },
+
+  renderWinEmojis() {
+    const row = document.getElementById('emoji-row');
+    const set = this.emojiSets[Math.floor(Math.random() * this.emojiSets.length)];
+    row.innerHTML = set.map(e => `<button>${e}</button>`).join('');
+    // Poking a celebration emoji wiggles it and chirps — a tiny toy.
+    row.querySelectorAll('button').forEach(btn => btn.addEventListener('click', () => {
+      btn.classList.remove('wiggle');
+      void btn.offsetWidth;
+      btn.classList.add('wiggle');
+      this.audioEmoji();
+    }));
+  },
+
+  // Recap of the set's correct answers, shown by repopulating the real
+  // #sequence (same .seq-tile look) rather than a separate strip — the
+  // "answers" land where the game was actually played, staggered in like a
+  // fresh deal (mirrors Odd One Out's revealOddsOnBoard()). Plain
+  // non-interactive divs, not buttons — there's no tap action to offer here.
+  revealAnswersOnSequence() {
+    this.sequenceEl.setAttribute('aria-label', 'What you guessed each round');
+    this.sequenceEl.innerHTML = '';
+    this.answersFound.forEach((emoji, i) => {
+      const div = document.createElement('div');
+      div.className = 'seq-tile deal recap';
+      div.textContent = emoji;
+      div.style.animationDelay = (i * 45) + 'ms';
+      div.addEventListener('animationend', () => div.classList.remove('deal'), { once: true });
+      this.sequenceEl.appendChild(div);
+    });
+    this.optionsEl.innerHTML = '';
+    this.optionsEl.classList.remove('resolved');
+  },
+
+  openSettings() { this.settingsOverlay.classList.add('show'); this.updateSizeButtons(); Modal.open(this.settingsOverlay, () => this.closeSettings()); },
+  closeSettings() { this.settingsOverlay.classList.remove('show'); Modal.close(); },
+
+  setSize(size) {
+    if (size === this.size) { this.closeSettings(); return; }
+    this.size = size;
+    this.updateSizeButtons();
+    // Close first so the re-deal is visible, never a silent reset behind the
+    // overlay (design principle 9).
+    this.closeSettings();
+    this.newGame(true);
+  },
+
+  updateSizeButtons() {
+    this.settingsOverlay.querySelectorAll('.size-btn').forEach(btn => {
+      const active = btn.dataset.size === this.size;
+      btn.classList.toggle('active', active);
+      btn.setAttribute('aria-checked', active ? 'true' : 'false');
+    });
+  },
+
+  updateStatus(msg) { this.status.textContent = msg; },
+
+  setupPWA() {
+    // The whole toybox is one PWA: a single shared manifest
+    // (../manifest.webmanifest, linked in <head>) and one root-scoped
+    // service worker. Browsers reject blob:/data: worker scripts and
+    // file:// has no SW support, so register only over http(s).
+    if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
+      navigator.serviceWorker.register('../sw.js').then((root) => {
+        // Drop any old per-game worker from before unification so the one
+        // root worker controls this page (longest scope wins).
+        navigator.serviceWorker.getRegistrations().then((regs) =>
+          regs.forEach((r) => {
+            if (r !== root && r.scope.startsWith(root.scope) && r.scope !== root.scope) r.unregister();
+          })
+        );
+      }).catch(() => {});
+    }
+  },
+
+  ensureAudio() {
+    if (!this.audioCtx) this.audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    if (this.audioCtx.state === 'suspended') this.audioCtx.resume();
+  },
+
+  playTone({ type = 'sine', freq = 440, duration = 100, startGain = 0.0001, peakGain = 0.15 }) {
+    this.ensureAudio();
+    const ctx = this.audioCtx;
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = type;
+    osc.frequency.setValueAtTime(freq, ctx.currentTime);
+    gain.gain.setValueAtTime(startGain, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(peakGain, ctx.currentTime + 0.01);
+    gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + duration / 1000);
+    osc.connect(gain).connect(ctx.destination);
+    osc.start();
+    osc.stop(ctx.currentTime + duration / 1000 + 0.02);
+  },
+
+  audioRight() {
+    // Rising two-note chime for a correct guess.
+    this.playTone({ type: 'sine', freq: 660, duration: 90, peakGain: 0.16 });
+    setTimeout(() => this.playTone({ type: 'sine', freq: 990, duration: 110, peakGain: 0.14 }), 90);
+  },
+
+  // Gentle "hmm", not a punitive buzz (design principle 3).
+  audioOops() { this.playTone({ type: 'sine', freq: 240, duration: 160, peakGain: 0.1 }); },
+
+  audioEmoji() {
+    const freq = [523, 587, 659, 784, 880][Math.floor(Math.random() * 5)]; // pentatonic chirp
+    this.playTone({ type: 'sine', freq, duration: 140, peakGain: 0.15 });
+  },
+
+  audioSwoosh() {
+    this.ensureAudio();
+    const ctx = this.audioCtx;
+    const bufferSize = ctx.sampleRate * 0.1;
+    const buffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
+    const data = buffer.getChannelData(0);
+    for (let i = 0; i < bufferSize; i++) data[i] = (Math.random() * 2 - 1) * (1 - i / bufferSize);
+    const src = ctx.createBufferSource();
+    src.buffer = buffer;
+    const gain = ctx.createGain();
+    gain.gain.setValueAtTime(0.12, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.1);
+    src.connect(gain).connect(ctx.destination);
+    src.start();
+  },
+
+  audioWin(notes) {
+    notes.forEach((freq, i) => {   // C-E-G major arpeggio, extended at higher difficulty
+      setTimeout(() => this.playTone({ type: 'sine', freq, duration: 220, peakGain: 0.18 }), i * 180);
+    });
+  }
+};
+
+App.init();
+</script>
+</body>
+</html>

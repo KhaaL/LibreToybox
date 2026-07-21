@@ -15,7 +15,8 @@ self.addEventListener('install', (e) => {
     'shape-fit/', 'shape-fit/index.html',
     'emoji-paint/', 'emoji-paint/index.html',
     'odd-one-out/', 'odd-one-out/index.html',
-    'grocery-cashier/', 'grocery-cashier/index.html'
+    'grocery-cashier/', 'grocery-cashier/index.html',
+    'guess-next-sequence/', 'guess-next-sequence/index.html'
   ])));
   self.skipWaiting();
 });
