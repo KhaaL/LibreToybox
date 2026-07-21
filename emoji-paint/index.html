@@ -392,13 +392,17 @@
       body.split #toolbar.locked ~ #picker-overlay { display: none; }
 
       /* Docked panel: a tap-and-hold-free drag straight off a swatch carries it
-         to the canvas (see onPickerPointerDown), so the buttons must own the
-         gesture from the first pixel of movement instead of the browser
-         starting a touch-scroll. The jump chips (#picker-nav) are the primary
-         way to get around the docked panel — see architecture notes — so
-         losing touch-drag-to-scroll directly on top of a swatch here is an
-         acceptable trade, and mouse-wheel/trackpad scroll is untouched. */
-      body.split .emoji-opt { touch-action: none; }
+         to the canvas (see onPickerPointerDown). touch-action:none would give
+         the buttons the gesture from the first pixel, but that also swallows
+         an ordinary vertical scroll swipe over a swatch — the browser never
+         gets a chance to pan the list, so scrolling the panel would misfire
+         into "pick this emoji up" constantly. pan-y instead leaves vertical
+         panning to the browser (native, momentum-correct) and only withholds
+         the *horizontal* gesture — the direction an actual drag toward the
+         canvas takes — for onPickerPointerMove's direction-aware threshold
+         to claim. Mouse-wheel/trackpad scroll and the non-split modal picker
+         (which never sets this) are unaffected either way. */
+      body.split .emoji-opt { touch-action: pan-y; }
     }
   </style>
 </head>
@@ -1595,7 +1599,15 @@ const App = {
     drag.x = e.clientX;
     drag.y = e.clientY;
     if (!drag.dragging) {
-      if (Math.hypot(drag.x - drag.startX, drag.y - drag.startY) < this.PICKER_DRAG_PX) return;
+      // Direction-aware, not just distance: a vertical-dominant move is a
+      // scroll (touch-action:pan-y on .emoji-opt already leaves that to the
+      // browser, which cancels this pointer sequence via onPickerPointerCancel
+      // once it claims the pan) — only a horizontal-dominant move, the
+      // direction an actual drag toward the canvas takes, starts a carry.
+      // This is belt-and-braces for the few slop pixels before the browser's
+      // native takeover lands, so a scroll swipe never flashes the ghost.
+      const dx = drag.x - drag.startX, dy = drag.y - drag.startY;
+      if (Math.abs(dx) < this.PICKER_DRAG_PX || Math.abs(dx) <= Math.abs(dy)) return;
       drag.dragging = true;
       this.liftGhost.textContent = drag.emoji;
       this.liftGhost.style.fontSize = (this.stampPx() * 1.15) + 'px';
