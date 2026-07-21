@@ -114,8 +114,14 @@
       box-shadow: 0 4px 0 var(--shadow);
       padding: 6px 4px;
       min-height: 64px;
+      transition: transform .3s ease;
     }
     .order-card.deal { animation: pop-in .35s ease-out both; }
+    /* On the change step the receipt recedes — it steps back a touch and its
+       item lines fade, while the frozen Total line stays crisp — so focus
+       shifts to the register "till" where the money interaction now lives. */
+    .order-card.stepped-back { transform: scale(0.94); }
+    .order-card.stepped-back .line:not(.total) { opacity: 0.4; }
     .line {
       display: flex;
       align-items: center;
@@ -123,6 +129,7 @@
       padding: 7px 12px;
       font-size: 1.6rem;
       border-bottom: 2px dashed var(--border);
+      transition: opacity .3s ease;
     }
     .line:last-child { border-bottom: none; }
     .line .item { display: flex; align-items: center; gap: 8px; }
@@ -130,7 +137,11 @@
     .price { font-weight: bold; font-variant-numeric: tabular-nums; }
     /* A coupon subtracts — shown as a discount in the accent green. */
     .line.coupon .price { color: var(--accent); }
-    .line.pay { color: var(--accent); }
+    /* The frozen grocery total, shown on the change step so the child no longer
+       has to hold it in memory. Bold + accent so it reads through the dimmed
+       receipt; a solid rule sets it off as the subtotal. */
+    .line.total { border-top: 2px solid var(--border); font-weight: bold; }
+    .line.total .price { color: var(--accent); }
 
     /* The register "screen" the child types the answer into. */
     #register-wrap { display: flex; align-items: center; gap: 10px; }
@@ -153,6 +164,27 @@
       font-variant-numeric: tabular-nums;
     }
     .register .cur { opacity: 0.55; font-size: 1.9rem; }
+    .reg-entry { display: flex; align-items: center; gap: 4px; }
+    /* The bill the customer handed over — hidden until the change step. */
+    .reg-paid { display: none; }
+    /* Change step: the register becomes a two-line "till" — the bill handed
+       over on top, the change being counted below — set off with an accent
+       edge and tint so it reads as the money area, distinct from the
+       stepped-back grocery receipt. Flat fill + darker edge, no gradient (P11). */
+    .register.change-mode {
+      flex-direction: column;
+      gap: 2px;
+      border-color: var(--accent);
+      background: #E9F7D8;
+    }
+    .register.change-mode .reg-paid {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 1.3rem;
+      line-height: 1.1;
+      color: var(--accent);
+    }
     .register.correct { animation: pop .5s ease, correctFlash .6s ease; }
     .register.wrong { animation: shake .4s ease, wrongFlash .5s ease; }
 
@@ -262,7 +294,10 @@
     </div>
     <div id="register-wrap">
       <div id="reg-icon" aria-hidden="true">🧾</div>
-      <div class="register" id="register"><span class="cur">€</span><span id="reg-val"></span></div>
+      <div class="register" id="register">
+        <span class="reg-paid" id="reg-paid" aria-hidden="true"></span>
+        <span class="reg-entry"><span class="cur">€</span><span id="reg-val"></span></span>
+      </div>
     </div>
     <div class="pad" id="pad" role="group" aria-label="Number pad"></div>
   </main>
@@ -295,7 +330,11 @@ const CONFIG = {
   priceListSize: 8, // how many groceries get a price this game
   priceMin: 1,
   priceMax: 5,
-  payNote: 20,      // the note the customer pays with on the change step
+  // The bills the customer can hand over on the change step (whole-euro notes,
+  // suited to the €20 cap and the age band). The paying bill is picked per
+  // customer to be larger than the amount owed — see generateRound().
+  payNotes: [5, 10, 20],
+  maxChange: 10,     // keep the change small enough to stay age-appropriate
   couponChance: 0.6, // per-customer odds of a 🎟️ coupon on the couponRng tiers
   // Ordered easy→hard so celebrationTiers[indexOf(size)] picks the tier. Every
   // tier's order has a floor of 2 items; duplicates are allowed (drawn with
@@ -397,6 +436,7 @@ const App = {
     this.orderEl = document.getElementById('order');
     this.register = document.getElementById('register');
     this.regVal = document.getElementById('reg-val');
+    this.regPaid = document.getElementById('reg-paid');
     this.regIcon = document.getElementById('reg-icon');
     this.pad = document.getElementById('pad');
     this.status = document.getElementById('status');
@@ -525,12 +565,29 @@ const App = {
     }));
   },
 
+  // Pick the bill the customer hands over on a change round. From the notes
+  // strictly greater than what's owed (so change ≥ 1), prefer those that keep
+  // the change ≤ maxChange, and choose one at random — this makes the paid
+  // note vary (€5/€10/€20) across customers while keeping the subtraction
+  // small. Falls back to the smallest note above `net` if none stay under
+  // maxChange. Since max(payNotes) is 20 and net ≤ 19, a note always exists.
+  pickBill(net) {
+    const above = CONFIG.payNotes.filter(n => n > net);
+    const nice = above.filter(n => n - net <= CONFIG.maxChange);
+    const pool = nice.length ? nice
+               : above.length ? [Math.min(...above)]
+               : [Math.max(...CONFIG.payNotes)];
+    return pool[Math.floor(Math.random() * pool.length)];
+  },
+
   // Build one customer's order. Rows are drawn WITH REPLACEMENT (each pick is an
   // independent random grocery whose price still fits under the tier's cap), so
   // duplicates arise naturally and render as repeated rows — no ×N badge. On the
   // couponRng tiers a coupon MAY appear (RNG, but forced on the last customer if
   // none has shown yet this set); it's always < sum, and on the change tier
-  // net = sum − coupon is kept ≤ payNote−1 so the change (20 − net) is ≥ 1.
+  // net = sum − coupon is kept ≤ max(payNotes)−1 so a paying note always exists
+  // and the change (bill − net) is ≥ 1. The bill itself is picked per customer
+  // by pickBill(net), so the denomination varies rather than being a fixed €20.
   generateRound() {
     const cfg = CONFIG.sizes[this.size];
     const [minN, maxN] = cfg.items;
@@ -566,9 +623,9 @@ const App = {
       }
       const net = sum - coupon;
       if (net < 1) continue;
-      if (cfg.change && net > CONFIG.payNote - 1) continue;   // guarantee change ≥ 1
+      if (cfg.change && net > Math.max(...CONFIG.payNotes) - 1) continue;   // a paying note must exist (change ≥ 1)
       if (coupon > 0) this.couponSeen = true;
-      this.order = { rows, sum, coupon, net, paid: cfg.change ? CONFIG.payNote : 0 };
+      this.order = { rows, sum, coupon, net, paid: cfg.change ? this.pickBill(net) : 0 };
       this.step = 'total';
       this.expected = net;
       return;
@@ -580,7 +637,7 @@ const App = {
     const rows = [{ emoji: cheap[0].emoji, price: cheap[0].price }];
     if (cheap[1]) rows.push({ emoji: cheap[1].emoji, price: cheap[1].price });
     const sum = rows.reduce((t, r) => t + r.price, 0);
-    this.order = { rows, sum, coupon: 0, net: sum, paid: 0 };
+    this.order = { rows, sum, coupon: 0, net: sum, paid: cfg.change ? this.pickBill(sum) : 0 };
     this.step = 'total';
     this.expected = sum;
   },
@@ -636,6 +693,7 @@ const App = {
 
   renderOrder(animated) {
     const o = this.order;
+    const changeStep = this.step === 'change';
     let html = '';
     o.rows.forEach(r => {
       html += `<div class="line"><span class="item"><span class="emj">${r.emoji}</span></span><span class="price">€${r.price}</span></div>`;
@@ -643,16 +701,24 @@ const App = {
     if (o.coupon > 0) {
       html += `<div class="line coupon"><span class="item"><span class="emj">🎟️</span></span><span class="price">−€${o.coupon}</span></div>`;
     }
-    if (this.step === 'change') {
-      html += `<div class="line pay"><span class="item"><span class="emj">💵</span></span><span class="price">€${o.paid}</span></div>`;
+    if (changeStep) {
+      // The frozen total stays here (readable through the stepped-back receipt);
+      // the paid bill and the change entry live on the register "till" now.
+      html += `<div class="line total"><span class="item"><span class="emj">🧾</span></span><span class="price">€${o.net}</span></div>`;
     }
     this.orderEl.innerHTML = html;
+    this.orderEl.classList.toggle('stepped-back', changeStep);
     this.orderEl.classList.remove('deal');
     if (animated) { void this.orderEl.offsetWidth; this.orderEl.classList.add('deal'); }
   },
 
   renderRegister() {
     this.regVal.textContent = this.entry;
+    // On the change step the register morphs into the two-line till, its top
+    // line showing the bill the customer handed over (💵 €N).
+    const changeStep = this.step === 'change';
+    this.register.classList.toggle('change-mode', changeStep);
+    this.regPaid.textContent = (changeStep && this.order) ? `💵 €${this.order.paid}` : '';
   },
 
   updatePrompt() {
@@ -661,7 +727,7 @@ const App = {
   },
 
   promptText() {
-    if (this.step === 'change') return 'Give the change from twenty euros.';
+    if (this.step === 'change') return `Give the change from €${this.order.paid}.`;
     if (this.order && this.order.coupon > 0) return 'Add up the order, take off the coupon, and type the total.';
     return 'Add up the order and type the total.';
   },
@@ -697,16 +763,16 @@ const App = {
     void reg.offsetWidth;
     reg.classList.add('correct');
 
-    // Hard: a correct total isn't the end — the customer pays €20 and the
-    // child gives change. Advance to the change step instead of serving.
+    // Hard: a correct total isn't the end — the customer pays with a bill and
+    // the child gives change. Advance to the change step instead of serving.
     if (this.step === 'total' && this.order.paid > 0) {
       this.audioDing();
       this.step = 'change';
-      this.expected = this.order.paid - this.order.net;   // 20 − net
+      this.expected = this.order.paid - this.order.net;   // bill − net
       this.entry = '';
       this.updatePrompt();
-      this.renderOrder();      // now includes the 💵 €20 line
-      this.renderRegister();
+      this.renderOrder();      // receipt steps back, frozen Total shown
+      this.renderRegister();   // register becomes the two-line till (💵 €bill)
       this.updateStatus(this.promptText());
       return;
     }
