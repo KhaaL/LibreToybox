@@ -390,6 +390,15 @@
          <main>, so hide the docked panel while locked — it reads as a clean
          canvas until Edit is tapped, then the panel returns. */
       body.split #toolbar.locked ~ #picker-overlay { display: none; }
+
+      /* Docked panel: a tap-and-hold-free drag straight off a swatch carries it
+         to the canvas (see onPickerPointerDown), so the buttons must own the
+         gesture from the first pixel of movement instead of the browser
+         starting a touch-scroll. The jump chips (#picker-nav) are the primary
+         way to get around the docked panel — see architecture notes — so
+         losing touch-drag-to-scroll directly on top of a swatch here is an
+         acceptable trade, and mouse-wheel/trackpad scroll is untouched. */
+      body.split .emoji-opt { touch-action: none; }
     }
   </style>
 </head>
@@ -753,6 +762,8 @@ const App = {
   erasingStamps: new Set(), // stamps mid-removal-animation — treated as already gone for hit-testing
   LIFT_MS: 350,            // hold duration on an existing stamp before it lifts for repositioning
   STAMP_HIT_RADIUS: 0.6,   // fraction of STAMP_SIZE counted as "touching" a placed stamp
+  PICKER_DRAG_PX: 12,      // movement past this, from a picker button, starts a drag-to-canvas gesture
+  pickerDrag: null,        // { emoji, startX, startY, x, y, dragging, pointerId } — split-view drag from the docked picker
   audioCtx: null,
 
   recents: [],        // most-recently-picked stamps, newest first, deduped
@@ -917,8 +928,23 @@ const App = {
     this.pickerOverlay.addEventListener('click', (e) => { if (e.target === this.pickerOverlay && !this.isSplitActive()) this.closePicker(); });
     this.pickerScroll.addEventListener('click', (e) => {
       const btn = e.target.closest('.emoji-opt');
-      if (btn) this.selectStamp(btn.dataset.emoji);
+      if (!btn) return;
+      // In split view, pointer taps (mouse/touch/pen — e.detail !== 0) are
+      // already handled by onPickerPointerUp below, which distinguishes a
+      // plain tap from a drag; without this guard both would fire and
+      // double-select. Keyboard activation (Enter/Space, detail === 0) never
+      // reaches the pointer handlers, so it still needs this listener.
+      if (this.isSplitActive() && e.detail !== 0) return;
+      this.selectStamp(btn.dataset.emoji);
     });
+    // Split-view only: drag a swatch straight off the docked picker and drop
+    // it on the canvas to place it there in one gesture, replacing the old
+    // two-step "tap swatch, then tap canvas" flow (the modal picker, used
+    // below the split breakpoint, keeps that two-step flow unchanged).
+    this.pickerScroll.addEventListener('pointerdown', (e) => this.onPickerPointerDown(e));
+    this.pickerScroll.addEventListener('pointermove', (e) => this.onPickerPointerMove(e));
+    this.pickerScroll.addEventListener('pointerup', (e) => this.onPickerPointerUp(e));
+    this.pickerScroll.addEventListener('pointercancel', (e) => this.onPickerPointerCancel(e));
 
     this.trashBtn.addEventListener('click', () => this.toggleTrash());
     document.getElementById('save-btn').addEventListener('click', () => this.downloadPainting());
@@ -949,7 +975,12 @@ const App = {
     // is left to the resize listener, which fires on the same event.
     this.splitMQ.addEventListener('change', () => {
       if (!document.body.classList.contains('split')) return;
-      if (!this.splitMQ.matches) { this.pickerOverlay.classList.remove('show'); Modal.close(); }
+      if (!this.splitMQ.matches) {
+        this.pickerOverlay.classList.remove('show');
+        Modal.close();
+        this.pickerDrag = null;
+        this.hideLiftGhost();
+      }
       this.applyPickerModeAria();
     });
   },
@@ -1059,6 +1090,7 @@ const App = {
     this.artworkAR = null;
     this.artworkStampFrac = null;
     if (this.lifting) { cancelAnimationFrame(this.lifting.raf); this.lifting = null; }
+    this.pickerDrag = null;
     this.hideLiftGhost();
     this.erasingStamps.clear();
     this.trashArmed = false;
@@ -1533,6 +1565,86 @@ const App = {
     Modal.open(this.pickerOverlay, () => this.closePicker());
   },
   closePicker() { this.pickerOverlay.classList.remove('show'); Modal.close(); },
+
+  // --- Split-view drag-from-picker ------------------------------------------
+  // In the docked panel, an emoji swatch can be dragged straight onto the
+  // canvas to place it there, instead of tap-to-select then tap-to-place.
+  // A tap that never crosses PICKER_DRAG_PX still falls through to the old
+  // select-only behavior via onPickerPointerUp below.
+
+  onPickerPointerDown(e) {
+    if (!this.isSplitActive()) return;
+    const btn = e.target.closest('.emoji-opt');
+    if (!btn) return;
+    // Starting a drag reads as "let's draw" — same reasoning as openPicker()
+    // disarming trash mode, so a drop on the canvas can't be misread as a delete.
+    if (this.trashArmed) { this.trashArmed = false; this.updateTrashBtnVisual(); }
+    this.pickerScroll.setPointerCapture(e.pointerId);
+    this.pickerDrag = {
+      emoji: btn.dataset.emoji,
+      startX: e.clientX, startY: e.clientY,
+      x: e.clientX, y: e.clientY,
+      dragging: false,
+      pointerId: e.pointerId
+    };
+  },
+
+  onPickerPointerMove(e) {
+    const drag = this.pickerDrag;
+    if (!drag || e.pointerId !== drag.pointerId) return;
+    drag.x = e.clientX;
+    drag.y = e.clientY;
+    if (!drag.dragging) {
+      if (Math.hypot(drag.x - drag.startX, drag.y - drag.startY) < this.PICKER_DRAG_PX) return;
+      drag.dragging = true;
+      this.liftGhost.textContent = drag.emoji;
+      this.liftGhost.style.fontSize = (this.stampPx() * 1.15) + 'px';
+      this.liftGhost.style.display = 'block';
+    }
+    this.liftGhost.style.left = drag.x + 'px';
+    this.liftGhost.style.top = drag.y + 'px';
+  },
+
+  onPickerPointerUp(e) {
+    const drag = this.pickerDrag;
+    if (!drag || e.pointerId !== drag.pointerId) return;
+    this.pickerDrag = null;
+
+    if (!drag.dragging) {
+      // A plain tap never crossed the drag threshold — same as the old
+      // tap-to-select behavior (also covers mouse clicks, which fire pointer
+      // events too).
+      this.selectStamp(drag.emoji);
+      return;
+    }
+
+    this.hideLiftGhost();
+    const rect = this.canvas.getBoundingClientRect();
+    const overCanvas = !this.locked &&
+      drag.x >= rect.left && drag.x <= rect.right && drag.y >= rect.top && drag.y <= rect.bottom;
+    if (!overCanvas) {
+      // Dropped outside the canvas (back over the panel, or off it entirely):
+      // cancel the placement, nothing changes.
+      return;
+    }
+
+    const pt = this.getCanvasPoint({ clientX: drag.x, clientY: drag.y });
+    this.stamp = drag.emoji;
+    this.stampBtn.textContent = drag.emoji;
+    this.addToRecents(drag.emoji);
+    this.highlightCurrentStamp();
+    this.stamps.push({ emoji: drag.emoji, x: pt.x, y: pt.y });
+    this.audioStamp();
+    this.redrawCanvas();
+    this.statusEl.textContent = `${drag.emoji} placed.`;
+  },
+
+  onPickerPointerCancel(e) {
+    const drag = this.pickerDrag;
+    if (!drag || e.pointerId !== drag.pointerId) return;
+    this.pickerDrag = null;
+    this.hideLiftGhost();
+  },
 
   selectStamp(emoji) {
     this.stamp = emoji;
