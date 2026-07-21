@@ -274,14 +274,46 @@ const PATTERN_SETS = [
   ['🐠','🐳','🦀','🐙','🦐'],   // sea
 ];
 
+// Naturally-ordered progressions the child extends FORWARD (not a loop to
+// spot). `cyclic` sets wrap around (clock, moon, rotation); the rest are
+// bounded, so buildOrdered() only starts where the shown window + the answers
+// stay in range. Each is visually self-evident (a filling moon, an advancing
+// clock hand, counting up) so no reading is required (design principle 1).
+const ORDERED_SETS = [
+  { cyclic: false, items: ['1️⃣','2️⃣','3️⃣','4️⃣','5️⃣','6️⃣','7️⃣','8️⃣','9️⃣'] }, // counting up
+  { cyclic: true,  items: ['🕐','🕑','🕒','🕓','🕔','🕕','🕖','🕗','🕘','🕙','🕚','🕛'] }, // clock hours
+  { cyclic: true,  items: ['🌑','🌒','🌓','🌔','🌕','🌖','🌗','🌘'] }, // moon phases
+  { cyclic: true,  items: ['⬆️','➡️','⬇️','⬅️'] }, // rotating clockwise
+  { cyclic: false, items: ['🥚','🐣','🐤','🐔'] }, // chick growing up
+];
+
+// Structured repeat-unit templates, keyed by unit length. A letter maps to a
+// distinct emoji, so a unit like 'AAB' repeats a member WITHIN the unit — the
+// child reads the unit's SHAPE instead of assuming every tile is a new emoji.
+// None is a shorter cycle in disguise (e.g. no 'ABAB'), so each is genuinely
+// structured, not just a smaller period.
+const SHAPES = {
+  3: ['AAB', 'ABB', 'ABA'],
+  4: ['AABB', 'AABA', 'ABBA', 'AABC', 'ABCC'],
+  5: ['AABBC', 'AABCA', 'ABCBA', 'AABBA', 'ABBCC']
+};
+
 const CONFIG = {
   roundsPerSet: 5,
   advanceMs: 700,   // pause after a correct pick before the next round (gameId-guarded)
   wrongHoldMs: 500, // input lock while the reject shake/flash plays (matches wrongFlash's duration)
+  // Each tier draws its rounds from a `kinds` list — the difficulty ramp is the
+  // KIND of pattern reasoning, not just the string length (design principles 8
+  // & 9, folded into the existing three tiers with no new level/toggle):
+  //   Easy   — straight cycles + gentle ordered progressions
+  //   Normal — adds structured repeat-shapes (AAB/ABB…)
+  //   Hard   — adds interleaved two-track patterns (with its guess-2), plus
+  //            structured and ordered at their longest; the plain cycle drops
+  //            out as too easy for the tier.
   sizes: {
-    easy:   { seqLength: 6,  period: 3, options: 3, guesses: 1 },  // 🐣 3-item repeating pattern (default)
-    medium: { seqLength: 8,  period: 4, options: 4, guesses: 1 },  // 🕊️ 4-item repeating pattern
-    hard:   { seqLength: 10, period: 5, options: 4, guesses: 2 }   // 🦅 5-item repeating pattern, guess 2 in a row
+    easy:   { seqLength: 6,  period: 3, options: 3, guesses: 1, kinds: ['cycle', 'ordered'] },                    // 🐣 (default)
+    medium: { seqLength: 8,  period: 4, options: 4, guesses: 1, kinds: ['cycle', 'structured', 'ordered'] },      // 🕊️
+    hard:   { seqLength: 10, period: 5, options: 4, guesses: 2, kinds: ['structured', 'interleaved', 'ordered'] } // 🦅 guess 2 in a row
   },
   // Celebration grows with difficulty — Easy is today's unchanged baseline,
   // Normal/Hard add more confetti and extra rising notes on the same fanfare.
@@ -459,37 +491,131 @@ const App = {
     return a;
   },
 
-  // Build one round. A random theme's members are shuffled; the first
-  // `period` become the repeating cycle (distinct by construction), and the
-  // sequence is that cycle repeated to `seqLength` plus `guesses` hidden
-  // positions — so each hidden position always has exactly one correct
-  // answer. Hard asks for two hidden positions in a row (guesses: 2) rather
-  // than a longer single guess or a brand-new mechanic — the same
-  // "extra dimension folded into Hard" pattern Grocery Cashier uses for its
-  // two-step total-then-change round (design principle 9).
+  // ── Round generation ──────────────────────────────────────────────────
+  // A round is built by one of several PATTERN-KIND builders, chosen per round
+  // from the current tier's `kinds` list. Every builder returns
+  // { sequence, answers, optionPool } and guarantees exactly one correct answer
+  // per hidden position BY CONSTRUCTION — so the difficulty scale varies the
+  // KIND of pattern reasoning, not just the string length:
+  //   • cycle       — a straight repeating loop of distinct emoji (the original)
+  //   • structured  — a repeat UNIT with internal shape (AAB/ABB/ABA…), built
+  //                   from fewer distinct emoji, so the child reads the unit's
+  //                   shape rather than assuming every tile is new
+  //   • interleaved — two independent tracks woven on alternating positions;
+  //                   the child un-weaves two streams at once (Hard, pairs with
+  //                   guesses: 2 — one blank per track)
+  //   • ordered     — a naturally-ordered progression (counting, clock, moon,
+  //                   rotation, growth) the child extends FORWARD instead of
+  //                   detecting a loop
+  // Which kinds a tier draws from IS the difficulty ramp; the extra kinds fold
+  // INTO the tiers (no new level, no new toggle) exactly like Grocery Cashier
+  // folds {couponRng, change} into its tiers (design principles 8 & 9).
   generateRound() {
-    const { seqLength, period, options, guesses } = CONFIG.sizes[this.size];
-    const theme = this.shuffle(PATTERN_SETS[Math.floor(Math.random() * PATTERN_SETS.length)]);
-    const cycle = theme.slice(0, period);
-
-    this.sequence = [];
-    for (let i = 0; i < seqLength; i++) this.sequence.push(cycle[i % period]);
-
-    this.guesses = guesses;
-    this.answers = [];
-    for (let g = 0; g < guesses; g++) this.answers.push(cycle[(seqLength + g) % period]);
-    this.stepOptions = this.answers.map(answer => this.buildOptions(theme, cycle, answer, options));
+    const cfg = CONFIG.sizes[this.size];
+    const kind = cfg.kinds[Math.floor(Math.random() * cfg.kinds.length)];
+    const built = this.buildRound(kind, cfg);
+    this.sequence = built.sequence;
+    this.answers = built.answers;
+    this.guesses = built.answers.length;
+    this.stepOptions = this.answers.map(a => this.buildOptions(built.optionPool, a, cfg.options));
     this.step = 0;
   },
 
-  // Pick `count` distinct theme members that include `correct`. Other cycle
-  // members are preferred first — they actually appeared in the sequence, so
-  // they're the more plausible distractor — and only spill into unused theme
-  // members if the cycle alone isn't big enough (e.g. Easy's short cycle).
-  buildOptions(theme, cycle, correct, count) {
-    const cycleOthers = cycle.filter(e => e !== correct);
-    const themeOthers = theme.filter(e => e !== correct && !cycle.includes(e));
-    const distractors = this.shuffle([...cycleOthers, ...themeOthers]).slice(0, count - 1);
+  buildRound(kind, cfg) {
+    if (kind === 'structured')  return this.buildStructured(cfg);
+    if (kind === 'interleaved') return this.buildInterleaved(cfg);
+    if (kind === 'ordered')     return this.buildOrdered(cfg);
+    return this.buildCycle(cfg);
+  },
+
+  randomTheme() { return this.shuffle(PATTERN_SETS[Math.floor(Math.random() * PATTERN_SETS.length)]); },
+
+  // A straight repeating loop of `period` distinct emoji (the original round
+  // shape). Cycle members lead the option pool (they appeared in the sequence,
+  // so they're the more plausible distractor), then the rest of the theme.
+  buildCycle(cfg) {
+    const { seqLength, period, guesses } = cfg;
+    const theme = this.randomTheme();
+    const cycle = theme.slice(0, period);
+    const sequence = [];
+    for (let i = 0; i < seqLength; i++) sequence.push(cycle[i % period]);
+    const answers = [];
+    for (let g = 0; g < guesses; g++) answers.push(cycle[(seqLength + g) % period]);
+    return { sequence, answers, optionPool: [...cycle, ...theme.filter(e => !cycle.includes(e))] };
+  },
+
+  // A repeat UNIT with internal structure (e.g. 🍎🍎🍌 🍎🍎🍌). A SHAPES
+  // template of length `period` maps its distinct letters to distinct theme
+  // emoji, so a member repeats WITHIN the unit — the child can't just pick the
+  // "next unused" emoji, they must read the unit's shape.
+  buildStructured(cfg) {
+    const { seqLength, period, guesses } = cfg;
+    const theme = this.randomTheme();
+    const shapes = SHAPES[period] || SHAPES[3];
+    const shape = shapes[Math.floor(Math.random() * shapes.length)].split('');
+    const map = {};
+    [...new Set(shape)].forEach((letter, i) => { map[letter] = theme[i]; });
+    const unit = shape.map(letter => map[letter]);   // length === period
+    const sequence = [];
+    for (let i = 0; i < seqLength; i++) sequence.push(unit[i % period]);
+    const answers = [];
+    for (let g = 0; g < guesses; g++) answers.push(unit[(seqLength + g) % period]);
+    const used = [...new Set(unit)];
+    return { sequence, answers, optionPool: [...used, ...theme.filter(e => !used.includes(e))] };
+  },
+
+  // Two independent tracks woven on alternating positions — evens advance
+  // through trackA, odds through trackB (drawn from two DIFFERENT themes, with
+  // no shared emoji, so the streams read apart). The child follows two simple
+  // patterns at once. Used at Hard with guesses: 2, so the two consecutive
+  // blanks are the next of each track (one animal, one fruit, say).
+  buildInterleaved(cfg) {
+    const { seqLength, guesses } = cfg;
+    const themes = this.shuffle(PATTERN_SETS);
+    const trackA = this.shuffle(themes[0]).slice(0, 3);
+    const trackB = this.shuffle(themes[1].filter(e => !trackA.includes(e))).slice(0, 2);
+    const at = (i) => i % 2 === 0
+      ? trackA[(i >> 1) % trackA.length]
+      : trackB[((i - 1) >> 1) % trackB.length];
+    const sequence = [];
+    for (let i = 0; i < seqLength; i++) sequence.push(at(i));
+    const answers = [];
+    for (let g = 0; g < guesses; g++) answers.push(at(seqLength + g));
+    return { sequence, answers, optionPool: [...trackA, ...trackB] };
+  },
+
+  // A naturally-ordered progression the child extends forward (counting, clock,
+  // moon, rotation, growth). Cyclic sets wrap; bounded sets pick a start that
+  // keeps the shown window plus the answers in range. A progression reads
+  // clearly in a few steps, so it caps its shown length (MAX_SHOWN) rather than
+  // using the tier's full seqLength. Distractors are other members of the same
+  // ordered set. `eligible` guarantees enough members for the option count and
+  // for a legible ≥MIN_SHOWN window given this tier's guess count.
+  buildOrdered(cfg) {
+    const { seqLength, options, guesses } = cfg;
+    const MAX_SHOWN = 6, MIN_SHOWN = 3;
+    const eligible = ORDERED_SETS.filter(s => s.items.length >= options &&
+      (s.cyclic ? s.items.length > MIN_SHOWN : s.items.length - guesses >= MIN_SHOWN));
+    const set = eligible[Math.floor(Math.random() * eligible.length)];
+    const n = set.items.length;
+    let shown = Math.min(seqLength, MAX_SHOWN, set.cyclic ? n - 1 : n - guesses);
+    shown = Math.max(shown, MIN_SHOWN);
+    const start = set.cyclic
+      ? Math.floor(Math.random() * n)
+      : Math.floor(Math.random() * (n - shown - guesses + 1));
+    const at = (idx) => set.cyclic ? set.items[(start + idx) % n] : set.items[start + idx];
+    const sequence = [];
+    for (let i = 0; i < shown; i++) sequence.push(at(i));
+    const answers = [];
+    for (let g = 0; g < guesses; g++) answers.push(at(shown + g));
+    return { sequence, answers, optionPool: set.items.slice() };
+  },
+
+  // Assemble one hidden position's answer choices: the correct emoji plus
+  // `count - 1` distractors from the builder-supplied pool (relevant emoji —
+  // same theme, cycle, or ordered set), all shuffled.
+  buildOptions(pool, correct, count) {
+    const distractors = this.shuffle(pool.filter(e => e !== correct)).slice(0, count - 1);
     return this.shuffle([correct, ...distractors]);
   },
 
