@@ -331,6 +331,66 @@
     }
     .emoji-opt.active { border-color: var(--accent); background: #FFE4EC; transform: scale(1.08); }
     .emoji-opt:active { transform: scale(0.9); }
+
+    /* The split-view toggle only makes sense where there's room for two panes,
+       so it's hidden by default and revealed only at the wide breakpoint below.
+       On a phone the game behaves exactly as before — no toggle, modal picker. */
+    #layout-btn { display: none; }
+    #layout-btn.active { border-color: var(--accent); background: #FFE4EC; }
+
+    /* --- Wide-screen split view --------------------------------------------
+       Opt-in (needs body.split) AND wide enough. When both hold, <main> becomes
+       a two-column grid: canvas + toolbar stacked on the left, the picker docked
+       as an always-on panel on the right. Toggling off (or narrowing past the
+       breakpoint) drops every rule here, so the layout falls straight back to
+       the single-column + modal-picker default with no stuck state. */
+    @media (min-width: 800px) {
+      #layout-btn { display: flex; }
+
+      body.split main {
+        display: grid;
+        grid-template-columns: 1fr minmax(340px, 40%);
+        grid-template-rows: 1fr auto;
+        grid-template-areas:
+          "canvas picker"
+          "toolbar picker";
+        align-items: stretch;
+      }
+      /* min-width:0 lets the 1fr canvas track actually shrink (grid items
+         default to min-width:auto); min-height:0 it already has. */
+      body.split #canvas-wrap { grid-area: canvas; min-width: 0; }
+      body.split #toolbar { grid-area: toolbar; }
+
+      /* Dock the picker: undo the fixed-overlay positioning so it sits in its
+         grid cell and stays visible without needing the .show class. The
+         body.split #id selector outweighs .overlay / .overlay.show. */
+      body.split #picker-overlay {
+        grid-area: picker;
+        position: static;
+        inset: auto;
+        display: flex;
+        background: transparent;
+        z-index: auto;
+        padding: 0;
+      }
+      body.split .picker-card {
+        width: 100%;
+        height: 100%;
+        max-width: none;
+        max-height: none;
+        box-shadow: none;
+      }
+      /* The panel is always open, so the opener and the ✕ are both redundant;
+         the picker's own .active swatch shows the current stamp instead. */
+      body.split #close-picker,
+      body.split #stamp-btn { display: none; }
+
+      /* A shared-link board opens read-only (#toolbar gets .locked, showing the
+         Edit banner). #picker-overlay is a later sibling of #toolbar inside
+         <main>, so hide the docked panel while locked — it reads as a clean
+         canvas until Edit is tapped, then the panel returns. */
+      body.split #toolbar.locked ~ #picker-overlay { display: none; }
+    }
   </style>
 </head>
 <body>
@@ -346,6 +406,15 @@
     </div>
   </div>
   <div class="top-btns">
+    <!-- Wide-screen only (hidden below the split breakpoint): docks the emoji
+         picker as an always-on side panel instead of a modal. Opt-in so the
+         layout never rearranges itself just because a device is wide. -->
+    <button class="top-btn" id="layout-btn" aria-pressed="false" aria-label="Show emoji panel">
+      <svg viewBox="0 0 24 24" width="26" height="26" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round">
+        <rect x="3" y="5" width="18" height="14" rx="2"/>
+        <line x1="14" y1="5" x2="14" y2="19"/>
+      </svg>
+    </button>
     <button class="top-btn" id="new-game" aria-label="New Painting">🔄<span class="hold-progress" aria-hidden="true"></span></button>
   </div>
 </header>
@@ -367,22 +436,28 @@
       <button id="edit-btn" aria-label="Edit this painting">✏️ Edit</button>
     </div>
   </div>
+
+  <!-- The stamp picker. On narrow screens it's a fixed modal overlay (opened by
+       #stamp-btn). On wide screens with split view enabled it becomes a docked,
+       always-on side panel via the grid rules under @media (min-width:800px) —
+       the same DOM either way, only its positioning/visibility differ. It lives
+       inside <main> so it can be a grid cell when docked; position:fixed keeps
+       it out of flow in modal mode, so nesting it here doesn't affect that. -->
+  <div class="overlay" id="picker-overlay" role="dialog" aria-modal="true" aria-label="Choose an emoji stamp">
+    <div class="picker-card">
+      <div class="picker-header">
+        <h2>Pick a Stamp</h2>
+        <button class="top-btn" id="close-picker" aria-label="Close stamp picker">✕</button>
+      </div>
+      <div class="picker-nav" id="picker-nav" role="group" aria-label="Jump to category"></div>
+      <div class="picker-scroll" id="picker-scroll"></div>
+    </div>
+  </div>
 </main>
 
 <!-- A lifted stamp rides as this floating element, not a canvas draw, so it can
      follow the finger past the canvas edge all the way onto #trash-btn. -->
 <div id="lift-ghost" aria-hidden="true"></div>
-
-<div class="overlay" id="picker-overlay" role="dialog" aria-modal="true" aria-label="Choose an emoji stamp">
-  <div class="picker-card">
-    <div class="picker-header">
-      <h2>Pick a Stamp</h2>
-      <button class="top-btn" id="close-picker" aria-label="Close stamp picker">✕</button>
-    </div>
-    <div class="picker-nav" id="picker-nav" role="group" aria-label="Jump to category"></div>
-    <div class="picker-scroll" id="picker-scroll"></div>
-  </div>
-</div>
 
 <script>
 const EMOJI_CATEGORIES = [
@@ -696,6 +771,10 @@ const App = {
 
   init() {
     this.cacheDOM();
+    // The split-view breakpoint, cached once: split view is only "active" when
+    // the child has opted in (body.split) AND the viewport is wide enough for
+    // it (isSplitActive()). matchMedia stays in sync with the CSS media query.
+    this.splitMQ = window.matchMedia('(min-width: 800px)');
     this.buildPicker();
     this.bindEvents();
     this.setupPWA();
@@ -731,6 +810,7 @@ const App = {
     this.closePickerBtn = document.getElementById('close-picker');
     this.pickerNav = document.getElementById('picker-nav');
     this.pickerScroll = document.getElementById('picker-scroll');
+    this.layoutBtn = document.getElementById('layout-btn');
   },
 
   createEmojiButton(emoji) {
@@ -834,7 +914,7 @@ const App = {
 
     this.stampBtn.addEventListener('click', () => this.openPicker());
     this.closePickerBtn.addEventListener('click', () => this.closePicker());
-    this.pickerOverlay.addEventListener('click', (e) => { if (e.target === this.pickerOverlay) this.closePicker(); });
+    this.pickerOverlay.addEventListener('click', (e) => { if (e.target === this.pickerOverlay && !this.isSplitActive()) this.closePicker(); });
     this.pickerScroll.addEventListener('click', (e) => {
       const btn = e.target.closest('.emoji-opt');
       if (btn) this.selectStamp(btn.dataset.emoji);
@@ -844,6 +924,7 @@ const App = {
     document.getElementById('save-btn').addEventListener('click', () => this.downloadPainting());
     this.shareBtn.addEventListener('click', () => this.shareBoard());
     this.editBtn.addEventListener('click', () => this.exitLockedView());
+    this.layoutBtn.addEventListener('click', () => this.toggleLayout());
 
     this.canvas.addEventListener('pointerdown', (e) => this.onPointerDown(e));
     this.canvas.addEventListener('pointermove', (e) => this.onPointerMove(e));
@@ -858,6 +939,18 @@ const App = {
         this.syncCanvasSize();
         this.redrawCanvas();
       }
+    });
+
+    // Crossing the split breakpoint (e.g. a tablet rotating) while split view
+    // is on: the resize listener above already re-sizes the canvas, but the
+    // picker also flips between docked panel and modal. Undocking to modal must
+    // drop any live focus trap and the .show state so it isn't stuck open, and
+    // the picker's dialog/region role has to follow the mode. The canvas resync
+    // is left to the resize listener, which fires on the same event.
+    this.splitMQ.addEventListener('change', () => {
+      if (!document.body.classList.contains('split')) return;
+      if (!this.splitMQ.matches) { this.pickerOverlay.classList.remove('show'); Modal.close(); }
+      this.applyPickerModeAria();
     });
   },
 
@@ -1364,11 +1457,69 @@ const App = {
     this.shareFlashTimer = setTimeout(() => { this.shareBtn.textContent = '🔗'; }, 1100);
   },
 
+  // Split view is only "on" when opted in (body.split) AND wide enough for it
+  // (matches the CSS @media breakpoint). When it's on, the picker is a docked
+  // always-visible panel; when off, it's the fixed modal.
+  isSplitActive() {
+    return document.body.classList.contains('split') && this.splitMQ.matches;
+  },
+
+  // Wide-screen only: dock the picker as a persistent side panel (or undo it).
+  // Purely opt-in — nothing rearranges until the child taps the toggle.
+  toggleLayout() {
+    const on = !document.body.classList.contains('split');
+    document.body.classList.toggle('split', on);
+    this.layoutBtn.classList.toggle('active', on);
+    this.layoutBtn.setAttribute('aria-pressed', String(on));
+    this.layoutBtn.setAttribute('aria-label', on ? 'Hide emoji panel' : 'Show emoji panel');
+    this.audioClick();
+
+    if (on) {
+      // Docking replaces the modal: drop any live modal state and seed the
+      // panel so it opens reflecting the current stamp and a sensible chip.
+      this.pickerOverlay.classList.remove('show');
+      Modal.close();
+      this.highlightCurrentStamp();
+      this.pickerScroll.scrollTop = 0;
+      const firstVisible = this.pickerScroll.querySelector('.picker-category:not(.empty)');
+      if (firstVisible) {
+        document.querySelectorAll('.nav-chip').forEach((c) => c.classList.toggle('active', c.dataset.navKey === firstVisible.dataset.navKey));
+      }
+    }
+    this.applyPickerModeAria();
+
+    // The class change resizes #canvas-wrap without firing a resize event, so
+    // re-sync the backing store and repaint (same as exquisite-corpse's
+    // setCanvasMode). Normalized coords mean the stamps reflow automatically.
+    this.syncCanvasSize();
+    this.redrawCanvas();
+    this.statusEl.textContent = on ? 'Emoji panel docked on the side.' : 'Emoji panel closed.';
+  },
+
+  // A docked panel is not a modal — drop aria-modal and use a region role so
+  // assistive tech doesn't treat the rest of the page as inert; restore the
+  // dialog role when it's the fixed modal again.
+  applyPickerModeAria() {
+    if (this.isSplitActive()) {
+      this.pickerOverlay.setAttribute('role', 'region');
+      this.pickerOverlay.removeAttribute('aria-modal');
+    } else {
+      this.pickerOverlay.setAttribute('role', 'dialog');
+      this.pickerOverlay.setAttribute('aria-modal', 'true');
+    }
+  },
+
+  highlightCurrentStamp() {
+    document.querySelectorAll('.emoji-opt').forEach((b) => b.classList.toggle('active', b.dataset.emoji === this.stamp));
+  },
+
   openPicker() {
+    // In split view the picker is already docked and visible — no modal to open.
+    if (this.isSplitActive()) return;
     // Opening the emoji selector is a "let's draw" action — disarm the
     // trash tool so a stray tap on the canvas afterward doesn't delete.
     if (this.trashArmed) { this.trashArmed = false; this.updateTrashBtnVisual(); }
-    document.querySelectorAll('.emoji-opt').forEach((b) => b.classList.toggle('active', b.dataset.emoji === this.stamp));
+    this.highlightCurrentStamp();
     // A hidden (display:none) element has no scrollbox, so scrollTop must be
     // set after showing the overlay — setting it first is a silent no-op.
     this.pickerOverlay.classList.add('show');
@@ -1389,7 +1540,10 @@ const App = {
     this.addToRecents(emoji);
     this.audioClick();
     this.statusEl.textContent = `Stamp selected: ${emoji}`;
-    this.closePicker();
+    // Docked panel stays open (it's persistent); keep the chosen swatch marked.
+    // The modal closes on pick, as before.
+    if (this.isSplitActive()) this.highlightCurrentStamp();
+    else this.closePicker();
   },
 
   setupPWA() {
