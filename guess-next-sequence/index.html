@@ -171,6 +171,18 @@
     /* When a correct pick resolves, the other options gently fade back. */
     #options.resolved .tile:not(.correct) { opacity: 0.35; }
 
+    /* Build mode (Hard): #sequence's trailing "?" tiles become tappable slots
+       (faint "+" until filled), and #options holds a palette + a ✓ confirm
+       instead of answer options. A wrong slot on ✓ gets the shared shake/flash
+       (kept editable, principle 3). */
+    .seq-tile.slot { cursor: pointer; font-family: inherit; padding: 0; color: var(--border); -webkit-appearance: none; appearance: none; }
+    .seq-tile.slot.filled { color: var(--text); background: var(--bg2); border-style: solid; font-size: 1.8rem; }
+    .seq-tile.slot:focus-visible { outline: 4px solid var(--accent); outline-offset: -4px; }
+    .seq-tile.wrong { animation: shake .4s ease, wrongFlash .5s ease; }
+    .tile.confirm { background: #43A047; border-color: #2E7D32; color: #fff; }
+    .tile.confirm:disabled { opacity: 0.4; cursor: default; }
+    .tile.confirm:disabled:active { transform: none; box-shadow: 0 4px 0 var(--shadow); }
+
     @keyframes pop { 0% { transform: scale(1); } 45% { transform: scale(1.25); } 100% { transform: scale(1); } }
     @keyframes shake { 0%,100% { transform: translateX(0); } 15% { transform: translateX(-9px); } 30% { transform: translateX(9px); } 45% { transform: translateX(-7px); } 60% { transform: translateX(7px); } 75% { transform: translateX(-4px); } }
     @keyframes wrongFlash { 0%,100% { border-color: var(--border); background: #fff; } 20%,65% { border-color: #E53935; background: #FFCDD2; } }
@@ -252,9 +264,9 @@
     <div class="settings-card">
       <h2>⚙️</h2>
       <div class="size-row" role="radiogroup" aria-label="Difficulty">
-        <button class="size-btn" data-size="easy"   role="radio" aria-label="Easy, patterns of three">🐣<small>3</small></button>
-        <button class="size-btn" data-size="medium" role="radio" aria-label="Normal, patterns of four">🕊️<small>4</small></button>
-        <button class="size-btn" data-size="hard"   role="radio" aria-label="Hard, patterns of five, guess two in a row">🦅<small>5</small></button>
+        <button class="size-btn" data-size="easy"   role="radio" aria-label="Easy, find the one missing tile">🐣<small>1</small></button>
+        <button class="size-btn" data-size="medium" role="radio" aria-label="Normal, fill in two gaps">🕊️<small>2</small></button>
+        <button class="size-btn" data-size="hard"   role="radio" aria-label="Hard, build the next three tiles">🦅<small>3</small></button>
       </div>
       <button class="top-btn" id="close-settings" aria-label="Close">✕</button>
     </div>
@@ -302,18 +314,25 @@ const CONFIG = {
   roundsPerSet: 5,
   advanceMs: 700,   // pause after a correct pick before the next round (gameId-guarded)
   wrongHoldMs: 500, // input lock while the reject shake/flash plays (matches wrongFlash's duration)
-  // Each tier draws its rounds from a `kinds` list — the difficulty ramp is the
-  // KIND of pattern reasoning, not just the string length (design principles 8
-  // & 9, folded into the existing three tiers with no new level/toggle):
-  //   Easy   — straight cycles + gentle ordered progressions
-  //   Normal — adds structured repeat-shapes (AAB/ABB…)
-  //   Hard   — adds interleaved two-track patterns (with its guess-2), plus
-  //            structured and ordered at their longest; the plain cycle drops
-  //            out as too easy for the tier.
+  // Two dials scale difficulty per tier: WHICH pattern kinds a round can draw
+  // from (the `kinds` list), and HOW MUCH the child does per round (the
+  // interaction). Both fold into the three tiers with no new level/toggle
+  // (design principles 8 & 9), the same shape Grocery Cashier uses for its
+  // per-tier flag bundles:
+  //   Easy   — pick 1 answer; straight cycles + gentle ordered progressions,
+  //            but with tempting near-miss distractors and the occasional
+  //            interior gap, so the single tap isn't a reflex.
+  //   Normal — pick 2 answers per round (one usually an interior "what's
+  //            missing?" gap); adds structured repeat-shapes (AAB/ABB…).
+  //   Hard   — BUILD the next 3 tiles by tapping a palette in order (a deeper
+  //            "apply the rule yourself" loop than picking one option); adds
+  //            interleaved two-track patterns, plus structured/ordered.
+  // `blanks` = hidden positions the child fills by picking; `buildCount` = tiles
+  // the child constructs; `interaction` selects the verb.
   sizes: {
-    easy:   { seqLength: 6,  period: 3, options: 3, guesses: 1, kinds: ['cycle', 'ordered'] },                    // 🐣 (default)
-    medium: { seqLength: 8,  period: 4, options: 4, guesses: 1, kinds: ['cycle', 'structured', 'ordered'] },      // 🕊️
-    hard:   { seqLength: 10, period: 5, options: 4, guesses: 2, kinds: ['structured', 'interleaved', 'ordered'] } // 🦅 guess 2 in a row
+    easy:   { seqLength: 6,  period: 3, options: 3, blanks: 1, interaction: 'pick',  kinds: ['cycle', 'ordered'] },                     // 🐣 (default)
+    medium: { seqLength: 8,  period: 4, options: 4, blanks: 2, interaction: 'pick',  kinds: ['cycle', 'structured', 'ordered'] },       // 🕊️
+    hard:   { seqLength: 10, period: 5, buildCount: 3,         interaction: 'build', kinds: ['structured', 'interleaved', 'ordered'] }  // 🦅 build the next 3
   },
   // Celebration grows with difficulty — Easy is today's unchanged baseline,
   // Normal/Hard add more confetti and extra rising notes on the same fanfare.
@@ -369,17 +388,21 @@ const Modal = {
 
 const App = {
   size: 'easy',
-  sequence: [],       // shown pattern items, in display order (excludes the blanks)
-  guesses: 1,         // how many hidden positions this round has (2 at Hard)
-  answers: [],        // the correct emoji for each hidden position, in order
-  stepOptions: [],    // per-hidden-position answer choices, stepOptions[step]
-  step: 0,            // which hidden position is currently being guessed
-  options: [],        // stepOptions[step] — this step's answer choices, in display order
-  blankTiles: [],     // the "?" elements in #sequence, so a correct pick can reveal them
+  interaction: 'pick', // 'pick' (Easy/Normal: tap an option) or 'build' (Hard: construct the next tiles)
+  cells: [],          // render list for #sequence: { blank:false, emoji } | { blank:true }
+  full: [],           // full deterministic sequence (context + continuation), for reveals/near-misses
+  pool: [],           // relevant emoji this round (distractor source / build-palette source)
+  answers: [],        // the correct emoji for each blank, in resolve order (left→right)
+  stepOptions: [],    // pick mode: per-blank answer choices, stepOptions[step]
+  step: 0,            // pick mode: which blank is currently being guessed
+  options: [],        // pick mode: stepOptions[step] — this step's choices, in display order
+  blankTiles: [],     // the blank elements in #sequence, in resolve order (revealed as solved)
+  palette: [],        // build mode: the emoji the child taps to fill the slots
+  buildFilled: [],    // build mode: the emoji placed in each slot so far (null = empty)
   solved: 0,          // rounds solved in the current set
   answersFound: [],   // every correct answer from this set's solved rounds, in solve order
-  resolving: false,   // true during the pause between a correct pick and the next step/round
-  rejecting: false,   // true while the wrong-tap shake/flash is playing — blocks tap-spam
+  resolving: false,   // true during the pause between a correct answer and the next step/round
+  rejecting: false,   // true while the wrong cue plays — blocks tap-spam
   won: false,
   gameId: 0,
   audioCtx: null,
@@ -424,9 +447,24 @@ const App = {
     });
     // One delegated handler covers mouse, touch, pen and keyboard (real
     // <button> tiles fire click on Enter/Space too — keyboard parity, DP8).
+    // #options is the answer row in pick mode, and the build palette + ✓
+    // confirm in build mode; branch on the current interaction.
     this.optionsEl.addEventListener('click', (e) => {
+      if (this.interaction === 'build') {
+        if (e.target.closest('.confirm')) { this.checkBuild(); return; }
+        const pal = e.target.closest('.palette');
+        if (pal) this.placeInSlot(pal.dataset.emoji);
+        return;
+      }
       const tile = e.target.closest('.tile');
       if (tile) this.pickAnswer(parseInt(tile.dataset.index, 10));
+    });
+    // Build mode: tap a filled slot in the strip to clear it (direct-
+    // manipulation undo, principle 2).
+    this.sequenceEl.addEventListener('click', (e) => {
+      if (this.interaction !== 'build') return;
+      const slot = e.target.closest('.slot');
+      if (slot) this.clearSlot(parseInt(slot.dataset.slot, 10));
     });
   },
 
@@ -494,129 +532,174 @@ const App = {
   // ── Round generation ──────────────────────────────────────────────────
   // A round is built by one of several PATTERN-KIND builders, chosen per round
   // from the current tier's `kinds` list. Every builder returns
-  // { sequence, answers, optionPool } and guarantees exactly one correct answer
-  // per hidden position BY CONSTRUCTION — so the difficulty scale varies the
-  // KIND of pattern reasoning, not just the string length:
-  //   • cycle       — a straight repeating loop of distinct emoji (the original)
-  //   • structured  — a repeat UNIT with internal shape (AAB/ABB/ABA…), built
-  //                   from fewer distinct emoji, so the child reads the unit's
-  //                   shape rather than assuming every tile is new
-  //   • interleaved — two independent tracks woven on alternating positions;
-  //                   the child un-weaves two streams at once (Hard, pairs with
-  //                   guesses: 2 — one blank per track)
-  //   • ordered     — a naturally-ordered progression (counting, clock, moon,
-  //                   rotation, growth) the child extends FORWARD instead of
-  //                   detecting a loop
-  // Which kinds a tier draws from IS the difficulty ramp; the extra kinds fold
-  // INTO the tiers (no new level, no new toggle) exactly like Grocery Cashier
-  // folds {couponRng, change} into its tiers (design principles 8 & 9).
+  // { full, shownLen, pool, minContext }: `full` is the DETERMINISTIC sequence
+  // (visible context of length `shownLen`, then enough continuation to cover
+  // this round's blanks/build slots), `pool` is the relevant emoji, and
+  // `minContext` is how many tiles must precede an interior gap for it to be
+  // fair. Because `full` is deterministic, every hidden position — trailing OR
+  // interior — has exactly one correct value BY CONSTRUCTION. Kinds are the
+  // CONTENT dial; the interaction (pick vs build) and blank count are the
+  // LOOP-DEPTH dial (design principles 8 & 9):
+  //   • cycle       — a straight repeating loop of distinct emoji
+  //   • structured  — a repeat UNIT with internal shape (AAB/ABB/ABA…)
+  //   • interleaved — two tracks woven on alternating positions (Hard/build)
+  //   • ordered     — a naturally-ordered progression extended forward
   generateRound() {
     const cfg = CONFIG.sizes[this.size];
+    this.interaction = cfg.interaction;
+    const tail = cfg.interaction === 'build' ? cfg.buildCount : cfg.blanks;
     const kind = cfg.kinds[Math.floor(Math.random() * cfg.kinds.length)];
-    const built = this.buildRound(kind, cfg);
-    this.sequence = built.sequence;
-    this.answers = built.answers;
-    this.guesses = built.answers.length;
-    this.stepOptions = this.answers.map(a => this.buildOptions(built.optionPool, a, cfg.options));
+    const built = this.buildRound(kind, cfg, tail);
+    this.full = built.full;
+    this.pool = built.pool;
+
+    // Which positions are hidden. Build: `buildCount` trailing slots. Pick: a
+    // mix of interior + trailing gaps, sorted ascending so their #sequence
+    // order equals their resolve order (left → right).
+    const blankIdx = cfg.interaction === 'build'
+      ? Array.from({ length: cfg.buildCount }, (_, j) => built.shownLen + j)
+      : this.chooseBlankPositions(cfg, built.shownLen, built.minContext);
+    this.hasInterior = blankIdx.some(p => p < built.shownLen);
+
+    const blankSet = new Set(blankIdx);
+    const lastPos = Math.max(built.shownLen - 1, ...blankIdx);
+    this.cells = [];
+    for (let p = 0; p <= lastPos; p++) {
+      this.cells.push(blankSet.has(p) ? { blank: true } : { blank: false, emoji: built.full[p] });
+    }
+    this.answers = blankIdx.map(p => built.full[p]);
     this.step = 0;
+
+    if (cfg.interaction === 'build') {
+      this.palette = this.paletteFor(built.pool);
+      this.buildFilled = this.answers.map(() => null);
+    } else {
+      this.stepOptions = blankIdx.map(p => {
+        // Near-miss distractors: the tiles right around this gap in the full
+        // sequence (the "it just showed this" trap, the off-by-one neighbour).
+        // These are the most tempting wrong answers, so a correct tap needs the
+        // rule — not a "which one fits the theme" guess.
+        const nearMisses = [built.full[p - 1], built.full[p + 1], built.full[p - 2]];
+        return this.buildOptions(built.pool, nearMisses, built.full[p], cfg.options);
+      });
+    }
   },
 
-  buildRound(kind, cfg) {
-    if (kind === 'structured')  return this.buildStructured(cfg);
-    if (kind === 'interleaved') return this.buildInterleaved(cfg);
-    if (kind === 'ordered')     return this.buildOrdered(cfg);
-    return this.buildCycle(cfg);
+  buildRound(kind, cfg, tail) {
+    if (kind === 'structured')  return this.buildStructured(cfg, tail);
+    if (kind === 'interleaved') return this.buildInterleaved(cfg, tail);
+    if (kind === 'ordered')     return this.buildOrdered(cfg, tail);
+    return this.buildCycle(cfg, tail);
   },
 
   randomTheme() { return this.shuffle(PATTERN_SETS[Math.floor(Math.random() * PATTERN_SETS.length)]); },
 
-  // A straight repeating loop of `period` distinct emoji (the original round
-  // shape). Cycle members lead the option pool (they appeared in the sequence,
-  // so they're the more plausible distractor), then the rest of the theme.
-  buildCycle(cfg) {
-    const { seqLength, period, guesses } = cfg;
+  // A straight repeating loop of `period` distinct emoji. `full` runs
+  // seqLength + tail long so trailing gaps / build slots have defined values.
+  buildCycle(cfg, tail) {
+    const { seqLength, period } = cfg;
     const theme = this.randomTheme();
     const cycle = theme.slice(0, period);
-    const sequence = [];
-    for (let i = 0; i < seqLength; i++) sequence.push(cycle[i % period]);
-    const answers = [];
-    for (let g = 0; g < guesses; g++) answers.push(cycle[(seqLength + g) % period]);
-    return { sequence, answers, optionPool: [...cycle, ...theme.filter(e => !cycle.includes(e))] };
+    const full = [];
+    for (let i = 0; i < seqLength + tail; i++) full.push(cycle[i % period]);
+    return { full, shownLen: seqLength, minContext: period,
+             pool: [...cycle, ...theme.filter(e => !cycle.includes(e))] };
   },
 
   // A repeat UNIT with internal structure (e.g. 🍎🍎🍌 🍎🍎🍌). A SHAPES
   // template of length `period` maps its distinct letters to distinct theme
-  // emoji, so a member repeats WITHIN the unit — the child can't just pick the
-  // "next unused" emoji, they must read the unit's shape.
-  buildStructured(cfg) {
-    const { seqLength, period, guesses } = cfg;
+  // emoji, so a member repeats WITHIN the unit — the child reads the unit's
+  // shape rather than assuming every tile is new.
+  buildStructured(cfg, tail) {
+    const { seqLength, period } = cfg;
     const theme = this.randomTheme();
     const shapes = SHAPES[period] || SHAPES[3];
     const shape = shapes[Math.floor(Math.random() * shapes.length)].split('');
     const map = {};
     [...new Set(shape)].forEach((letter, i) => { map[letter] = theme[i]; });
     const unit = shape.map(letter => map[letter]);   // length === period
-    const sequence = [];
-    for (let i = 0; i < seqLength; i++) sequence.push(unit[i % period]);
-    const answers = [];
-    for (let g = 0; g < guesses; g++) answers.push(unit[(seqLength + g) % period]);
+    const full = [];
+    for (let i = 0; i < seqLength + tail; i++) full.push(unit[i % period]);
     const used = [...new Set(unit)];
-    return { sequence, answers, optionPool: [...used, ...theme.filter(e => !used.includes(e))] };
+    return { full, shownLen: seqLength, minContext: period,
+             pool: [...used, ...theme.filter(e => !used.includes(e))] };
   },
 
   // Two independent tracks woven on alternating positions — evens advance
-  // through trackA, odds through trackB (drawn from two DIFFERENT themes, with
-  // no shared emoji, so the streams read apart). The child follows two simple
-  // patterns at once. Used at Hard with guesses: 2, so the two consecutive
-  // blanks are the next of each track (one animal, one fruit, say).
-  buildInterleaved(cfg) {
-    const { seqLength, guesses } = cfg;
+  // through trackA, odds through trackB (from two DIFFERENT themes, no shared
+  // emoji, so the streams read apart). Hard/build only, so no interior gaps —
+  // minContext === full length disables them.
+  buildInterleaved(cfg, tail) {
+    const { seqLength } = cfg;
     const themes = this.shuffle(PATTERN_SETS);
     const trackA = this.shuffle(themes[0]).slice(0, 3);
     const trackB = this.shuffle(themes[1].filter(e => !trackA.includes(e))).slice(0, 2);
     const at = (i) => i % 2 === 0
       ? trackA[(i >> 1) % trackA.length]
       : trackB[((i - 1) >> 1) % trackB.length];
-    const sequence = [];
-    for (let i = 0; i < seqLength; i++) sequence.push(at(i));
-    const answers = [];
-    for (let g = 0; g < guesses; g++) answers.push(at(seqLength + g));
-    return { sequence, answers, optionPool: [...trackA, ...trackB] };
+    const full = [];
+    for (let i = 0; i < seqLength + tail; i++) full.push(at(i));
+    return { full, shownLen: seqLength, minContext: seqLength,
+             pool: [...trackA, ...trackB] };
   },
 
-  // A naturally-ordered progression the child extends forward (counting, clock,
-  // moon, rotation, growth). Cyclic sets wrap; bounded sets pick a start that
-  // keeps the shown window plus the answers in range. A progression reads
-  // clearly in a few steps, so it caps its shown length (MAX_SHOWN) rather than
-  // using the tier's full seqLength. Distractors are other members of the same
-  // ordered set. `eligible` guarantees enough members for the option count and
-  // for a legible ≥MIN_SHOWN window given this tier's guess count.
-  buildOrdered(cfg) {
-    const { seqLength, options, guesses } = cfg;
+  // A naturally-ordered progression the child extends forward. Cyclic sets
+  // wrap; bounded sets pick a start that keeps the window + continuation in
+  // range. Shown length caps at MAX_SHOWN (a progression reads in a few steps).
+  // `eligible` guarantees enough members for the options/palette and a legible
+  // ≥MIN_SHOWN window given this round's `tail`.
+  buildOrdered(cfg, tail) {
+    const { seqLength, options } = cfg;
     const MAX_SHOWN = 6, MIN_SHOWN = 3;
-    const eligible = ORDERED_SETS.filter(s => s.items.length >= options &&
-      (s.cyclic ? s.items.length > MIN_SHOWN : s.items.length - guesses >= MIN_SHOWN));
+    const eligible = ORDERED_SETS.filter(s => s.items.length >= (options || 4) &&
+      (s.cyclic ? s.items.length > MIN_SHOWN : s.items.length - tail >= MIN_SHOWN));
     const set = eligible[Math.floor(Math.random() * eligible.length)];
     const n = set.items.length;
-    let shown = Math.min(seqLength, MAX_SHOWN, set.cyclic ? n - 1 : n - guesses);
+    let shown = Math.min(seqLength, MAX_SHOWN, set.cyclic ? n - 1 : n - tail);
     shown = Math.max(shown, MIN_SHOWN);
     const start = set.cyclic
       ? Math.floor(Math.random() * n)
-      : Math.floor(Math.random() * (n - shown - guesses + 1));
+      : Math.floor(Math.random() * (n - shown - tail + 1));
     const at = (idx) => set.cyclic ? set.items[(start + idx) % n] : set.items[start + idx];
-    const sequence = [];
-    for (let i = 0; i < shown; i++) sequence.push(at(i));
-    const answers = [];
-    for (let g = 0; g < guesses; g++) answers.push(at(shown + g));
-    return { sequence, answers, optionPool: set.items.slice() };
+    const full = [];
+    for (let i = 0; i < shown + tail; i++) full.push(at(i));
+    return { full, shownLen: shown, minContext: 3, pool: set.items.slice() };
   },
 
-  // Assemble one hidden position's answer choices: the correct emoji plus
-  // `count - 1` distractors from the builder-supplied pool (relevant emoji —
-  // same theme, cycle, or ordered set), all shuffled.
-  buildOptions(pool, correct, count) {
-    const distractors = this.shuffle(pool.filter(e => e !== correct)).slice(0, count - 1);
-    return this.shuffle([correct, ...distractors]);
+  // Choose the hidden positions for a PICK round: `blanks` of them, sorted
+  // ascending. An interior gap needs `minContext` visible tiles before it and a
+  // visible neighbour after it (index ≤ shownLen-2) so it can be read from both
+  // sides; the rest are trailing. Two gaps are never adjacent.
+  chooseBlankPositions(cfg, shownLen, minContext) {
+    const lo = minContext, hi = shownLen - 2;
+    const canInterior = hi >= lo;
+    const interior = () => lo + Math.floor(Math.random() * (hi - lo + 1));
+    if (cfg.blanks === 1) {
+      return [(canInterior && Math.random() < 0.5) ? interior() : shownLen];
+    }
+    return canInterior ? [interior(), shownLen].sort((a, b) => a - b) : [shownLen, shownLen + 1];
+  },
+
+  // Build-mode palette: every distinct correct answer (so the round is always
+  // buildable) plus a few extra pool emoji, capped so the palette stays small
+  // enough to scan (~6 tiles), shuffled.
+  paletteFor(pool) {
+    const BUILD_PALETTE_MAX = 6;
+    const answers = [...new Set(this.answers)];
+    const extras = this.shuffle(pool.filter(e => !answers.includes(e)))
+      .slice(0, Math.max(2, BUILD_PALETTE_MAX - answers.length));
+    return this.shuffle([...answers, ...extras]);
+  },
+
+  // Assemble one blank's answer choices: the correct emoji, then the most
+  // tempting near-misses (deduped, minus the correct one), then fill any
+  // remaining slots from the pool. `count` options total, shuffled.
+  buildOptions(pool, nearMisses, correct, count) {
+    const chosen = [correct];
+    const add = (e) => { if (e != null && !chosen.includes(e) && chosen.length < count) chosen.push(e); };
+    this.shuffle(nearMisses).forEach(add);
+    this.shuffle(pool).forEach(add);
+    return this.shuffle(chosen);
   },
 
   newGame(animated) {
@@ -637,8 +720,27 @@ const App = {
     this.resolving = false;
     this.generateRound();
     this.renderSequence(animated);
-    this.renderStepOptions(animated);
-    this.updateStatus(this.guesses > 1 ? 'What comes next? Two in a row!' : 'What comes next?');
+    if (this.interaction === 'build') this.renderBuild(animated);
+    else this.renderStepOptions(animated);
+    this.updateStatus(this.promptText());
+  },
+
+  // The visible prompt (also the sr-only status). Adapts to the verb: build,
+  // fill multiple gaps, complete an interior gap, or predict the next tile.
+  promptText() {
+    if (this.interaction === 'build') return 'Build the next ' + this.answers.length + '!';
+    if (this.answers.length > 1) return 'Fill in the pattern!';
+    return this.hasInterior ? "What's missing?" : 'What comes next?';
+  },
+
+  // #sequence tiles are non-focusable, so its aria-label spells out the visible
+  // pattern and what's being asked for screen-reader users.
+  sequenceAria() {
+    const shown = this.cells.filter(c => !c.blank).map(c => c.emoji).join(', ');
+    if (this.interaction === 'build') return 'Pattern: ' + shown + '. Build the next ' + this.answers.length + '.';
+    const ask = this.answers.length > 1 ? ', fill in the missing tiles.'
+      : (this.hasInterior ? ', what is missing?' : ', what comes next?');
+    return 'Pattern: ' + shown + ask;
   },
 
   renderPips() {
@@ -651,36 +753,41 @@ const App = {
     this.pipsEl.setAttribute('aria-label', `${this.solved} of ${CONFIG.roundsPerSet} found`);
   },
 
-  // #sequence tiles are non-interactive (never tappable), so a screen reader
-  // user has no way to inspect them unless the container's aria-label spells
-  // out the pattern itself. One blank tile per hidden position (two at Hard).
+  // Render #sequence from `this.cells`. Fixed tiles are non-interactive divs; a
+  // blank is a dashed "?" — a plain div in pick mode (revealed on a correct
+  // pick), or a tappable <button> "slot" in build mode (tap a palette tile to
+  // fill it, tap the slot to clear it). `blankTiles` collects the blanks in
+  // resolve order (== ascending position == render order).
   renderSequence(animated) {
-    const ask = this.guesses > 1 ? `, then what are the next ${this.guesses}?` : ', then what comes next?';
-    this.sequenceEl.setAttribute('aria-label', 'Pattern: ' + this.sequence.join(', ') + ask);
+    this.sequenceEl.setAttribute('aria-label', this.sequenceAria());
     this.sequenceEl.innerHTML = '';
-    this.sequence.forEach((emoji, i) => {
-      const div = document.createElement('div');
-      div.className = 'seq-tile' + (animated ? ' deal' : '');
-      div.textContent = emoji;
-      if (animated) {
-        div.style.animationDelay = (i * 45) + 'ms';
-        div.addEventListener('animationend', () => div.classList.remove('deal'), { once: true });
-      }
-      this.sequenceEl.appendChild(div);
-    });
-
     this.blankTiles = [];
-    for (let g = 0; g < this.guesses; g++) {
-      const blank = document.createElement('div');
-      blank.className = 'seq-tile blank' + (animated ? ' deal' : '');
-      blank.textContent = '❓';
-      if (animated) {
-        blank.style.animationDelay = ((this.sequence.length + g) * 45) + 'ms';
-        blank.addEventListener('animationend', () => blank.classList.remove('deal'), { once: true });
+    this.cells.forEach((cell, i) => {
+      let el;
+      if (cell.blank && this.interaction === 'build') {
+        el = document.createElement('button');
+        el.className = 'seq-tile blank slot';
+        el.dataset.slot = this.blankTiles.length;
+        el.textContent = '＋';
+        el.setAttribute('aria-label', 'Empty slot ' + (this.blankTiles.length + 1) + ' — tap a tile below to fill it');
+        this.blankTiles.push(el);
+      } else if (cell.blank) {
+        el = document.createElement('div');
+        el.className = 'seq-tile blank';
+        el.textContent = '❓';
+        this.blankTiles.push(el);
+      } else {
+        el = document.createElement('div');
+        el.className = 'seq-tile';
+        el.textContent = cell.emoji;
       }
-      this.sequenceEl.appendChild(blank);
-      this.blankTiles.push(blank);
-    }
+      if (animated) {
+        el.classList.add('deal');
+        el.style.animationDelay = (i * 45) + 'ms';
+        el.addEventListener('animationend', () => el.classList.remove('deal'), { once: true });
+      }
+      this.sequenceEl.appendChild(el);
+    });
   },
 
   // Renders the current hidden position's answer choices (stepOptions[step]).
@@ -688,7 +795,7 @@ const App = {
   // present a fresh option set for the second blank.
   renderStepOptions(animated) {
     this.options = this.stepOptions[this.step];
-    this.optionsEl.classList.remove('resolved');
+    this.optionsEl.classList.remove('resolved', 'build-mode');
     this.optionsEl.innerHTML = '';
     this.options.forEach((emoji, i) => {
       const btn = document.createElement('button');
@@ -709,6 +816,113 @@ const App = {
     });
   },
 
+  // ── Build mode (Hard) ────────────────────────────────────────────────
+  // The child constructs the continuation instead of picking one option:
+  // #options becomes a small palette of emoji + a ✓ confirm; tapping a palette
+  // tile fills the leftmost empty slot in #sequence, tapping a filled slot
+  // clears it, and ✓ checks the whole build. This is a deeper "apply the rule
+  // yourself" loop than recognising among given options.
+  renderBuild(animated) {
+    this.optionsEl.classList.remove('resolved');
+    this.optionsEl.classList.add('build-mode');
+    this.optionsEl.innerHTML = '';
+    this.palette.forEach((emoji, i) => {
+      const btn = document.createElement('button');
+      btn.className = 'tile palette' + (animated ? ' deal' : '');
+      btn.dataset.emoji = emoji;
+      btn.textContent = emoji;
+      btn.setAttribute('aria-label', 'Place tile ' + (i + 1));
+      if (animated) {
+        btn.style.animationDelay = (i * 45) + 'ms';
+        btn.addEventListener('animationend', () => btn.classList.remove('deal'), { once: true });
+      }
+      this.optionsEl.appendChild(btn);
+    });
+    const ok = document.createElement('button');
+    ok.className = 'tile confirm';
+    ok.id = 'build-confirm';
+    ok.textContent = '✓';
+    ok.setAttribute('aria-label', 'Check my answer');
+    this.optionsEl.appendChild(ok);
+    this.updateConfirm();
+  },
+
+  placeInSlot(emoji) {
+    if (this.won || this.resolving || this.rejecting) return;
+    const slot = this.buildFilled.indexOf(null);   // leftmost empty
+    if (slot === -1) return;                        // all full — clear one first
+    this.buildFilled[slot] = emoji;
+    const el = this.blankTiles[slot];
+    el.textContent = emoji;
+    el.classList.remove('wrong');
+    el.classList.add('filled');
+    this.audioPlace();
+    this.updateConfirm();
+  },
+
+  clearSlot(slot) {
+    if (this.won || this.resolving) return;
+    if (this.buildFilled[slot] == null) return;
+    this.buildFilled[slot] = null;
+    const el = this.blankTiles[slot];
+    el.textContent = '＋';
+    el.classList.remove('filled', 'wrong');
+    this.audioSwoosh();
+    this.updateConfirm();
+  },
+
+  updateConfirm() {
+    const ok = document.getElementById('build-confirm');
+    if (!ok) return;
+    ok.disabled = !this.buildFilled.every(e => e != null);
+  },
+
+  // Check the built continuation. A wrong slot flashes red (kept editable, no
+  // penalty — principle 3); an all-correct build locks the slots (reveal pop),
+  // fills a pip, and advances the round/celebrates (gameId-guarded), the same
+  // terminal shape as a correct pick.
+  checkBuild() {
+    if (this.won || this.resolving || this.rejecting) return;
+    if (!this.buildFilled.every(e => e != null)) return;
+    const wrongSlots = this.buildFilled
+      .map((e, j) => (e === this.answers[j] ? -1 : j))
+      .filter(j => j >= 0);
+
+    if (wrongSlots.length === 0) {
+      this.resolving = true;
+      this.audioRight();
+      this.blankTiles.forEach(el => { el.classList.remove('blank', 'slot', 'filled'); el.classList.add('revealed'); });
+      const ok = document.getElementById('build-confirm'); if (ok) ok.disabled = true;
+      this.solved++;
+      this.answersFound.push(...this.answers);
+      this.renderPips();
+      this.updateStatus('Yes! You built it!');
+      const gen = this.gameId;
+      setTimeout(() => {
+        if (gen !== this.gameId) return;   // a new game replaced this round
+        if (this.solved >= CONFIG.roundsPerSet) this.celebrate();
+        else this.nextRound(true);
+      }, CONFIG.advanceMs);
+    } else {
+      this.rejecting = true;
+      this.audioOops();
+      if (navigator.vibrate) navigator.vibrate(60);
+      wrongSlots.forEach(j => {
+        const el = this.blankTiles[j];
+        el.classList.remove('wrong');
+        void el.offsetWidth;   // reflow so the shake/flash can re-run
+        el.classList.add('wrong');
+      });
+      this.updateStatus('Almost! Fix the red ones.');
+      const gen = this.gameId;
+      setTimeout(() => {
+        if (gen !== this.gameId) return;   // a new game replaced this round
+        this.rejecting = false;
+        wrongSlots.forEach(j => this.blankTiles[j] && this.blankTiles[j].classList.remove('wrong'));
+      }, CONFIG.wrongHoldMs);
+    }
+  },
+
   pickAnswer(i) {
     if (this.won || this.resolving || this.rejecting) return;
 
@@ -718,12 +932,11 @@ const App = {
     const correct = this.answers[this.step];
 
     if (picked === correct) {
-      // Correct — reveal this step's "?" slot as the real answer and fade
-      // the other options. At Hard (guesses: 2) the first correct pick just
-      // advances to the second blank's own option set; only the LAST blank
-      // resolving fills a pip and advances the round/celebrates — the same
-      // "only the final step serves/advances" shape as Grocery Cashier's
-      // two-step total-then-change round.
+      // Correct — reveal this blank as the real answer and fade the other
+      // options. With more than one blank the first correct pick just advances
+      // to the next blank's own option set; only the LAST blank resolving fills
+      // a pip and advances the round/celebrates — the same "only the final step
+      // serves/advances" shape as Grocery Cashier's two-step round.
       this.resolving = true;
       this.audioRight();
       tile.classList.add('correct');
@@ -733,9 +946,9 @@ const App = {
       this.blankTiles[this.step].classList.add('revealed');
 
       const gen = this.gameId;
-      if (this.step < this.guesses - 1) {
+      if (this.step < this.answers.length - 1) {
         this.step++;
-        this.updateStatus('Yes! And then?');
+        this.updateStatus('Yes! Keep going!');
         setTimeout(() => {
           if (gen !== this.gameId) return;   // a new game replaced this round
           this.resolving = false;
@@ -745,7 +958,8 @@ const App = {
         this.solved++;
         this.answersFound.push(...this.answers);
         this.renderPips();
-        this.updateStatus(this.guesses > 1 ? 'Yes! You found them both!' : 'Yes! That comes next.');
+        this.updateStatus(this.answers.length > 1 ? 'Yes! You filled them all!'
+          : (this.hasInterior ? 'Yes! That was missing.' : 'Yes! That comes next.'));
         setTimeout(() => {
           if (gen !== this.gameId) return;   // a new game replaced this round
           if (this.solved >= CONFIG.roundsPerSet) {
@@ -831,7 +1045,7 @@ const App = {
       this.sequenceEl.appendChild(div);
     });
     this.optionsEl.innerHTML = '';
-    this.optionsEl.classList.remove('resolved');
+    this.optionsEl.classList.remove('resolved', 'build-mode');
   },
 
   openSettings() { this.settingsOverlay.classList.add('show'); this.updateSizeButtons(); Modal.open(this.settingsOverlay, () => this.closeSettings()); },
@@ -903,6 +1117,9 @@ const App = {
 
   // Gentle "hmm", not a punitive buzz (design principle 3).
   audioOops() { this.playTone({ type: 'sine', freq: 240, duration: 160, peakGain: 0.1 }); },
+
+  // Soft, short "place" tick when a build-mode palette tile drops into a slot.
+  audioPlace() { this.playTone({ type: 'sine', freq: 520, duration: 70, peakGain: 0.12 }); },
 
   audioEmoji() {
     const freq = [523, 587, 659, 784, 880][Math.floor(Math.random() * 5)]; // pentatonic chirp
