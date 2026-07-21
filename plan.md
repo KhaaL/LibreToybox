@@ -4,6 +4,8 @@ Completed items live in `done.md`.
 
 ## Child Sudoku (`sudoku-for-minis/index.html`)
 - **Feat: add an animated tutorial**.
+- **Feat? Child soduko hard mode: numbers are not marked as wrong until the end of game.**
+- Feat: - Child soduko mark what existing tiles that would make for a Illegal move. NB - "wrong" placements should still be possible. 
 
 ## Exquisite Corpse (`exquisite-corpse/index.html`)
 - **Feat: add an animated tutorial**.
