@@ -204,7 +204,7 @@
     /* Translucent win overlay so the solved puzzle stays visible beneath
        the celebration (same pattern as Memory and Shape Fit). */
     #win-overlay { background: rgba(255,255,255,0.55); justify-content: flex-end; padding-bottom: 12vh; }
-    #settings-overlay { background: rgba(255,255,255,0.92); }
+    #settings-overlay, #tutorial-overlay { background: rgba(255,255,255,0.92); }
     .emoji-row { font-size: 4.5rem; display: flex; gap: 18px; margin-bottom: 22px; }
 
     .ghost-digit {
@@ -324,6 +324,7 @@
     <div class="top-btns">
       <button class="top-btn" id="new-game" aria-label="New Game">🔄<span class="hold-progress" aria-hidden="true"></span></button>
       <button class="top-btn" id="settings-btn" aria-label="Settings">⚙️</button>
+      <button class="top-btn" id="tutorial-btn" aria-label="How to Play">❓</button>
     </div>
   </header>
 
@@ -359,6 +360,14 @@
         </button>
       </div>
       <button class="top-btn" id="close-settings" aria-label="Close">✕</button>
+    </div>
+  </div>
+
+  <div class="overlay" id="tutorial-overlay" role="dialog" aria-modal="true" aria-label="How to Play">
+    <div class="settings-card">
+      <h2>🎓</h2>
+      <p>Tutorial coming soon!</p>
+      <button class="top-btn" id="close-tutorial" aria-label="Close">✕</button>
     </div>
   </div>
 
@@ -467,6 +476,9 @@
         this.closeSettingsBtn = document.getElementById('close-settings');
         this.modeToggle = document.getElementById('mode-toggle');
         this.modeHint = document.getElementById('mode-hint');
+        this.tutorialOverlay = document.getElementById('tutorial-overlay');
+        this.tutorialBtn = document.getElementById('tutorial-btn');
+        this.closeTutorialBtn = document.getElementById('close-tutorial');
       },
 
       bindEvents() {
@@ -477,6 +489,11 @@
         this.modeToggle.addEventListener('click', () => this.toggleMode());
         this.settingsOverlay.addEventListener('click', (e) => {
           if (e.target === this.settingsOverlay) this.closeSettings();
+        });
+        this.tutorialBtn.addEventListener('click', () => this.openTutorial());
+        this.closeTutorialBtn.addEventListener('click', () => this.closeTutorial());
+        this.tutorialOverlay.addEventListener('click', (e) => {
+          if (e.target === this.tutorialOverlay) this.closeTutorial();
         });
         this.settingsOverlay.querySelectorAll('.size-btn').forEach(btn => {
           btn.addEventListener('click', () => this.setSize(btn.dataset.size));
@@ -1105,6 +1122,16 @@
         this.updateModeToggle();
         this.updateSizeButtons();
         Modal.open(this.settingsOverlay, () => this.closeSettings());
+      },
+
+      openTutorial() {
+        this.tutorialOverlay.classList.add('show');
+        Modal.open(this.tutorialOverlay, () => this.closeTutorial());
+      },
+
+      closeTutorial() {
+        this.tutorialOverlay.classList.remove('show');
+        Modal.close();
       },
 
       closeSettings() {

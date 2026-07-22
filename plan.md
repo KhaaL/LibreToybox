@@ -13,9 +13,10 @@ Completed items live in `done.md`.
 
 ## All games
 - **Feat: screen timer** — a visible, parent-configurable play-time timer to help manage screen time. Needs a scoping conversation before implementation: per-game vs. hub-level, whether it interrupts play or just gently notifies, and how it squares with the no-pressure-mechanics rule already in place for in-game timers/counters (e.g. Memory's deliberate "no timer, no move counter").
+- **Feat: cool-down after a wrong answer in the logic/guessing games** (Odd One Out, What Comes Next?, Grocery Cashier) so a child can't spam-tap through every option/digit until one happens to be correct. These games already lock input briefly on a wrong tap (`rejecting` + `wrongHoldMs`, ~500ms, timed to the shake/red-flash cue), but that's tuned as an animation-completion guard, not a deterrent — it doesn't stop a child from clearing all options in a few seconds. Needs a scoping conversation before implementation: how long a cooldown reads as "thinking pause" rather than punishment, whether it should visibly count down (principle 5, progress should be visible) so it doesn't feel like an unexplained freeze, and how it squares with the no-pressure/non-punitive-mistakes rules (principles 3 & 9) already governing these games.
 
 ## Repository / Infrastructure
-- None
+- **Harmonize the `.logo` representation between each game and the hub.** Every game header shows a bespoke inline-SVG `.logo` (e.g. Memory's two overlapping cards, Sudoku's numbered grid), but the hub's game cards (`index.html`) show a single plain emoji span instead (`<span class="emoji">❓</span>` for Memory, etc.) — a different, simpler representation of the same game. A player should see the same "face" for a game whether they're looking at the hub card or the game's own header. Needs a scoping conversation: reuse each game's existing SVG logo on its hub card (drop the plain-emoji spans), or go the other direction and simplify each game's header to the same plain emoji the hub already uses.
 
 ## Memory (`memory/index.html`)
 
@@ -28,6 +29,7 @@ Completed items live in `done.md`.
 
 ## Emoji Paint (`emoji-paint/index.html`)
 
+- **Bug (high importance): can't place a stamp while the emoji picker panel is expanded** — with the picker open (the wide-screen docked split-view panel, and/or the modal picker), neither drag-and-drop nor tap-to-place gets an emoji from the picker onto the canvas. Reported by the user 2026-07-22; not yet investigated further.
 - **feat** add ability to paint in emoji paint with normal strokes. Evaluate how this would impact the link sharing feature first.
 - **feat** experimental new layout: horizontal where left half is a emoji picker, and right half is the canvas. Drag and drops emojis from left to right.
 - **Feat: add an animated tutorial**.
