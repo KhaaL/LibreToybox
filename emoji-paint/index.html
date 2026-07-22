@@ -1,10 +1,10 @@
 <!DOCTYPE html>
-<!-- LibreToybox — Emoji Paint · Licensed under the GNU GPL v3.0; see ../LICENSE -->
+<!-- LibreToybox — Emoji Art · Licensed under the GNU GPL v3.0; see ../LICENSE -->
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Emoji Paint</title>
+  <title>Emoji Art</title>
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🪁</text></svg>" />
   <link rel="manifest" href="../manifest.webmanifest" />
   <meta name="theme-color" content="#DE7590" />
@@ -227,7 +227,23 @@
     .overlay.show { display: flex; }
 
     /* Translucent white like every other game's overlay */
-    #picker-overlay { background: rgba(255,255,255,0.92); }
+    #picker-overlay, #tutorial-overlay { background: rgba(255,255,255,0.92); }
+
+    /* Tutorial placeholder card — same look as the other games' .settings-card
+       (this game has no settings overlay to borrow the class from). */
+    .tutorial-card {
+      background: #fff;
+      border: 3px solid var(--border);
+      border-radius: 18px;
+      padding: 22px 26px;
+      box-shadow: 0 10px 28px rgba(0,0,0,0.15);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 14px;
+      min-width: 260px;
+    }
+    .tutorial-card h2 { margin: 0; font-size: 2rem; }
 
     /* Emoji stamp picker — a big scrollable grid the child can sift through */
     .picker-card {
@@ -411,7 +427,7 @@
 <header>
   <div class="header-left">
     <a class="top-btn" id="back-btn" href="../index.html" aria-label="Back to LibreToybox home">🏠</a>
-    <div class="logo" role="img" aria-label="Emoji Paint" title="Emoji Paint">
+    <div class="logo" role="img" aria-label="Emoji Art" title="Emoji Art">
       <svg viewBox="0 0 48 48" width="40" height="40" aria-hidden="true">
         <rect x="4" y="6" width="40" height="36" rx="6" fill="#fff" stroke="#DE7590" stroke-width="2.5" transform="rotate(-4 24 24)"/>
         <text x="24" y="31" text-anchor="middle" font-size="22" transform="rotate(-4 24 24)">🌟</text>
@@ -429,6 +445,7 @@
       </svg>
     </button>
     <button class="top-btn" id="new-game" aria-label="New Painting">🔄<span class="hold-progress" aria-hidden="true"></span></button>
+    <button class="top-btn" id="tutorial-btn" aria-label="How to Play">❓</button>
   </div>
 </header>
 
@@ -467,6 +484,14 @@
     </div>
   </div>
 </main>
+
+<div class="overlay" id="tutorial-overlay" role="dialog" aria-modal="true" aria-label="How to Play">
+  <div class="tutorial-card">
+    <h2>🎓</h2>
+    <p>Tutorial coming soon!</p>
+    <button class="top-btn" id="close-tutorial" aria-label="Close">✕</button>
+  </div>
+</div>
 
 <!-- A lifted stamp rides as this floating element, not a canvas draw, so it can
      follow the finger past the canvas edge all the way onto #trash-btn. -->
@@ -826,6 +851,9 @@ const App = {
     this.pickerNav = document.getElementById('picker-nav');
     this.pickerScroll = document.getElementById('picker-scroll');
     this.layoutBtn = document.getElementById('layout-btn');
+    this.tutorialBtn = document.getElementById('tutorial-btn');
+    this.tutorialOverlay = document.getElementById('tutorial-overlay');
+    this.closeTutorialBtn = document.getElementById('close-tutorial');
   },
 
   createEmojiButton(emoji) {
@@ -949,6 +977,10 @@ const App = {
     this.pickerScroll.addEventListener('pointermove', (e) => this.onPickerPointerMove(e));
     this.pickerScroll.addEventListener('pointerup', (e) => this.onPickerPointerUp(e));
     this.pickerScroll.addEventListener('pointercancel', (e) => this.onPickerPointerCancel(e));
+
+    this.tutorialBtn.addEventListener('click', () => this.openTutorial());
+    this.closeTutorialBtn.addEventListener('click', () => this.closeTutorial());
+    this.tutorialOverlay.addEventListener('click', (e) => { if (e.target === this.tutorialOverlay) this.closeTutorial(); });
 
     this.trashBtn.addEventListener('click', () => this.toggleTrash());
     document.getElementById('save-btn').addEventListener('click', () => this.downloadPainting());
@@ -1463,7 +1495,7 @@ const App = {
     if (navigator.share) {
       // Must be called synchronously within the click handler (transient
       // activation) — no awaiting anything before this.
-      navigator.share({ title: 'Emoji Paint', url })
+      navigator.share({ title: 'Emoji Art', url })
         .then(() => { this.flashShare('✅'); this.statusEl.textContent = sharedMsg; })
         .catch(() => {}); // user cancelled — not an error
       return;
@@ -1569,6 +1601,9 @@ const App = {
     Modal.open(this.pickerOverlay, () => this.closePicker());
   },
   closePicker() { this.pickerOverlay.classList.remove('show'); Modal.close(); },
+
+  openTutorial() { this.tutorialOverlay.classList.add('show'); Modal.open(this.tutorialOverlay, () => this.closeTutorial()); },
+  closeTutorial() { this.tutorialOverlay.classList.remove('show'); Modal.close(); },
 
   // --- Split-view drag-from-picker ------------------------------------------
   // In the docked panel, an emoji swatch can be dragged straight onto the

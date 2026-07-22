@@ -1,10 +1,10 @@
 <!DOCTYPE html>
-<!-- LibreToybox — Grocery Cashier · Licensed under the GNU GPL v3.0; see ../LICENSE -->
+<!-- LibreToybox — Shop Time · Licensed under the GNU GPL v3.0; see ../LICENSE -->
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Grocery Cashier</title>
+  <title>Shop Time</title>
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🪁</text></svg>" />
   <link rel="manifest" href="../manifest.webmanifest" />
   <meta name="theme-color" content="#5CA13A" />
@@ -237,7 +237,7 @@
     }
     .overlay.show { display: flex; }
     #win-overlay { background: rgba(255,255,255,0.55); justify-content: flex-end; padding-bottom: 12vh; }
-    #settings-overlay { background: rgba(255,255,255,0.92); }
+    #settings-overlay, #tutorial-overlay { background: rgba(255,255,255,0.92); }
 
     .emoji-row { font-size: 4.5rem; display: flex; gap: 18px; margin-bottom: 22px; }
     .emoji-row button { background: none; border: none; padding: 0; font: inherit; cursor: pointer; animation: pop-in .6s ease-out both; }
@@ -271,7 +271,7 @@
   <header>
     <div class="header-left">
       <a class="top-btn" id="back-btn" href="../index.html" aria-label="Back to LibreToybox home">🏠</a>
-      <div class="logo" role="img" aria-label="Grocery Cashier" title="Grocery Cashier">
+      <div class="logo" role="img" aria-label="Shop Time" title="Shop Time">
         <svg viewBox="0 0 48 48" width="40" height="40" aria-hidden="true">
           <path d="M6 10 h4 l3.2 15 h20 l3 -11 h-23.4" fill="none" stroke="#5CA13A" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
           <circle cx="18" cy="31" r="2.8" fill="#F9C784" stroke="#5CA13A" stroke-width="2"/>
@@ -282,6 +282,7 @@
     <div class="top-btns">
       <button class="top-btn" id="new-game" aria-label="New Game">🔄<span class="hold-progress" aria-hidden="true"></span></button>
       <button class="top-btn" id="settings-btn" aria-label="Settings">⚙️</button>
+      <button class="top-btn" id="tutorial-btn" aria-label="How to Play">❓</button>
     </div>
   </header>
 
@@ -319,6 +320,14 @@
         <button class="size-btn" data-size="hard"   role="radio" aria-label="Hard, three to five items, coupons and change">🦅<small>3–5</small></button>
       </div>
       <button class="top-btn" id="close-settings" aria-label="Close">✕</button>
+    </div>
+  </div>
+
+  <div class="overlay" id="tutorial-overlay" role="dialog" aria-modal="true" aria-label="How to Play">
+    <div class="settings-card">
+      <h2>🎓</h2>
+      <p>Tutorial coming soon!</p>
+      <button class="top-btn" id="close-tutorial" aria-label="Close">✕</button>
     </div>
   </div>
 
@@ -446,6 +455,9 @@ const App = {
     this.settingsOverlay = document.getElementById('settings-overlay');
     this.settingsBtn = document.getElementById('settings-btn');
     this.closeSettingsBtn = document.getElementById('close-settings');
+    this.tutorialOverlay = document.getElementById('tutorial-overlay');
+    this.tutorialBtn = document.getElementById('tutorial-btn');
+    this.closeTutorialBtn = document.getElementById('close-tutorial');
   },
 
   buildPad() {
@@ -468,6 +480,11 @@ const App = {
     this.closeSettingsBtn.addEventListener('click', () => this.closeSettings());
     this.settingsOverlay.addEventListener('click', (e) => {
       if (e.target === this.settingsOverlay) this.closeSettings();
+    });
+    this.tutorialBtn.addEventListener('click', () => this.openTutorial());
+    this.closeTutorialBtn.addEventListener('click', () => this.closeTutorial());
+    this.tutorialOverlay.addEventListener('click', (e) => {
+      if (e.target === this.tutorialOverlay) this.closeTutorial();
     });
     this.settingsOverlay.querySelectorAll('.size-btn').forEach(btn => {
       btn.addEventListener('click', () => this.setSize(btn.dataset.size));
@@ -855,6 +872,9 @@ const App = {
 
   openSettings() { this.settingsOverlay.classList.add('show'); this.updateSizeButtons(); Modal.open(this.settingsOverlay, () => this.closeSettings()); },
   closeSettings() { this.settingsOverlay.classList.remove('show'); Modal.close(); },
+
+  openTutorial() { this.tutorialOverlay.classList.add('show'); Modal.open(this.tutorialOverlay, () => this.closeTutorial()); },
+  closeTutorial() { this.tutorialOverlay.classList.remove('show'); Modal.close(); },
 
   setSize(size) {
     if (size === this.size) { this.closeSettings(); return; }
