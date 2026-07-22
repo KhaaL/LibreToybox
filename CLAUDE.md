@@ -45,7 +45,7 @@ LibreToybox/
 └── CLAUDE.md                 — this file
 ```
 
-**Naming:** the project/repository name is **LibreToybox**. The drawing game's working name in these docs is *Exquisite Corpse*; its player-facing title is **Fold and Pass** (renamed 2026-07-12 from "Combination Man" for a gender-neutral, theme-fitting title — exquisite corpse is traditionally played by folding paper and passing it along).
+**Naming:** the project/repository name is **LibreToybox**. Several games' working names in these docs (directory names, architecture-notes headers, plan.md/done.md entries) differ from their player-facing titles — the name shown on the hub card and in the game's own header/title. The drawing game's working name is *Exquisite Corpse*; its player-facing title is **Fold & Draw** (renamed 2026-07-12 from "Combination Man" for a gender-neutral, theme-fitting title, then shortened from "Fold and Pass" on 2026-07-22 — exquisite corpse is traditionally played by folding paper and passing it along). The rest of the games were given shorter, playful player-facing titles on 2026-07-22 for easier reading by 6–8 year olds, while keeping their working names in docs: Child Sudoku → **Mini-Sudoku**, Shape Fit → **Fit It!**, Emoji Paint → **Emoji Art**, Odd One Out → **Spot It!**, Grocery Cashier → **Shop Time**, What Comes Next? → **What's Next?**. Memory kept its name on both sides.
 
 ## Tech Stack
 
