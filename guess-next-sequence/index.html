@@ -135,6 +135,7 @@
       justify-content: center;
     }
     .tile {
+      position: relative;
       width: 72px;
       height: 72px;
       background: #fff;
@@ -170,6 +171,17 @@
     .tile.wrong { animation: shake .4s ease, wrongFlash .5s ease; }
     /* When a correct pick resolves, the other options gently fade back. */
     #options.resolved .tile:not(.correct) { opacity: 0.35; }
+    /* Wrong-answer cooldown (opt-in, settings toggle): the other options dim
+       the same way, and the tapped tile shows a shrinking ring (below) so the
+       lock reads as a visible countdown, not a silent freeze (principle 5). */
+    #options.cooling .tile:not(.wrong) { opacity: 0.35; }
+    .cooldown-ring {
+      position: absolute;
+      inset: 6px;
+      border-radius: 14px;
+      pointer-events: none;
+      opacity: 0;
+    }
 
     /* Generated shapes (Hard tier). A "shape:family:n" item is drawn as inline
        SVG instead of an emoji glyph. Constant accent fill + a darker same-hue
@@ -220,6 +232,17 @@
     .size-btn:active { transform: translateY(2px); box-shadow: 0 2px 0 var(--shadow); }
     .size-btn.active { box-shadow: 0 0 0 4px var(--accent), 0 4px 0 var(--shadow); }
 
+    /* Boolean setting row (cooldown toggle) — same shape as Sudoku's
+       wrong-number-mode switch: label+hint on the left, a pill switch on the
+       right (design principle 9's "switches with immediate effect"). */
+    .setting-row { display: flex; align-items: center; justify-content: space-between; width: 100%; font-size: 1.1rem; gap: 16px; }
+    .setting-label { display: flex; flex-direction: column; gap: 2px; text-align: left; }
+    .setting-hint { margin: 0; font-size: 0.85rem; color: #888; }
+    .toggle-btn { width: 56px; height: 30px; border-radius: 15px; border: none; background: #ccc; position: relative; cursor: pointer; transition: background .2s; padding: 0; }
+    .toggle-btn.active { background: var(--accent); }
+    .toggle-thumb { position: absolute; top: 3px; left: 3px; width: 24px; height: 24px; border-radius: 50%; background: #fff; transition: transform .2s; box-shadow: 0 1px 3px rgba(0,0,0,0.2); }
+    .toggle-btn.active .toggle-thumb { transform: translateX(26px); }
+
     .confetti { position: fixed; top: 0; left: 0; width: 10px; height: 10px; pointer-events: none; z-index: 101; animation: fall linear forwards; }
   </style>
 </head>
@@ -265,6 +288,15 @@
         <button class="size-btn" data-size="easy"   role="radio" aria-label="Easy, patterns of three">🐣<small>3</small></button>
         <button class="size-btn" data-size="medium" role="radio" aria-label="Normal, patterns of four">🕊️<small>4</small></button>
         <button class="size-btn" data-size="hard"   role="radio" aria-label="Hard, tricky patterns and shapes">🦅<small>5</small></button>
+      </div>
+      <div class="setting-row">
+        <div class="setting-label">
+          <span>Cooldown</span>
+          <p class="setting-hint" id="cooldown-hint">Wait a moment after a wrong guess</p>
+        </div>
+        <button class="toggle-btn active" id="cooldown-toggle" aria-label="Toggle wrong-answer cooldown" aria-pressed="true">
+          <span class="toggle-thumb"></span>
+        </button>
       </div>
       <button class="top-btn" id="close-settings" aria-label="Close">✕</button>
     </div>
@@ -319,15 +351,16 @@ const SHAPES_3 = ['AAB', 'ABB', 'ABA'];
 // A shape is stored as a "shape:<family>:<n>" string token, so the same
 // string-equality/dedup logic (===, includes, Set, filter) the emoji builders
 // rely on keeps working with no special-casing; only rendering branches on it.
-// Star and dots are capped at 6 (a hexagram is about as many points as a
-// child can still count at a glance; 6 dots is a die's highest face, so
-// dotsSVG can use real die-face pip layouts for the whole range). Star's
-// 3-value range means some star rounds render fewer than the tier's usual 4
-// options (buildShape's distractor search only finds 2) — buildOptions
-// already handles a short pool gracefully elsewhere in this file, so that's
-// expected, not a bug.
-const SHAPE_FAMILIES = { star: [4, 6], poly: [3, 8], dots: [1, 6] };
-const POLY_NAMES = { 3: 'triangle', 4: 'square', 5: 'pentagon', 6: 'hexagon', 7: 'heptagon', 8: 'octagon' };
+// Star, poly, and dots are all capped at 6 (a hexagram/hexagon is about as
+// many points/sides as a child can still count at a glance; 6 dots is a die's
+// highest face, so dotsSVG can use real die-face pip layouts for the whole
+// range). Star's 3-value range means some star rounds render fewer than the
+// tier's usual 4 options (buildShape's distractor search only finds 2) —
+// buildOptions already handles a short pool gracefully elsewhere in this
+// file, so that's expected, not a bug. Poly's 4-value range exactly matches
+// Hard's 4 options, so it never comes up short.
+const SHAPE_FAMILIES = { star: [4, 6], poly: [3, 6], dots: [1, 6] };
+const POLY_NAMES = { 3: 'triangle', 4: 'square', 5: 'pentagon', 6: 'hexagon' };
 
 // Named positions on a 3×3 grid (viewBox 0-100), the same layout a real die
 // prints its pips on. DICE_FACES picks which positions light up for 1-6 —
@@ -346,8 +379,9 @@ const DICE_FACES = {
 
 const CONFIG = {
   roundsPerSet: 5,
-  advanceMs: 700,   // pause after a correct pick before the next round (gameId-guarded)
-  wrongHoldMs: 500, // input lock while the reject shake/flash plays (matches wrongFlash's duration)
+  advanceMs: 700,    // pause after a correct pick before the next round (gameId-guarded)
+  wrongHoldMs: 500,  // input lock while the reject shake/flash plays (matches wrongFlash's duration) — used when the cooldown setting is OFF
+  cooldownMs: 3000,  // deliberate anti-tap-spam lock when the cooldown setting is ON, shown as a shrinking ring on the wrong tile
   // Each tier draws its rounds from a `kinds` list — the difficulty ramp is the
   // KIND of pattern reasoning, not just the string length (design principles 8
   // & 9, folded into the existing three tiers with no new level/toggle). Every
@@ -431,7 +465,8 @@ const App = {
   solved: 0,          // rounds solved in the current set
   answersFound: [],   // every correct answer from this set's solved rounds, in solve order
   resolving: false,   // true during the pause between a correct pick and the next step/round
-  rejecting: false,   // true while the wrong-tap shake/flash is playing — blocks tap-spam
+  rejecting: false,   // true while the wrong-tap shake/flash (or cooldown lock) is playing — blocks tap-spam
+  cooldownOn: true,   // settings toggle: a longer, visible lock after a wrong tap (default on)
   won: false,
   gameId: 0,
   audioCtx: null,
@@ -464,6 +499,8 @@ const App = {
     this.tutorialOverlay = document.getElementById('tutorial-overlay');
     this.tutorialBtn = document.getElementById('tutorial-btn');
     this.closeTutorialBtn = document.getElementById('close-tutorial');
+    this.cooldownToggle = document.getElementById('cooldown-toggle');
+    this.cooldownHint = document.getElementById('cooldown-hint');
   },
 
   bindEvents() {
@@ -482,6 +519,7 @@ const App = {
     this.settingsOverlay.querySelectorAll('.size-btn').forEach(btn => {
       btn.addEventListener('click', () => this.setSize(btn.dataset.size));
     });
+    this.cooldownToggle.addEventListener('click', () => this.toggleCooldown());
     // One delegated handler covers mouse, touch, pen and keyboard (real
     // <button> tiles fire click on Enter/Space too — keyboard parity, DP8).
     this.optionsEl.addEventListener('click', (e) => {
@@ -886,7 +924,7 @@ const App = {
   // render path stays uniform.
   renderStepOptions(animated) {
     this.options = this.stepOptions[this.step];
-    this.optionsEl.classList.remove('resolved');
+    this.optionsEl.classList.remove('resolved', 'cooling');
     this.optionsEl.innerHTML = '';
     this.options.forEach((emoji, i) => {
       const btn = document.createElement('button');
@@ -897,6 +935,13 @@ const App = {
       // ("Option N") so the emoji itself isn't spoken away before the child taps.
       const isShape = typeof emoji === 'string' && emoji.startsWith('shape:');
       btn.setAttribute('aria-label', isShape ? this.describe(emoji) : 'Option ' + (i + 1));
+      // Static, always-present ring for the wrong-answer cooldown (mirrors the
+      // New-Game button's always-present .hold-progress span) — only ever
+      // animated/shown on whichever tile is actually tapped wrong.
+      const ring = document.createElement('span');
+      ring.className = 'cooldown-ring';
+      ring.setAttribute('aria-hidden', 'true');
+      btn.appendChild(ring);
       if (animated) {
         btn.style.animationDelay = (i * 45) + 'ms';
         // .deal and .wrong/.correct share the same CSS specificity (two
@@ -948,9 +993,14 @@ const App = {
       // Wrong — gentle "hmm" + a shake, a red flash, and a short buzz, no
       // penalty. Expected guessing, not a rule violation, so never the harsh
       // buzz sound (design principle 3); the tile settles back to neutral.
-      // Input is locked for the animation's duration so rapid repeat-tapping
-      // ("tap spam") can't sneak a pick in — on this tile or any other,
-      // including the correct one — while the reject cue is still playing.
+      // Input is locked so rapid repeat-tapping ("tap spam") can't sneak a
+      // pick in — on this tile or any other, including the correct one.
+      // With the cooldown setting OFF, the lock is just long enough for the
+      // shake/flash to finish (CONFIG.wrongHoldMs); ON, it's a deliberate
+      // CONFIG.cooldownMs anti-spam pause, shown as a shrinking ring on the
+      // tapped tile (design principle 5 — visible, not a silent freeze) with
+      // the other options dimmed the same way `.resolved` dims them on a
+      // correct pick.
       this.rejecting = true;
       this.audioOops();
       if (navigator.vibrate) navigator.vibrate(60);
@@ -959,12 +1009,40 @@ const App = {
       tile.classList.add('wrong');
       this.updateStatus('Not that one. Try again!');
 
+      const holdMs = this.cooldownOn ? CONFIG.cooldownMs : CONFIG.wrongHoldMs;
+      if (this.cooldownOn) {
+        this.optionsEl.classList.add('cooling');
+        this.startCooldownRing(tile, holdMs);
+      }
+
       const gen = this.gameId;
       setTimeout(() => {
         if (gen !== this.gameId) return;   // a new game replaced this round
         this.rejecting = false;
-      }, CONFIG.wrongHoldMs);
+        this.optionsEl.classList.remove('cooling');
+      }, holdMs);
     }
+  },
+
+  // Animates the wrong-tapped tile's .cooldown-ring draining from a full
+  // circle to empty over durationMs — the visible "time remaining" cue for
+  // the cooldown setting. gameId-guarded like every other async timer in this
+  // file, so a mid-cooldown New Game/size change can't leave a stray rAF loop
+  // touching a tile that's about to be destroyed by the next render.
+  startCooldownRing(tile, durationMs) {
+    const ring = tile.querySelector('.cooldown-ring');
+    if (!ring) return;
+    const gen = this.gameId;
+    const start = performance.now();
+    ring.style.opacity = '1';
+    const tick = () => {
+      if (gen !== this.gameId) return;
+      const pct = Math.max(0, 100 - ((performance.now() - start) / durationMs) * 100);
+      ring.style.background = `conic-gradient(rgba(91,111,216,0.85) ${pct}%, transparent ${pct}%)`;
+      if (pct > 0) requestAnimationFrame(tick);
+      else ring.style.opacity = '0';
+    };
+    tick();
   },
 
   celebrate() {
@@ -1023,7 +1101,7 @@ const App = {
     this.optionsEl.classList.remove('resolved');
   },
 
-  openSettings() { this.settingsOverlay.classList.add('show'); this.updateSizeButtons(); Modal.open(this.settingsOverlay, () => this.closeSettings()); },
+  openSettings() { this.settingsOverlay.classList.add('show'); this.updateSizeButtons(); this.updateCooldownToggle(); Modal.open(this.settingsOverlay, () => this.closeSettings()); },
   closeSettings() { this.settingsOverlay.classList.remove('show'); Modal.close(); },
 
   openTutorial() { this.tutorialOverlay.classList.add('show'); Modal.open(this.tutorialOverlay, () => this.closeTutorial()); },
@@ -1045,6 +1123,22 @@ const App = {
       btn.classList.toggle('active', active);
       btn.setAttribute('aria-checked', active ? 'true' : 'false');
     });
+  },
+
+  // Wrong-answer cooldown toggle (design principle 9's "switch with
+  // immediate effect"). Takes effect on the next wrong tap — doesn't touch
+  // whatever is already resolving/rejecting mid-round.
+  toggleCooldown() {
+    this.cooldownOn = !this.cooldownOn;
+    this.updateCooldownToggle();
+  },
+
+  updateCooldownToggle() {
+    this.cooldownToggle.classList.toggle('active', this.cooldownOn);
+    this.cooldownToggle.setAttribute('aria-pressed', this.cooldownOn ? 'true' : 'false');
+    this.cooldownHint.textContent = this.cooldownOn
+      ? 'Wait a moment after a wrong guess'
+      : 'Try again right away after a wrong guess';
   },
 
   updateStatus(msg) { this.status.textContent = msg; },
