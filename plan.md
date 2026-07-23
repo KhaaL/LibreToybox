@@ -13,7 +13,6 @@ Completed items live in `done.md`.
 
 ## All games
 - **Feat: screen timer** — a visible, parent-configurable play-time timer to help manage screen time. Needs a scoping conversation before implementation: per-game vs. hub-level, whether it interrupts play or just gently notifies, and how it squares with the no-pressure-mechanics rule already in place for in-game timers/counters (e.g. Memory's deliberate "no timer, no move counter").
-- **Feat: cool-down after a wrong answer in the logic/guessing games** (Odd One Out, What Comes Next?, Grocery Cashier) so a child can't spam-tap through every option/digit until one happens to be correct. These games already lock input briefly on a wrong tap (`rejecting` + `wrongHoldMs`, ~500ms, timed to the shake/red-flash cue), but that's tuned as an animation-completion guard, not a deterrent — it doesn't stop a child from clearing all options in a few seconds. Needs a scoping conversation before implementation: how long a cooldown reads as "thinking pause" rather than punishment, whether it should visibly count down (principle 5, progress should be visible) so it doesn't feel like an unexplained freeze, and how it squares with the no-pressure/non-punitive-mistakes rules (principles 3 & 9) already governing these games.
 
 ## Repository / Infrastructure
 - **Harmonize the `.logo` representation between each game and the hub.** Every game header shows a bespoke inline-SVG `.logo` (e.g. Memory's two overlapping cards, Sudoku's numbered grid), but the hub's game cards (`index.html`) show a single plain emoji span instead (`<span class="emoji">❓</span>` for Memory, etc.) — a different, simpler representation of the same game. A player should see the same "face" for a game whether they're looking at the hub card or the game's own header. Needs a scoping conversation: reuse each game's existing SVG logo on its hub card (drop the plain-emoji spans), or go the other direction and simplify each game's header to the same plain emoji the hub already uses.
@@ -42,6 +41,7 @@ Completed items live in `done.md`.
 
 - **Feat: add an animated tutorial**.
 - **Feat: horizontal layout for wide screens** — an alternate landscape layout (e.g. order/receipt on one side, register + keypad on the other) so the game uses a tablet's width instead of a single tall column. Default (portrait) layout stays as-is; the wide layout kicks in via a media query on wide/landscape viewports.
+- **Feat? wrong-answer cooldown** — Odd One Out and What Comes Next? both gained an opt-out cooldown toggle (3s lock + shrinking ring after a wrong tap). Deliberately **not** extended here yet: ringing up a wrong total is numeric-keypad entry (backspace-and-retry), not tapping through a small set of discrete option tiles, so the same "spam through every option" shape doesn't directly apply. Revisit if backspace-mashing turns out to need the same deterrent.
 
 ## What Comes Next? (`guess-next-sequence/index.html`)
 
