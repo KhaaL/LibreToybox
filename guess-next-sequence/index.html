@@ -171,6 +171,15 @@
     /* When a correct pick resolves, the other options gently fade back. */
     #options.resolved .tile:not(.correct) { opacity: 0.35; }
 
+    /* Generated shapes (Hard tier). A "shape:family:n" item is drawn as inline
+       SVG instead of an emoji glyph. Constant accent fill + a darker same-hue
+       edge (design principle 11 — flat fill + darker edge, no gradient) so the
+       COUNT (star points / polygon sides / dots) is the ONLY variable between
+       tiles, the same "uniform tiles" idea Odd One Out uses. Tiles are already
+       flex-centered, so the SVG just sits at 82% and stays centred. */
+    .seq-tile svg, .tile svg { width: 82%; height: 82%; display: block; }
+    .shp { fill: var(--accent); stroke: #3B46A0; stroke-width: 3.5; stroke-linejoin: round; }
+
     @keyframes pop { 0% { transform: scale(1); } 45% { transform: scale(1.25); } 100% { transform: scale(1); } }
     @keyframes shake { 0%,100% { transform: translateX(0); } 15% { transform: translateX(-9px); } 30% { transform: translateX(9px); } 45% { transform: translateX(-7px); } 60% { transform: translateX(7px); } 75% { transform: translateX(-4px); } }
     @keyframes wrongFlash { 0%,100% { border-color: var(--border); background: #fff; } 20%,65% { border-color: #E53935; background: #FFCDD2; } }
@@ -255,7 +264,7 @@
       <div class="size-row" role="radiogroup" aria-label="Difficulty">
         <button class="size-btn" data-size="easy"   role="radio" aria-label="Easy, patterns of three">🐣<small>3</small></button>
         <button class="size-btn" data-size="medium" role="radio" aria-label="Normal, patterns of four">🕊️<small>4</small></button>
-        <button class="size-btn" data-size="hard"   role="radio" aria-label="Hard, patterns of five, guess two in a row">🦅<small>5</small></button>
+        <button class="size-btn" data-size="hard"   role="radio" aria-label="Hard, tricky patterns and shapes">🦅<small>5</small></button>
       </div>
       <button class="top-btn" id="close-settings" aria-label="Close">✕</button>
     </div>
@@ -307,22 +316,33 @@ const SHAPES = {
   5: ['AABBC', 'AABCA', 'ABCBA', 'AABBA', 'ABBCC']
 };
 
+// Hard-tier generated shapes (the "star with different edge counts" idea). The
+// varying attribute is a COUNT — star points, polygon sides, or number of dots
+// — and each family's [min, max] bounds keep every generated run renderable.
+// A shape is stored as a "shape:<family>:<n>" string token, so the same
+// string-equality/dedup logic (===, includes, Set, filter) the emoji builders
+// rely on keeps working with no special-casing; only rendering branches on it.
+const SHAPE_FAMILIES = { star: [4, 8], poly: [3, 8], dots: [1, 9] };
+const POLY_NAMES = { 3: 'triangle', 4: 'square', 5: 'pentagon', 6: 'hexagon', 7: 'heptagon', 8: 'octagon' };
+
 const CONFIG = {
   roundsPerSet: 5,
   advanceMs: 700,   // pause after a correct pick before the next round (gameId-guarded)
   wrongHoldMs: 500, // input lock while the reject shake/flash plays (matches wrongFlash's duration)
   // Each tier draws its rounds from a `kinds` list — the difficulty ramp is the
   // KIND of pattern reasoning, not just the string length (design principles 8
-  // & 9, folded into the existing three tiers with no new level/toggle):
+  // & 9, folded into the existing three tiers with no new level/toggle). Every
+  // tier asks for exactly ONE hidden position (one "?" box):
   //   Easy   — straight cycles + gentle ordered progressions
   //   Normal — adds structured repeat-shapes (AAB/ABB…)
-  //   Hard   — adds interleaved two-track patterns (with its guess-2), plus
-  //            structured and ordered at their longest; the plain cycle drops
-  //            out as too easy for the tier.
+  //   Hard   — adds `shape`: procedurally-drawn stars/polygons/dots whose COUNT
+  //            follows a possibly non-linear rule (grow, shrink, repeat, or an
+  //            alternating step like +2/−1), plus structured and ordered at
+  //            their longest; the plain cycle drops out as too easy for the tier.
   sizes: {
-    easy:   { seqLength: 6,  period: 3, options: 3, guesses: 1, kinds: ['cycle', 'ordered'] },                    // 🐣 (default)
-    medium: { seqLength: 8,  period: 4, options: 4, guesses: 1, kinds: ['cycle', 'structured', 'ordered'] },      // 🕊️
-    hard:   { seqLength: 10, period: 5, options: 4, guesses: 2, kinds: ['structured', 'interleaved', 'ordered'] } // 🦅 guess 2 in a row
+    easy:   { seqLength: 6,  period: 3, options: 3, guesses: 1, kinds: ['cycle', 'ordered'] },                 // 🐣 (default)
+    medium: { seqLength: 8,  period: 4, options: 4, guesses: 1, kinds: ['cycle', 'structured', 'ordered'] },   // 🕊️
+    hard:   { seqLength: 10, period: 5, options: 4, guesses: 1, kinds: ['shape', 'structured', 'ordered'] }    // 🦅
   },
   // Celebration grows with difficulty — Easy is today's unchanged baseline,
   // Normal/Hard add more confetti and extra rising notes on the same fanfare.
@@ -379,7 +399,7 @@ const Modal = {
 const App = {
   size: 'easy',
   sequence: [],       // shown pattern items, in display order (excludes the blanks)
-  guesses: 1,         // how many hidden positions this round has (2 at Hard)
+  guesses: 1,         // how many hidden positions this round has (always 1)
   answers: [],        // the correct emoji for each hidden position, in order
   stepOptions: [],    // per-hidden-position answer choices, stepOptions[step]
   step: 0,            // which hidden position is currently being guessed
@@ -518,9 +538,10 @@ const App = {
   //   • structured  — a repeat UNIT with internal shape (AAB/ABB/ABA…), built
   //                   from fewer distinct emoji, so the child reads the unit's
   //                   shape rather than assuming every tile is new
-  //   • interleaved — two independent tracks woven on alternating positions;
-  //                   the child un-weaves two streams at once (Hard, pairs with
-  //                   guesses: 2 — one blank per track)
+  //   • shape       — procedurally-drawn stars/polygons/dots whose COUNT follows
+  //                   a rule that need not be linear (grow, shrink, repeat, or
+  //                   an alternating step like +2/−1); Hard only (design ask:
+  //                   "more different patterns and visualisations")
   //   • ordered     — a naturally-ordered progression (counting, clock, moon,
   //                   rotation, growth) the child extends FORWARD instead of
   //                   detecting a loop
@@ -539,9 +560,9 @@ const App = {
   },
 
   buildRound(kind, cfg) {
-    if (kind === 'structured')  return this.buildStructured(cfg);
-    if (kind === 'interleaved') return this.buildInterleaved(cfg);
-    if (kind === 'ordered')     return this.buildOrdered(cfg);
+    if (kind === 'structured') return this.buildStructured(cfg);
+    if (kind === 'shape')      return this.buildShape(cfg);
+    if (kind === 'ordered')    return this.buildOrdered(cfg);
     return this.buildCycle(cfg);
   },
 
@@ -581,24 +602,163 @@ const App = {
     return { sequence, answers, optionPool: [...used, ...theme.filter(e => !used.includes(e))] };
   },
 
-  // Two independent tracks woven on alternating positions — evens advance
-  // through trackA, odds through trackB (drawn from two DIFFERENT themes, with
-  // no shared emoji, so the streams read apart). The child follows two simple
-  // patterns at once. Used at Hard with guesses: 2, so the two consecutive
-  // blanks are the next of each track (one animal, one fruit, say).
-  buildInterleaved(cfg) {
-    const { seqLength, guesses } = cfg;
-    const themes = this.shuffle(PATTERN_SETS);
-    const trackA = this.shuffle(themes[0]).slice(0, 3);
-    const trackB = this.shuffle(themes[1].filter(e => !trackA.includes(e))).slice(0, 2);
-    const at = (i) => i % 2 === 0
-      ? trackA[(i >> 1) % trackA.length]
-      : trackB[((i - 1) >> 1) % trackB.length];
-    const sequence = [];
-    for (let i = 0; i < seqLength; i++) sequence.push(at(i));
-    const answers = [];
-    for (let g = 0; g < guesses; g++) answers.push(at(seqLength + g));
-    return { sequence, answers, optionPool: [...trackA, ...trackB] };
+  // Hard-only PROCEDURAL SHAPE progression (the "star with different edge
+  // counts" ask). One shape family (stars / polygons / dots) is chosen and the
+  // varying attribute is a COUNT that follows a rule which need NOT be linear:
+  //   grow      count up by 1 or 2      (4,5,6,7 → 8)
+  //   shrink    count down by 1         (8,7,6,5 → 4)
+  //   cycle     a repeating value list  (4,7,4,7 → 4)
+  //   alternate two steps applied in turn, e.g. +2 then −1 (4,6,5,7 → 6) — the
+  //             genuinely tricky, non-additive case the user asked for
+  // shapeValues() generates a run that is guaranteed in-range for every shown
+  // term AND the answer; distractors are OTHER in-range counts of the same
+  // family (nearest first), so options are visually comparable (same shape,
+  // different count) and exactly one is correct by construction.
+  buildShape(cfg) {
+    const families = ['star', 'poly', 'dots'];
+    const rules = ['grow', 'shrink', 'cycle', 'alternate'];
+    const SHOWN = 4;   // terms shown before the "?" (enough to see an alternation repeat)
+    const family = families[Math.floor(Math.random() * families.length)];
+    const [min, max] = SHAPE_FAMILIES[family];
+    const tok = (v) => `shape:${family}:${v}`;
+
+    let run = null;
+    for (let attempt = 0; attempt < 60 && !run; attempt++) {
+      const rule = rules[Math.floor(Math.random() * rules.length)];
+      run = this.shapeValues(rule, min, max, SHOWN + 1);
+    }
+    // Deterministic fallback (a plain count-up always fits every family range).
+    if (!run) { run = []; for (let i = 0; i <= SHOWN; i++) run.push(min + i); }
+
+    const answer = run[SHOWN];
+    const sequence = run.slice(0, SHOWN).map(tok);
+
+    // Distractors: expand outward from the answer until we have enough distinct
+    // in-range counts (nearest values first → visually hardest to tell apart).
+    const need = cfg.options - 1;
+    const distract = [];
+    for (let d = 1; distract.length < need && d <= (max - min); d++) {
+      for (const v of [answer - d, answer + d]) {
+        if (v >= min && v <= max && v !== answer && !distract.includes(v)) distract.push(v);
+      }
+    }
+    return { sequence, answers: [tok(answer)], optionPool: [tok(answer), ...distract.map(tok)] };
+  },
+
+  // Build a length-`len` run of integer counts, all within [min,max], for the
+  // given rule — or null if this rule can't fit the family's range (the caller
+  // just retries with another rule). The last element is the answer.
+  shapeValues(rule, min, max, len) {
+    const range = max - min;
+    const rnd = (lo, hi) => lo + Math.floor(Math.random() * (hi - lo + 1));
+
+    if (rule === 'grow' || rule === 'shrink') {
+      const step = rule === 'grow' ? (Math.random() < 0.5 ? 1 : 2) : -1;
+      const span = Math.abs(step) * (len - 1);
+      if (span > range) return null;                     // won't fit — retry
+      const start = step > 0 ? rnd(min, max - span) : rnd(min + span, max);
+      return Array.from({ length: len }, (_, i) => start + step * i);
+    }
+
+    if (rule === 'alternate') {
+      // Two DIFFERENT steps applied in turn (net non-zero, so it never
+      // degenerates into a plain arithmetic run). Collect every start that
+      // keeps the whole run in range, then pick one at random.
+      const combos = [[2, -1], [-1, 2], [3, -1], [-2, 1]];
+      const [s1, s2] = combos[Math.floor(Math.random() * combos.length)];
+      const starts = [];
+      for (let s = min; s <= max; s++) {
+        const out = [s];
+        let v = s, ok = true;
+        for (let i = 1; i < len; i++) {
+          v += (i % 2 === 1) ? s1 : s2;
+          if (v < min || v > max) { ok = false; break; }
+          out.push(v);
+        }
+        if (ok) starts.push(out);
+      }
+      return starts.length ? starts[Math.floor(Math.random() * starts.length)] : null;
+    }
+
+    if (rule === 'cycle') {
+      const period = Math.random() < 0.5 ? 2 : 3;
+      if (range + 1 < period) return null;               // not enough distinct values
+      const vals = this.shuffle(Array.from({ length: range + 1 }, (_, k) => k + min)).slice(0, period);
+      return Array.from({ length: len }, (_, i) => vals[i % period]);
+    }
+
+    return null;
+  },
+
+  // ── Shape rendering ───────────────────────────────────────────────────
+  // A "shape:family:n" token → inline SVG; anything else → its emoji text.
+  // renderItem() is the single dispatch used by every tile-render path.
+  renderItem(el, item) {
+    if (typeof item === 'string' && item.startsWith('shape:')) {
+      el.innerHTML = this.shapeSVG(item);
+    } else {
+      el.textContent = item;
+    }
+  },
+
+  // Names a token for screen readers (its SVG carries no readable text); a
+  // non-shape item is its own emoji, unchanged.
+  describe(item) {
+    if (typeof item === 'string' && item.startsWith('shape:')) {
+      const [, family, nStr] = item.split(':');
+      const n = parseInt(nStr, 10);
+      if (family === 'dots') return n === 1 ? '1 dot' : n + ' dots';
+      if (family === 'poly') return POLY_NAMES[n] || (n + '-sided shape');
+      return n + '-pointed star';
+    }
+    return item;
+  },
+
+  shapeSVG(token) {
+    const [, family, nStr] = token.split(':');
+    const n = parseInt(nStr, 10);
+    if (family === 'dots') return this.dotsSVG(n);
+    const pts = family === 'star' ? this.starPoints(n, 44, 18) : this.polyPoints(n, 42);
+    return `<svg viewBox="0 0 100 100" aria-hidden="true"><polygon class="shp" points="${pts}"/></svg>`;
+  },
+
+  // Regular n-gon vertices around centre (50,50), first vertex pointing up.
+  polyPoints(n, r) {
+    const pts = [];
+    for (let i = 0; i < n; i++) {
+      const a = (-90 + i * 360 / n) * Math.PI / 180;
+      pts.push((50 + r * Math.cos(a)).toFixed(1) + ',' + (50 + r * Math.sin(a)).toFixed(1));
+    }
+    return pts.join(' ');
+  },
+
+  // n-pointed star: 2n vertices alternating outer radius R / inner radius r,
+  // first (outer) point up.
+  starPoints(n, R, r) {
+    const pts = [];
+    for (let i = 0; i < 2 * n; i++) {
+      const rad = i % 2 === 0 ? R : r;
+      const a = (-90 + i * 180 / n) * Math.PI / 180;
+      pts.push((50 + rad * Math.cos(a)).toFixed(1) + ',' + (50 + rad * Math.sin(a)).toFixed(1));
+    }
+    return pts.join(' ');
+  },
+
+  // n dots in a centred grid, at most 3 per row; short last rows stay centred.
+  dotsSVG(n) {
+    const cols = Math.min(n, 3);
+    const rows = Math.ceil(n / cols);
+    const step = 26, rad = 9;
+    const totalH = (rows - 1) * step;
+    let circles = '';
+    for (let i = 0; i < n; i++) {
+      const rc = Math.floor(i / cols), cc = i % cols;
+      const rowCount = Math.min(cols, n - rc * cols);
+      const cx = 50 - (rowCount - 1) * step / 2 + cc * step;
+      const cy = 50 - totalH / 2 + rc * step;
+      circles += `<circle class="shp" cx="${cx.toFixed(1)}" cy="${cy.toFixed(1)}" r="${rad}"/>`;
+    }
+    return `<svg viewBox="0 0 100 100" aria-hidden="true">${circles}</svg>`;
   },
 
   // A naturally-ordered progression the child extends forward (counting, clock,
@@ -655,7 +815,7 @@ const App = {
     this.generateRound();
     this.renderSequence(animated);
     this.renderStepOptions(animated);
-    this.updateStatus(this.guesses > 1 ? 'What comes next? Two in a row!' : 'What comes next?');
+    this.updateStatus('What comes next?');
   },
 
   renderPips() {
@@ -670,15 +830,16 @@ const App = {
 
   // #sequence tiles are non-interactive (never tappable), so a screen reader
   // user has no way to inspect them unless the container's aria-label spells
-  // out the pattern itself. One blank tile per hidden position (two at Hard).
+  // out the pattern itself. Each item is rendered through renderItem() so a
+  // shape token becomes SVG; every round has exactly one blank "?" tile.
   renderSequence(animated) {
-    const ask = this.guesses > 1 ? `, then what are the next ${this.guesses}?` : ', then what comes next?';
-    this.sequenceEl.setAttribute('aria-label', 'Pattern: ' + this.sequence.join(', ') + ask);
+    this.sequenceEl.setAttribute('aria-label',
+      'Pattern: ' + this.sequence.map(it => this.describe(it)).join(', ') + ', then what comes next?');
     this.sequenceEl.innerHTML = '';
     this.sequence.forEach((emoji, i) => {
       const div = document.createElement('div');
       div.className = 'seq-tile' + (animated ? ' deal' : '');
-      div.textContent = emoji;
+      this.renderItem(div, emoji);
       if (animated) {
         div.style.animationDelay = (i * 45) + 'ms';
         div.addEventListener('animationend', () => div.classList.remove('deal'), { once: true });
@@ -700,9 +861,9 @@ const App = {
     }
   },
 
-  // Renders the current hidden position's answer choices (stepOptions[step]).
-  // At Hard, this runs a second time — once the first blank resolves — to
-  // present a fresh option set for the second blank.
+  // Renders the hidden position's answer choices (stepOptions[step]; step is
+  // always 0 now that every round has one blank). Kept as an array so the
+  // render path stays uniform.
   renderStepOptions(animated) {
     this.options = this.stepOptions[this.step];
     this.optionsEl.classList.remove('resolved');
@@ -711,8 +872,11 @@ const App = {
       const btn = document.createElement('button');
       btn.className = 'tile' + (animated ? ' deal' : '');
       btn.dataset.index = i;
-      btn.textContent = emoji;
-      btn.setAttribute('aria-label', 'Option ' + (i + 1));
+      this.renderItem(btn, emoji);
+      // Shapes have no readable glyph, so name them; emoji tiles stay generic
+      // ("Option N") so the emoji itself isn't spoken away before the child taps.
+      const isShape = typeof emoji === 'string' && emoji.startsWith('shape:');
+      btn.setAttribute('aria-label', isShape ? this.describe(emoji) : 'Option ' + (i + 1));
       if (animated) {
         btn.style.animationDelay = (i * 45) + 'ms';
         // .deal and .wrong/.correct share the same CSS specificity (two
@@ -735,43 +899,31 @@ const App = {
     const correct = this.answers[this.step];
 
     if (picked === correct) {
-      // Correct — reveal this step's "?" slot as the real answer and fade
-      // the other options. At Hard (guesses: 2) the first correct pick just
-      // advances to the second blank's own option set; only the LAST blank
-      // resolving fills a pip and advances the round/celebrates — the same
-      // "only the final step serves/advances" shape as Grocery Cashier's
-      // two-step total-then-change round.
+      // Correct — reveal the "?" slot as the real answer (an emoji or a shape,
+      // via renderItem), fade the other options, fill a pip, then advance the
+      // round or celebrate. Every round now has exactly one hidden position.
       this.resolving = true;
       this.audioRight();
       tile.classList.add('correct');
       this.optionsEl.classList.add('resolved');
-      this.blankTiles[this.step].textContent = correct;
-      this.blankTiles[this.step].classList.remove('blank');
-      this.blankTiles[this.step].classList.add('revealed');
+      const blank = this.blankTiles[this.step];
+      this.renderItem(blank, correct);
+      blank.classList.remove('blank');
+      blank.classList.add('revealed');
 
+      this.solved++;
+      this.answersFound.push(...this.answers);
+      this.renderPips();
+      this.updateStatus('Yes! That comes next.');
       const gen = this.gameId;
-      if (this.step < this.guesses - 1) {
-        this.step++;
-        this.updateStatus('Yes! And then?');
-        setTimeout(() => {
-          if (gen !== this.gameId) return;   // a new game replaced this round
-          this.resolving = false;
-          this.renderStepOptions(true);
-        }, CONFIG.advanceMs);
-      } else {
-        this.solved++;
-        this.answersFound.push(...this.answers);
-        this.renderPips();
-        this.updateStatus(this.guesses > 1 ? 'Yes! You found them both!' : 'Yes! That comes next.');
-        setTimeout(() => {
-          if (gen !== this.gameId) return;   // a new game replaced this round
-          if (this.solved >= CONFIG.roundsPerSet) {
-            this.celebrate();
-          } else {
-            this.nextRound(true);
-          }
-        }, CONFIG.advanceMs);
-      }
+      setTimeout(() => {
+        if (gen !== this.gameId) return;   // a new game replaced this round
+        if (this.solved >= CONFIG.roundsPerSet) {
+          this.celebrate();
+        } else {
+          this.nextRound(true);
+        }
+      }, CONFIG.advanceMs);
     } else {
       // Wrong — gentle "hmm" + a shake, a red flash, and a short buzz, no
       // penalty. Expected guessing, not a rule violation, so never the harsh
@@ -842,7 +994,7 @@ const App = {
     this.answersFound.forEach((emoji, i) => {
       const div = document.createElement('div');
       div.className = 'seq-tile deal recap';
-      div.textContent = emoji;
+      this.renderItem(div, emoji);
       div.style.animationDelay = (i * 45) + 'ms';
       div.addEventListener('animationend', () => div.classList.remove('deal'), { once: true });
       this.sequenceEl.appendChild(div);
