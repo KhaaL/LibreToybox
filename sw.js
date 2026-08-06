@@ -16,7 +16,10 @@ self.addEventListener('install', (e) => {
     'emoji-paint/', 'emoji-paint/index.html',
     'odd-one-out/', 'odd-one-out/index.html',
     'grocery-cashier/', 'grocery-cashier/index.html',
-    'guess-next-sequence/', 'guess-next-sequence/index.html'
+    'guess-next-sequence/', 'guess-next-sequence/index.html',
+    'calm-corner/', 'calm-corner/index.html',
+    'calm-corner/timer/', 'calm-corner/timer/index.html',
+    'calm-corner/checkin/', 'calm-corner/checkin/index.html'
   ])));
   self.skipWaiting();
 });

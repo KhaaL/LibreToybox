@@ -56,9 +56,37 @@
     .emoji { font-size: 2.4rem; }
     footer { margin-top: 40px; font-size: 0.85rem; opacity: 0.75; }
     footer a { color: inherit; }
+
+    /* Calm Corner entry point — a small, always-visible fixed icon outside the
+       game grid (not a card in .games), so the toolset reads as a different
+       kind of thing from a game rather than an extra grid slot. Its own
+       unclaimed orange hue (every other hue in the palette is a game's
+       identity already) is the only signal needed — no text badge. */
+    .tool-link {
+      position: fixed;
+      top: 14px;
+      right: 14px;
+      width: 56px;
+      height: 56px;
+      border-radius: 50%;
+      background: #fff;
+      border: 3px solid #F4C79A;
+      box-shadow: 0 6px 16px rgba(0,0,0,0.15);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1.7rem;
+      text-decoration: none;
+      z-index: 10;
+      transition: transform .1s, border-color .1s;
+    }
+    .tool-link:hover { border-color: #E8871F; transform: translateY(-2px); }
+    .tool-link:focus-visible { outline: 4px solid #E8871F; outline-offset: 2px; }
+    .tool-link:active { transform: translateY(2px); }
   </style>
 </head>
 <body>
+  <a class="tool-link" href="calm-corner/" aria-label="Calm Corner — helpful tools">🧸</a>
   <h1>🪁 LibreToybox</h1>
   <p class="tagline">Simple HTML5 games for kids aged 6–8. No tracking, registration or addictive feedback loops - just joy.</p>
   <div class="games">
