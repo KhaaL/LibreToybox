@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<!-- LibreToybox — Calm Corner (tool suite hub) · Licensed under the GNU GPL v3.0; see ../LICENSE -->
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Calm Corner</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🪁</text></svg>" />
+  <link rel="manifest" href="../manifest.webmanifest" />
+  <meta name="theme-color" content="#E8871F" />
+  <style>
+    * { box-sizing: border-box; }
+    html, body { margin: 0; padding: 0; }
+    /* Own background on html stops the body gradient propagating to overscroll,
+       where it would tile and show the wrong end of the gradient. */
+    html { background: #FFF9F2; }
+    body {
+      font-family: ui-rounded, 'Hiragino Maru Gothic ProN', Quicksand, Comfortaa, 'Arial Rounded MT Bold', 'Varela Round', Calibri, sans-serif;
+      background: linear-gradient(180deg, #FFF9F2, #FFE0BF);
+      color: #6B3E12;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 24px 16px 40px;
+    }
+    header { width: 100%; max-width: 440px; display: flex; align-items: center; margin-bottom: 8px; }
+    .top-btn {
+      background: #fff;
+      border: 2px solid #F4C79A;
+      border-radius: 12px;
+      padding: 6px 10px;
+      font-size: 1.3rem;
+      min-width: 48px;
+      min-height: 48px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      text-decoration: none;
+      color: inherit;
+      box-shadow: 0 3px 0 #F0CBA0;
+      transition: transform .05s;
+    }
+    .top-btn:active { transform: translateY(2px); box-shadow: 0 1px 0 #F0CBA0; }
+    .top-btn:focus-visible { outline: 4px solid #E8871F; outline-offset: 2px; }
+    h1 { font-size: 2.1rem; margin: 12px 0 4px; text-align: center; width: 100%; }
+    p.tagline { margin: 0 0 28px; opacity: 0.8; text-align: center; max-width: 440px; }
+    .tools {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 14px;
+      width: 100%;
+      max-width: 440px;
+    }
+    a.card {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 6px;
+      padding: 20px 10px;
+      background: #fff;
+      border: 3px solid #F4C79A;
+      border-radius: 20px;
+      box-shadow: 0 8px 22px rgba(0,0,0,0.12);
+      text-decoration: none;
+      color: #6B3E12;
+      font-size: 1.05rem;
+      font-weight: bold;
+      transition: transform .1s, border-color .1s;
+    }
+    a.card:hover { border-color: #E8871F; transform: translateY(-2px); }
+    a.card:focus-visible { outline: 4px solid #E8871F; outline-offset: 2px; }
+    a.card:active { transform: translateY(3px); }
+    .emoji { font-size: 2.6rem; }
+    footer { margin-top: 40px; font-size: 0.85rem; opacity: 0.75; }
+    footer a { color: inherit; }
+  </style>
+</head>
+<body>
+  <header>
+    <a class="top-btn" id="back-btn" href="../index.html" aria-label="Back to LibreToybox home">🏠</a>
+  </header>
+  <h1>🧸 Calm Corner</h1>
+  <p class="tagline">Gentle, no-pressure tools — a visual timer and a feelings check-in. No games to win, nothing to score.</p>
+  <div class="tools">
+    <a class="card" href="timer/">
+      <span class="emoji">⏱️</span>
+      Visual Timer
+    </a>
+    <a class="card" href="checkin/">
+      <span class="emoji">😊</span>
+      Feelings Check-In
+    </a>
+  </div>
+  <footer><a href="https://github.com/KhaaL/LibreToybox">Source on GitHub</a> · GNU GPL v3.0</footer>
+
+  <script>
+    // The whole toybox (games and tools alike) is one PWA: a single shared
+    // manifest (linked above) and one root-scoped service worker registered
+    // here. Service workers must come from a real http(s) URL — browsers
+    // reject blob:/data: worker scripts, and file:// has no SW support anyway.
+    if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
+      navigator.serviceWorker.register('../sw.js').then((root) => {
+        // Drop any old, narrower-scoped worker from before unification so the
+        // one root worker controls the whole site (longest scope wins).
+        navigator.serviceWorker.getRegistrations().then((regs) =>
+          regs.forEach((r) => {
+            if (r !== root && r.scope.startsWith(root.scope) && r.scope !== root.scope) r.unregister();
+          })
+        );
+      }).catch(() => {});
+    }
+  </script>
+</body>
+</html>

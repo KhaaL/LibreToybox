@@ -12,7 +12,13 @@ Completed items live in `done.md`.
 - **Bug: top ~3px of the last (3rd) section can't be painted** — the very top strip of the final section appears to reject strokes, unlike the same strip in earlier sections. Worth checking `PEEK_PX` and the per-section `ctx.rect()`/`ctx.clip()` math in `redrawCanvas()`, since that's what carves each section's drawable band — not yet investigated further.
 
 ## All games
-- **Feat: screen timer** — a visible, parent-configurable play-time timer to help manage screen time. Needs a scoping conversation before implementation: per-game vs. hub-level, whether it interrupts play or just gently notifies, and how it squares with the no-pressure-mechanics rule already in place for in-game timers/counters (e.g. Memory's deliberate "no timer, no move counter").
+- **Feat: screen timer** — a visible, parent-configurable play-time timer to help manage screen time. Needs a scoping conversation before implementation: per-game vs. hub-level, whether it interrupts play or just gently notifies, and how it squares with the no-pressure-mechanics rule already in place for in-game timers/counters (e.g. Memory's deliberate "no timer, no move counter"). **Not the same thing** as Calm Corner's Visual Timer (below) — that's a child-facing, freely-settable countdown for tasks/turns, not a parent-configured play-time limiter.
+
+## Calm Corner (`calm-corner/`)
+
+- **Feat: add an animated tutorial** (matches every game's outstanding tutorial item).
+- **Feat: more tools** — a scoping conversation before adding a third tool beyond the Visual Timer and Feelings Check-In (e.g. a visual choice board / first-then schedule, a calm-down breathing visual).
+- **Feat? parent-visible feelings history** — the check-in is currently fully ephemeral (no `localStorage`, resets on reload) by design; a persistent, parent-visible log would be a deliberate scope change, not an oversight, and needs its own conversation (privacy, no-tracking principle, who can see it).
 
 ## Repository / Infrastructure
 - **Harmonize the `.logo` representation between each game and the hub.** Every game header shows a bespoke inline-SVG `.logo` (e.g. Memory's two overlapping cards, Sudoku's numbered grid), but the hub's game cards (`index.html`) show a single plain emoji span instead (`<span class="emoji">❓</span>` for Memory, etc.) — a different, simpler representation of the same game. A player should see the same "face" for a game whether they're looking at the hub card or the game's own header. Needs a scoping conversation: reuse each game's existing SVG logo on its hub card (drop the plain-emoji spans), or go the other direction and simplify each game's header to the same plain emoji the hub already uses.

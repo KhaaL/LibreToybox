@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<!-- LibreToybox — Calm Corner: Feelings Check-In · Licensed under the GNU GPL v3.0; see ../../LICENSE -->
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Feelings Check-In</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🪁</text></svg>" />
+  <link rel="manifest" href="../../manifest.webmanifest" />
+  <meta name="theme-color" content="#E8871F" />
+  <style>
+    :root {
+      --bg1: #FFF9F2;
+      --bg2: #FFE0BF;
+      --accent: #E8871F;
+      --border: #F4C79A;
+      --text: #6B3E12;
+      --shadow: #F0CBA0;
+    }
+    * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+    html, body { margin: 0; padding: 0; height: 100%; }
+    html { background: var(--bg1); }
+    body {
+      font-family: ui-rounded, 'Hiragino Maru Gothic ProN', Quicksand, Comfortaa, 'Arial Rounded MT Bold', 'Varela Round', Calibri, sans-serif;
+      background: linear-gradient(180deg, var(--bg1), var(--bg2));
+      color: var(--text);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      min-height: 100%;
+      overflow-x: hidden;
+      user-select: none;
+      -webkit-user-select: none;
+      -webkit-touch-callout: none;
+      touch-action: manipulation;
+    }
+    header {
+      width: 100%;
+      max-width: 420px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 14px 16px 6px;
+    }
+    .header-left { display: flex; align-items: center; gap: 8px; }
+    .title { font-size: 1.3rem; font-weight: bold; }
+    .top-btn {
+      background: #fff;
+      border: 2px solid var(--border);
+      border-radius: 12px;
+      padding: 6px 10px;
+      font-family: inherit;
+      font-size: 1.3rem;
+      cursor: pointer;
+      box-shadow: 0 3px 0 var(--shadow);
+      transition: transform .05s;
+      min-width: 48px;
+      min-height: 48px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      text-decoration: none;
+      color: inherit;
+    }
+    .top-btn:active { transform: translateY(2px); box-shadow: 0 1px 0 var(--shadow); }
+    .top-btn:focus-visible { outline: 4px solid var(--accent); outline-offset: 2px; }
+
+    main { width: 100%; max-width: 420px; padding: 24px 16px; display: flex; flex-direction: column; align-items: center; gap: 22px; }
+
+    .status { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); clip-path: inset(50%); white-space: nowrap; border: 0; }
+
+    .prompt { font-size: 1.3rem; text-align: center; margin: 0; min-height: 2.6rem; }
+
+    #faces {
+      width: 100%;
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 14px;
+    }
+    .face {
+      aspect-ratio: 1 / 1;
+      background: #fff;
+      border: 3px solid var(--border);
+      border-radius: 20px;
+      box-shadow: 0 4px 0 var(--shadow);
+      font-size: clamp(2.2rem, 11vw, 3rem);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      font-family: inherit;
+      padding: 0;
+      transition: transform .08s, box-shadow .08s;
+    }
+    .face:active { transform: translateY(3px); box-shadow: 0 1px 0 var(--shadow); }
+    .face:focus-visible { outline: 4px solid var(--accent); outline-offset: -4px; }
+    .face.selected { box-shadow: 0 0 0 5px var(--accent), 0 4px 0 var(--shadow); animation: pop .4s ease-out; }
+    @keyframes pop { 0% { transform: scale(1); } 45% { transform: scale(1.18); } 100% { transform: scale(1); } }
+
+    #ack {
+      font-size: 1.15rem;
+      font-weight: bold;
+      text-align: center;
+      min-height: 1.6rem;
+      opacity: 0;
+      transition: opacity .3s;
+    }
+    #ack.show { opacity: 1; }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="header-left">
+      <a class="top-btn" id="back-btn" href="../" aria-label="Back to Calm Corner">🏠</a>
+      <span class="title">😊 Feelings Check-In</span>
+    </div>
+    <button class="top-btn" id="reset-btn" aria-label="Clear">🔄</button>
+  </header>
+
+  <main>
+    <div class="status" id="status" aria-live="polite"></div>
+    <p class="prompt">How are you feeling right now?</p>
+    <div id="faces" role="group" aria-label="Pick a feeling"></div>
+    <p id="ack" aria-hidden="true"></p>
+  </main>
+
+<script>
+// No scoring, no correctness, no "win" — a tap is a self-expression, not a
+// puzzle. Nothing is stored or sent anywhere (in-memory only, resets on
+// reload, matching the toybox's project-wide no-tracking rule); a child can
+// change their answer any time by tapping a different face.
+const FEELINGS = [
+  { emoji: '😄', label: 'Happy' },
+  { emoji: '🙂', label: 'Okay' },
+  { emoji: '😐', label: 'Meh' },
+  { emoji: '😟', label: 'Worried' },
+  { emoji: '😢', label: 'Sad' },
+  { emoji: '😠', label: 'Angry' }
+];
+
+const ACK_LINES = ['Thanks for telling me!', 'Got it!', 'I hear you.'];
+
+const App = {
+  selected: -1,
+  audioCtx: null,
+
+  init() {
+    this.cacheDOM();
+    this.renderFaces();
+    this.bindEvents();
+    this.setupPWA();
+  },
+
+  cacheDOM() {
+    this.facesEl = document.getElementById('faces');
+    this.ackEl = document.getElementById('ack');
+    this.status = document.getElementById('status');
+    this.resetBtn = document.getElementById('reset-btn');
+  },
+
+  bindEvents() {
+    this.facesEl.addEventListener('click', (e) => {
+      const btn = e.target.closest('.face');
+      if (btn) this.pick(parseInt(btn.dataset.index, 10));
+    });
+    this.resetBtn.addEventListener('click', () => this.clear());
+  },
+
+  renderFaces() {
+    this.facesEl.innerHTML = '';
+    FEELINGS.forEach((f, i) => {
+      const btn = document.createElement('button');
+      btn.className = 'face';
+      btn.dataset.index = i;
+      btn.textContent = f.emoji;
+      btn.setAttribute('aria-label', f.label);
+      this.facesEl.appendChild(btn);
+    });
+  },
+
+  pick(i) {
+    this.selected = i;
+    this.facesEl.querySelectorAll('.face').forEach((btn, idx) => {
+      btn.classList.remove('selected');
+      if (idx === i) { void btn.offsetWidth; btn.classList.add('selected'); }
+    });
+    const line = ACK_LINES[Math.floor(Math.random() * ACK_LINES.length)];
+    this.ackEl.textContent = line;
+    this.ackEl.classList.add('show');
+    this.status.textContent = `You picked ${FEELINGS[i].label}. ${line}`;
+    this.audioAck();
+  },
+
+  clear() {
+    this.selected = -1;
+    this.facesEl.querySelectorAll('.face').forEach((btn) => btn.classList.remove('selected'));
+    this.ackEl.classList.remove('show');
+    this.ackEl.textContent = '';
+    this.status.textContent = 'Cleared.';
+  },
+
+  setupPWA() {
+    if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
+      navigator.serviceWorker.register('../../sw.js').then((root) => {
+        navigator.serviceWorker.getRegistrations().then((regs) =>
+          regs.forEach((r) => {
+            if (r !== root && r.scope.startsWith(root.scope) && r.scope !== root.scope) r.unregister();
+          })
+        );
+      }).catch(() => {});
+    }
+  },
+
+  ensureAudio() {
+    if (!this.audioCtx) this.audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    if (this.audioCtx.state === 'suspended') this.audioCtx.resume();
+  },
+
+  playTone({ type = 'sine', freq = 440, duration = 100, startGain = 0.0001, peakGain = 0.15 }) {
+    this.ensureAudio();
+    const ctx = this.audioCtx;
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = type;
+    osc.frequency.setValueAtTime(freq, ctx.currentTime);
+    gain.gain.setValueAtTime(startGain, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(peakGain, ctx.currentTime + 0.01);
+    gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + duration / 1000);
+    osc.connect(gain).connect(ctx.destination);
+    osc.start();
+    osc.stop(ctx.currentTime + duration / 1000 + 0.02);
+  },
+
+  // A single gentle chirp — acknowledgment, not a reward chime, since
+  // there's no "correct" feeling to reward.
+  audioAck() { this.playTone({ type: 'sine', freq: 660, duration: 130, peakGain: 0.13 }); }
+};
+
+App.init();
+</script>
+</body>
+</html>
