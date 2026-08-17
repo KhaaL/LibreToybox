@@ -100,6 +100,8 @@
       width: 100%;
       max-width: min(300px, 90vw);
       aspect-ratio: 1 / 1;
+      overflow: hidden;
+      border-radius: 24px;
     }
     @media (min-width: 600px) {
       .display-wrap { max-width: min(420px, 90vw); }
@@ -139,6 +141,36 @@
       pointer-events: none;
     }
     #digits.show { display: flex; }
+
+    /* A gentle, self-clearing "time's up" signal — bells drift down through
+       the display and fade, well short of a game's confetti burst (this is
+       a regulation tool, not a win screen). One-shot per bell (never
+       looping) so the child reads it as "finished," not an ongoing alarm. */
+    #end-signal {
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+    }
+    .end-signal-bell {
+      position: absolute;
+      font-size: 1.8rem;
+      opacity: 0;
+      animation: bell-fall var(--fall-duration, 3.2s) ease-in var(--fall-delay, 0s) 1 both;
+    }
+    /* `top` is animated (not transform) because percentages there resolve
+       against the containing block's height — the whole display — whereas
+       a transform: translate() percentage resolves against the bell's own
+       tiny box and barely moves it. transform is used only for the
+       horizontal drift/rotation, both already in absolute px/deg. */
+    @keyframes bell-fall {
+      0% { top: -15%; transform: translateX(var(--drift-start, 0)) rotate(-8deg); opacity: 0; }
+      12% { opacity: 0.9; }
+      80% { opacity: 0.9; }
+      100% { top: 115%; transform: translateX(var(--drift-end, 0)) rotate(8deg); opacity: 0; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      .end-signal-bell { display: none; }
+    }
 
     .row { display: flex; flex-wrap: wrap; justify-content: center; gap: 12px; }
 
@@ -213,6 +245,7 @@
         <div class="display-wrap">
           <canvas id="display" width="300" height="300" role="img" aria-label="Time remaining"></canvas>
           <div id="digits" aria-hidden="true"></div>
+          <div id="end-signal" aria-hidden="true"></div>
         </div>
       </div>
 
@@ -264,6 +297,7 @@ const App = {
   isFullscreen: false,
   wakeLock: null,
   resizeRaf: null,
+  signalGen: 0,
   supportsFullscreenAPI: !!(document.documentElement.requestFullscreen || document.documentElement.webkitRequestFullscreen),
 
   init() {
@@ -289,6 +323,7 @@ const App = {
     this.digitsBtn = document.getElementById('digits-btn');
     this.soundBtn = document.getElementById('sound-btn');
     this.fullscreenBtn = document.getElementById('fullscreen-btn');
+    this.endSignalEl = document.getElementById('end-signal');
     this.presetBtns = [...document.querySelectorAll('.preset-btn')];
   },
 
@@ -318,6 +353,7 @@ const App = {
     this.totalSeconds = mins * 60;
     this.remainingMs = this.totalSeconds * 1000;
     this.finished = false;
+    this.clearEndSignal();
     this.updatePresetButtons();
     this.draw();
     this.updateStatus();
@@ -331,6 +367,7 @@ const App = {
     this.totalSeconds = mins * 60;
     this.remainingMs = this.totalSeconds * 1000;
     this.finished = false;
+    this.clearEndSignal();
     this.updatePresetButtons();
     this.draw();
     this.updateStatus();
@@ -341,6 +378,13 @@ const App = {
   start() {
     if (this.running || this.totalSeconds <= 0) return;
     if (this.finished) this.reset();
+    // Unlocks the AudioContext from this direct tap — a genuine user
+    // gesture — well before the finish chime needs it. audioDone() only
+    // ever fires later from a requestAnimationFrame callback, which browsers'
+    // autoplay policies do NOT treat as a user gesture, so without this the
+    // chime would silently fail to play the very first time a countdown
+    // completes.
+    this.ensureAudio();
     this.running = true;
     this.endTime = performance.now() + this.remainingMs;
     this.startBtn.textContent = '⏸️';
@@ -368,6 +412,7 @@ const App = {
     this.startBtn.textContent = '▶️';
     this.startBtn.setAttribute('aria-label', 'Start');
     this.updateWakeLock();
+    this.clearEndSignal();
     this.draw();
     this.updateStatus();
   },
@@ -378,17 +423,23 @@ const App = {
   tick() {
     if (!this.running) return;
     this.remainingMs = Math.max(0, this.endTime - performance.now());
-    this.draw();
     if (this.remainingMs <= 0) {
       this.running = false;
       this.finished = true;
       this.startBtn.textContent = '▶️';
       this.startBtn.setAttribute('aria-label', 'Start');
       this.updateWakeLock();
+      // finished must be set before this draw() — draw() reads it to pick
+      // the solid-red fill; drawing one frame earlier (finished still
+      // false, fraction already at 0) skipped the colored sector entirely
+      // and left the display showing only its dark background.
+      this.draw();
       this.updateStatus();
       this.audioDone();
+      this.spawnEndSignal();
       return;
     }
+    this.draw();
     this.raf = requestAnimationFrame(() => this.tick());
   },
 
@@ -472,6 +523,39 @@ const App = {
     this.canvas.width = size;
     this.canvas.height = size;
     this.draw();
+  },
+
+  // A gentle shower of bells drifting down through the display, each one a
+  // one-shot CSS animation that removes its own element on finish — never a
+  // looping effect the child has to wait out. Deliberately smaller and
+  // slower than a game's confetti burst (this is a regulation tool, not a
+  // win screen): a handful of bells over several seconds, not a sudden
+  // flood. `signalGen` is bumped by clearEndSignal() so a reset/preset
+  // change mid-shower can't have a late animationend listener misbehave on
+  // a freshly cleared display.
+  spawnEndSignal() {
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    const gen = this.signalGen;
+    const count = 10;
+    for (let i = 0; i < count; i++) {
+      const el = document.createElement('span');
+      el.className = 'end-signal-bell';
+      el.textContent = '🔔';
+      el.style.left = `${8 + Math.random() * 84}%`;
+      el.style.setProperty('--drift-start', `${(Math.random() * 20 - 10).toFixed(0)}px`);
+      el.style.setProperty('--drift-end', `${(Math.random() * 30 - 15).toFixed(0)}px`);
+      el.style.setProperty('--fall-duration', `${(2.6 + Math.random() * 1.6).toFixed(2)}s`);
+      el.style.setProperty('--fall-delay', `${(Math.random() * 1.4).toFixed(2)}s`);
+      el.addEventListener('animationend', () => {
+        if (gen === this.signalGen) el.remove();
+      });
+      this.endSignalEl.appendChild(el);
+    }
+  },
+
+  clearEndSignal() {
+    this.signalGen++;
+    this.endSignalEl.replaceChildren();
   },
 
   toggleMode() {
