@@ -298,6 +298,7 @@ const App = {
   wakeLock: null,
   resizeRaf: null,
   signalGen: 0,
+  endSignalTimer: null,
   supportsFullscreenAPI: !!(document.documentElement.requestFullscreen || document.documentElement.webkitRequestFullscreen),
 
   init() {
@@ -339,6 +340,10 @@ const App = {
     this.digitsBtn.addEventListener('click', () => this.toggleDigits());
     this.soundBtn.addEventListener('click', () => this.toggleSound());
     this.fullscreenBtn.addEventListener('click', () => this.toggleFullscreen());
+    // Pointer Events cover tap/mouse-click/pen with one listener. Only
+    // meaningful once finished (dismissEndSignal() no-ops otherwise), so
+    // this doesn't change anything about the canvas while a countdown runs.
+    this.canvas.addEventListener('pointerdown', () => this.dismissEndSignal());
     document.addEventListener('fullscreenchange', () => this.onFullscreenChange());
     document.addEventListener('webkitfullscreenchange', () => this.onFullscreenChange());
     document.addEventListener('visibilitychange', () => {
@@ -436,7 +441,7 @@ const App = {
       this.draw();
       this.updateStatus();
       this.audioDone();
-      this.spawnEndSignal();
+      this.startEndSignalLoop();
       return;
     }
     this.draw();
@@ -527,11 +532,14 @@ const App = {
 
   // A gentle shower of bells drifting down through the display, each one a
   // one-shot CSS animation that removes its own element on finish — never a
-  // looping effect the child has to wait out. Deliberately smaller and
-  // slower than a game's confetti burst (this is a regulation tool, not a
-  // win screen): a handful of bells over several seconds, not a sudden
-  // flood. `signalGen` is bumped by clearEndSignal() so a reset/preset
-  // change mid-shower can't have a late animationend listener misbehave on
+  // single bell loops, but the shower as a whole keeps going, wave after
+  // wave, until the child interacts with the canvas (dismissEndSignal()) —
+  // this is the tool's "please come acknowledge this" signal, so it
+  // shouldn't fade out on its own before that happens. Deliberately smaller
+  // and slower than a game's confetti burst (this is a regulation tool, not
+  // a win screen): a handful of bells per wave, not a sudden flood.
+  // `signalGen` is bumped by clearEndSignal() so a reset/preset change or a
+  // dismiss mid-shower can't have a late animationend listener misbehave on
   // a freshly cleared display.
   spawnEndSignal() {
     if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
@@ -553,7 +561,31 @@ const App = {
     }
   },
 
+  // Keeps spawning a fresh wave every END_SIGNAL_WAVE_MS — chosen to
+  // slightly overlap a wave's own ~2.6-5.6s lifetime so the rain reads as
+  // continuous rather than bursty. Self-stops if `finished` ever goes false
+  // out from under it (belt-and-braces; normally clearEndSignal() already
+  // cancels the timer directly).
+  startEndSignalLoop() {
+    this.spawnEndSignal();
+    if (this.endSignalTimer) clearInterval(this.endSignalTimer);
+    this.endSignalTimer = setInterval(() => {
+      if (!this.finished) { this.clearEndSignal(); return; }
+      this.spawnEndSignal();
+    }, 3200);
+  },
+
+  // The one way this ongoing signal ever stops on its own: a tap/click/pen
+  // touch on the canvas itself (see the pointerdown binding in bindEvents).
+  // No-op while a countdown is still running, so this can't be mistaken for
+  // a way to cancel or skip a countdown in progress.
+  dismissEndSignal() {
+    if (!this.finished) return;
+    this.clearEndSignal();
+  },
+
   clearEndSignal() {
+    if (this.endSignalTimer) { clearInterval(this.endSignalTimer); this.endSignalTimer = null; }
     this.signalGen++;
     this.endSignalEl.replaceChildren();
   },
@@ -671,7 +703,7 @@ const App = {
   },
 
   updateStatus() {
-    if (this.finished) { this.status.textContent = 'Time is up.'; return; }
+    if (this.finished) { this.status.textContent = 'Time is up. Tap the timer to dismiss.'; return; }
     const secs = Math.ceil(this.remainingMs / 1000);
     const m = Math.floor(secs / 60), s = secs % 60;
     this.status.textContent = this.running
