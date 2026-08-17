@@ -48,7 +48,7 @@
 
     header {
       width: 100%;
-      max-width: 420px;
+      max-width: 480px;
       display: flex;
       align-items: center;
       justify-content: space-between;
@@ -79,18 +79,48 @@
     .top-btn.active { box-shadow: 0 0 0 4px var(--accent), 0 3px 0 var(--shadow); }
     .top-btn[disabled] { opacity: 0.4; cursor: default; }
 
-    main { width: 100%; max-width: 420px; padding: 8px 16px 24px; display: flex; flex-direction: column; align-items: center; gap: 18px; }
+    main { width: 100%; max-width: 480px; padding: 8px 16px 24px; display: flex; flex-direction: column; align-items: center; }
 
     .status { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); clip-path: inset(50%); white-space: nowrap; border: 0; }
 
-    /* The countdown itself — a fixed square canvas so switching bar/circle
-       mode never resizes or reflows the page around it. */
+    /* Portrait (default): display stacked above the controls. Landscape
+       flips this to a row via the media query below, so a phone/tablet on
+       its side doesn't have to cram five rows into a short viewport. */
+    .timer-layout { width: 100%; display: flex; flex-direction: column; align-items: center; gap: 18px; }
+    .display-col { display: flex; justify-content: center; width: 100%; }
+    .controls-col { display: flex; flex-direction: column; align-items: center; gap: 18px; width: 100%; }
+
+    /* The countdown itself — a square canvas so switching bar/circle mode
+       never resizes or reflows the page around it. Sized generously for
+       tablets (min-width breakpoint below) while staying comfortable on a
+       small phone; the backing canvas resolution itself is kept in sync via
+       resizeCanvas() so it stays crisp at every size. */
     .display-wrap {
       position: relative;
       width: 100%;
-      max-width: 300px;
+      max-width: min(300px, 90vw);
       aspect-ratio: 1 / 1;
     }
+    @media (min-width: 600px) {
+      .display-wrap { max-width: min(420px, 90vw); }
+    }
+    @media (orientation: landscape) {
+      body { justify-content: center; }
+      header { max-width: 720px; position: fixed; top: 0; left: 50%; transform: translateX(-50%); }
+      main { max-width: 720px; }
+      .timer-layout { flex-direction: row; justify-content: center; gap: 32px; }
+      .display-col { width: auto; }
+      .display-wrap { width: auto; max-width: min(60vh, 45vw, 420px); }
+      .controls-col { width: auto; gap: 14px; max-height: 100%; overflow-y: auto; }
+    }
+
+    /* Full screen mode: an enlarged, decluttered view — only the countdown
+       and start/reset stay visible. Header (with the fullscreen toggle
+       itself) is left in place so a child always has a visible way out. */
+    body.fullscreen .row.presets,
+    body.fullscreen .row.adjust-row,
+    body.fullscreen .row.toggle-row { display: none; }
+    body.fullscreen .display-wrap { max-width: min(80vh, 85vw, 640px); }
     #display {
       width: 100%;
       height: 100%;
@@ -170,38 +200,45 @@
       <a class="top-btn" id="back-btn" href="../" aria-label="Back to Calm Corner">🏠</a>
       <span class="title">⏱️ Visual Timer</span>
     </div>
+    <div class="top-btns">
+      <button class="top-btn" id="fullscreen-btn" aria-label="Enter full screen">⛶</button>
+    </div>
   </header>
 
   <main>
     <div class="status" id="status" aria-live="polite"></div>
 
-    <div class="display-wrap">
-      <canvas id="display" width="300" height="300" role="img" aria-label="Time remaining"></canvas>
-      <div id="digits" aria-hidden="true"></div>
-    </div>
+    <div class="timer-layout">
+      <div class="display-col">
+        <div class="display-wrap">
+          <canvas id="display" width="300" height="300" role="img" aria-label="Time remaining"></canvas>
+          <div id="digits" aria-hidden="true"></div>
+        </div>
+      </div>
 
-    <div class="row" role="group" aria-label="Choose a length">
-      <button class="preset-btn" data-mins="1">1 min</button>
-      <button class="preset-btn" data-mins="3">3 min</button>
-      <button class="preset-btn" data-mins="5">5 min</button>
-      <button class="preset-btn" data-mins="10">10 min</button>
-      <button class="preset-btn" data-mins="15">15 min</button>
-    </div>
+      <div class="controls-col">
+        <div class="row presets" role="group" aria-label="Choose a length">
+          <button class="preset-btn" data-mins="1">1 min</button>
+          <button class="preset-btn" data-mins="5">5 min</button>
+          <button class="preset-btn" data-mins="10">10 min</button>
+        </div>
 
-    <div class="row">
-      <button class="adjust-btn" id="minus-btn" aria-label="One minute less">−</button>
-      <button class="adjust-btn" id="plus-btn" aria-label="One minute more">+</button>
-    </div>
+        <div class="row adjust-row">
+          <button class="adjust-btn" id="minus-btn" aria-label="One minute less">−</button>
+          <button class="adjust-btn" id="plus-btn" aria-label="One minute more">+</button>
+        </div>
 
-    <div class="row">
-      <button class="control-btn" id="start-btn" aria-label="Start">▶️</button>
-      <button class="control-btn secondary" id="reset-btn" aria-label="Reset">🔄</button>
-    </div>
+        <div class="row control-row">
+          <button class="control-btn" id="start-btn" aria-label="Start">▶️</button>
+          <button class="control-btn secondary" id="reset-btn" aria-label="Reset">🔄</button>
+        </div>
 
-    <div class="row">
-      <button class="top-btn" id="mode-btn" aria-label="Switch shape">⚪</button>
-      <button class="top-btn" id="digits-btn" aria-label="Toggle numbers">🔢</button>
-      <button class="top-btn active" id="sound-btn" aria-label="Toggle sound" aria-pressed="true">🔔</button>
+        <div class="row toggle-row">
+          <button class="top-btn" id="mode-btn" aria-label="Switch shape">⚪</button>
+          <button class="top-btn" id="digits-btn" aria-label="Toggle numbers">🔢</button>
+          <button class="top-btn active" id="sound-btn" aria-label="Toggle sound" aria-pressed="true">🔔</button>
+        </div>
+      </div>
     </div>
   </main>
 
@@ -224,13 +261,17 @@ const App = {
   soundOn: true,
   raf: null,
   audioCtx: null,
+  isFullscreen: false,
+  wakeLock: null,
+  resizeRaf: null,
+  supportsFullscreenAPI: !!(document.documentElement.requestFullscreen || document.documentElement.webkitRequestFullscreen),
 
   init() {
     this.cacheDOM();
     this.bindEvents();
     this.updatePresetButtons();
     this.updateToggleButtons();
-    this.draw();
+    this.resizeCanvas();
     this.updateStatus();
     this.setupPWA();
   },
@@ -247,6 +288,7 @@ const App = {
     this.modeBtn = document.getElementById('mode-btn');
     this.digitsBtn = document.getElementById('digits-btn');
     this.soundBtn = document.getElementById('sound-btn');
+    this.fullscreenBtn = document.getElementById('fullscreen-btn');
     this.presetBtns = [...document.querySelectorAll('.preset-btn')];
   },
 
@@ -261,6 +303,14 @@ const App = {
     this.modeBtn.addEventListener('click', () => this.toggleMode());
     this.digitsBtn.addEventListener('click', () => this.toggleDigits());
     this.soundBtn.addEventListener('click', () => this.toggleSound());
+    this.fullscreenBtn.addEventListener('click', () => this.toggleFullscreen());
+    document.addEventListener('fullscreenchange', () => this.onFullscreenChange());
+    document.addEventListener('webkitfullscreenchange', () => this.onFullscreenChange());
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible') this.updateWakeLock();
+    });
+    window.addEventListener('resize', () => this.scheduleResize());
+    window.addEventListener('orientationchange', () => this.scheduleResize());
   },
 
   setPreset(mins) {
@@ -295,6 +345,7 @@ const App = {
     this.endTime = performance.now() + this.remainingMs;
     this.startBtn.textContent = '⏸️';
     this.startBtn.setAttribute('aria-label', 'Pause');
+    this.updateWakeLock();
     this.tick();
   },
 
@@ -305,6 +356,7 @@ const App = {
     if (this.raf) cancelAnimationFrame(this.raf);
     this.startBtn.textContent = '▶️';
     this.startBtn.setAttribute('aria-label', 'Start');
+    this.updateWakeLock();
     this.updateStatus();
   },
 
@@ -315,6 +367,7 @@ const App = {
     this.remainingMs = this.totalSeconds * 1000;
     this.startBtn.textContent = '▶️';
     this.startBtn.setAttribute('aria-label', 'Start');
+    this.updateWakeLock();
     this.draw();
     this.updateStatus();
   },
@@ -331,11 +384,94 @@ const App = {
       this.finished = true;
       this.startBtn.textContent = '▶️';
       this.startBtn.setAttribute('aria-label', 'Start');
+      this.updateWakeLock();
       this.updateStatus();
       this.audioDone();
       return;
     }
     this.raf = requestAnimationFrame(() => this.tick());
+  },
+
+  // Full screen mode: uses the real Fullscreen API where available (so
+  // browser chrome itself is hidden); on browsers without it (e.g. older
+  // iOS Safari) it falls back to just the CSS "maximized" layout, since a
+  // bigger decluttered view is still worth having even without true OS
+  // full screen. `onFullscreenChange` keeps state in sync when the child
+  // exits via Escape/back-gesture instead of the button.
+  toggleFullscreen() {
+    if (this.supportsFullscreenAPI) {
+      const isFs = document.fullscreenElement || document.webkitFullscreenElement;
+      if (!isFs) {
+        const el = document.documentElement;
+        const req = (el.requestFullscreen || el.webkitRequestFullscreen).call(el);
+        if (req && req.catch) req.catch(() => {});
+      } else {
+        const exit = (document.exitFullscreen || document.webkitExitFullscreen).call(document);
+        if (exit && exit.catch) exit.catch(() => {});
+      }
+    } else {
+      this.setFullscreenState(!this.isFullscreen);
+    }
+  },
+
+  onFullscreenChange() {
+    this.setFullscreenState(!!(document.fullscreenElement || document.webkitFullscreenElement));
+  },
+
+  setFullscreenState(active) {
+    this.isFullscreen = active;
+    document.body.classList.toggle('fullscreen', active);
+    this.fullscreenBtn.textContent = active ? '✕' : '⛶';
+    this.fullscreenBtn.setAttribute('aria-label', active ? 'Exit full screen' : 'Enter full screen');
+    this.updateWakeLock();
+    requestAnimationFrame(() => this.resizeCanvas());
+  },
+
+  // Keeps the screen awake while the countdown is actually running, or
+  // while full screen (a glanceable display the child is meant to be
+  // looking at shouldn't dim mid-count). Released the instant neither is
+  // true. The Wake Lock API auto-releases on tab-hide, so visibilitychange
+  // re-acquires it once the child comes back if it should still be held.
+  async acquireWakeLock() {
+    if (!('wakeLock' in navigator) || this.wakeLock) return;
+    try {
+      this.wakeLock = await navigator.wakeLock.request('screen');
+      this.wakeLock.addEventListener('release', () => { this.wakeLock = null; });
+    } catch (e) {
+      this.wakeLock = null;
+    }
+  },
+
+  releaseWakeLock() {
+    if (!this.wakeLock) return;
+    const lock = this.wakeLock;
+    this.wakeLock = null;
+    lock.release().catch(() => {});
+  },
+
+  updateWakeLock() {
+    if (this.running || this.isFullscreen) this.acquireWakeLock();
+    else this.releaseWakeLock();
+  },
+
+  scheduleResize() {
+    if (this.resizeRaf) cancelAnimationFrame(this.resizeRaf);
+    this.resizeRaf = requestAnimationFrame(() => this.resizeCanvas());
+  },
+
+  // Keeps the canvas's backing pixel resolution matched to its actual
+  // rendered size (times devicePixelRatio) so the display stays crisp
+  // whether it's small on a phone or filling most of a tablet in full
+  // screen — draw()'s geometry math already works off canvas.width/height,
+  // so no other drawing code needs to change.
+  resizeCanvas() {
+    const rect = this.canvas.parentElement.getBoundingClientRect();
+    if (rect.width <= 0) return;
+    const dpr = window.devicePixelRatio || 1;
+    const size = Math.max(1, Math.round(rect.width * dpr));
+    this.canvas.width = size;
+    this.canvas.height = size;
+    this.draw();
   },
 
   toggleMode() {
