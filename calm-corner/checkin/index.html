@@ -129,19 +129,20 @@
 // puzzle. Nothing is stored or sent anywhere (in-memory only, resets on
 // reload, matching the toybox's project-wide no-tracking rule); a child can
 // change their answer any time by tapping a different face.
+// `swedish` is the word shown (and announced) back to the child after a
+// pick — see pick() below; the English `label` stays the button's
+// aria-label only.
 const FEELINGS = [
-  { emoji: '😄', label: 'Joy' },
-  { emoji: '🤔', label: 'Curiosity' },
-  { emoji: '😯', label: 'Surprise' },
-  { emoji: '😳', label: 'Shame or guilt' },
-  { emoji: '😢', label: 'Sadness' },
-  { emoji: '😨', label: 'Fear' },
-  { emoji: '😡', label: 'Anger' },
-  { emoji: '🤢', label: 'Disgust' },
-  { emoji: '🤨', label: 'Contempt' }
+  { emoji: '😄', label: 'Joy', swedish: 'Glädje' },
+  { emoji: '🤔', label: 'Curiosity', swedish: 'Nyfikenhet' },
+  { emoji: '😯', label: 'Surprise', swedish: 'Förvåning' },
+  { emoji: '😳', label: 'Shame or guilt', swedish: 'Skam/Skuld' },
+  { emoji: '😢', label: 'Sadness', swedish: 'Ledsenhet' },
+  { emoji: '😨', label: 'Fear', swedish: 'Rädsla' },
+  { emoji: '😡', label: 'Anger', swedish: 'Ilska' },
+  { emoji: '🤢', label: 'Disgust', swedish: 'Äckel' },
+  { emoji: '🤨', label: 'Contempt', swedish: 'Förakt' }
 ];
-
-const ACK_LINES = ['Thanks for telling me!', 'Got it!', 'I hear you.'];
 
 const App = {
   selected: -1,
@@ -187,10 +188,10 @@ const App = {
       btn.classList.remove('selected');
       if (idx === i) { void btn.offsetWidth; btn.classList.add('selected'); }
     });
-    const line = ACK_LINES[Math.floor(Math.random() * ACK_LINES.length)];
-    this.ackEl.textContent = line;
+    const word = FEELINGS[i].swedish;
+    this.ackEl.textContent = word;
     this.ackEl.classList.add('show');
-    this.status.textContent = `You picked ${FEELINGS[i].label}. ${line}`;
+    this.status.textContent = `You picked ${FEELINGS[i].label}. ${word}.`;
     this.audioAck();
   },
 
