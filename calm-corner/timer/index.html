@@ -142,34 +142,30 @@
     }
     #digits.show { display: flex; }
 
-    /* A gentle, self-clearing "time's up" signal — bells drift down through
-       the display and fade, well short of a game's confetti burst (this is
-       a regulation tool, not a win screen). One-shot per bell (never
-       looping) so the child reads it as "finished," not an ongoing alarm. */
+    /* A full-screen "time's up" signal — the whole viewport slowly pulses a
+       translucent red wash (fade in 2s, fade out 2s, repeating) until the
+       child interacts with the page. pointer-events: none throughout, so
+       every control underneath — Reset, presets, the canvas itself — stays
+       tappable right through it; this is an attention cue, not a blocking
+       modal. Lives as a direct child of <body> (not inside .display-wrap)
+       so its position: fixed covers the real viewport, not just the
+       display's own box. */
     #end-signal {
-      position: absolute;
+      position: fixed;
       inset: 0;
-      pointer-events: none;
-    }
-    .end-signal-bell {
-      position: absolute;
-      font-size: 1.8rem;
+      background: var(--time-red);
       opacity: 0;
-      animation: bell-fall var(--fall-duration, 3.2s) ease-in var(--fall-delay, 0s) 1 both;
+      pointer-events: none;
+      z-index: 999;
     }
-    /* `top` is animated (not transform) because percentages there resolve
-       against the containing block's height — the whole display — whereas
-       a transform: translate() percentage resolves against the bell's own
-       tiny box and barely moves it. transform is used only for the
-       horizontal drift/rotation, both already in absolute px/deg. */
-    @keyframes bell-fall {
-      0% { top: -15%; transform: translateX(var(--drift-start, 0)) rotate(-8deg); opacity: 0; }
-      12% { opacity: 0.9; }
-      80% { opacity: 0.9; }
-      100% { top: 115%; transform: translateX(var(--drift-end, 0)) rotate(8deg); opacity: 0; }
+    #end-signal.active { animation: end-signal-pulse 4s ease-in-out infinite; }
+    @keyframes end-signal-pulse {
+      0%, 100% { opacity: 0; }
+      50% { opacity: 0.55; }
     }
     @media (prefers-reduced-motion: reduce) {
-      .end-signal-bell { display: none; }
+      /* Still a persistent, visible cue — just steady instead of pulsing. */
+      #end-signal.active { animation: none; opacity: 0.35; }
     }
 
     .row { display: flex; flex-wrap: wrap; justify-content: center; gap: 12px; }
@@ -245,7 +241,6 @@
         <div class="display-wrap">
           <canvas id="display" width="300" height="300" role="img" aria-label="Time remaining"></canvas>
           <div id="digits" aria-hidden="true"></div>
-          <div id="end-signal" aria-hidden="true"></div>
         </div>
       </div>
 
@@ -275,6 +270,8 @@
     </div>
   </main>
 
+  <div id="end-signal" aria-hidden="true"></div>
+
 <script>
 // A visible, ever-so-glanceable countdown for children who benefit from
 // "how much time is left" being a shape and a color, not a sentence. Modeled
@@ -297,8 +294,6 @@ const App = {
   isFullscreen: false,
   wakeLock: null,
   resizeRaf: null,
-  signalGen: 0,
-  endSignalTimer: null,
   supportsFullscreenAPI: !!(document.documentElement.requestFullscreen || document.documentElement.webkitRequestFullscreen),
 
   init() {
@@ -340,10 +335,12 @@ const App = {
     this.digitsBtn.addEventListener('click', () => this.toggleDigits());
     this.soundBtn.addEventListener('click', () => this.toggleSound());
     this.fullscreenBtn.addEventListener('click', () => this.toggleFullscreen());
-    // Pointer Events cover tap/mouse-click/pen with one listener. Only
-    // meaningful once finished (dismissEndSignal() no-ops otherwise), so
-    // this doesn't change anything about the canvas while a countdown runs.
-    this.canvas.addEventListener('pointerdown', () => this.dismissEndSignal());
+    // Pointer Events cover tap/mouse-click/pen with one listener, bound at
+    // the document level since the signal itself is now full-screen — any
+    // interaction anywhere on the page dismisses it. Only meaningful once
+    // finished (dismissEndSignal() no-ops otherwise), so this doesn't change
+    // anything about normal button taps while a countdown is running.
+    document.addEventListener('pointerdown', () => this.dismissEndSignal());
     document.addEventListener('fullscreenchange', () => this.onFullscreenChange());
     document.addEventListener('webkitfullscreenchange', () => this.onFullscreenChange());
     document.addEventListener('visibilitychange', () => {
@@ -441,7 +438,7 @@ const App = {
       this.draw();
       this.updateStatus();
       this.audioDone();
-      this.startEndSignalLoop();
+      this.startEndSignal();
       return;
     }
     this.draw();
@@ -530,64 +527,25 @@ const App = {
     this.draw();
   },
 
-  // A gentle shower of bells drifting down through the display, each one a
-  // one-shot CSS animation that removes its own element on finish — never a
-  // single bell loops, but the shower as a whole keeps going, wave after
-  // wave, until the child interacts with the canvas (dismissEndSignal()) —
-  // this is the tool's "please come acknowledge this" signal, so it
-  // shouldn't fade out on its own before that happens. Deliberately smaller
-  // and slower than a game's confetti burst (this is a regulation tool, not
-  // a win screen): a handful of bells per wave, not a sudden flood.
-  // `signalGen` is bumped by clearEndSignal() so a reset/preset change or a
-  // dismiss mid-shower can't have a late animationend listener misbehave on
-  // a freshly cleared display.
-  spawnEndSignal() {
-    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
-    const gen = this.signalGen;
-    const count = 10;
-    for (let i = 0; i < count; i++) {
-      const el = document.createElement('span');
-      el.className = 'end-signal-bell';
-      el.textContent = '🔔';
-      el.style.left = `${8 + Math.random() * 84}%`;
-      el.style.setProperty('--drift-start', `${(Math.random() * 20 - 10).toFixed(0)}px`);
-      el.style.setProperty('--drift-end', `${(Math.random() * 30 - 15).toFixed(0)}px`);
-      el.style.setProperty('--fall-duration', `${(2.6 + Math.random() * 1.6).toFixed(2)}s`);
-      el.style.setProperty('--fall-delay', `${(Math.random() * 1.4).toFixed(2)}s`);
-      el.addEventListener('animationend', () => {
-        if (gen === this.signalGen) el.remove();
-      });
-      this.endSignalEl.appendChild(el);
-    }
-  },
-
-  // Keeps spawning a fresh wave every END_SIGNAL_WAVE_MS — chosen to
-  // slightly overlap a wave's own ~2.6-5.6s lifetime so the rain reads as
-  // continuous rather than bursty. Self-stops if `finished` ever goes false
-  // out from under it (belt-and-braces; normally clearEndSignal() already
-  // cancels the timer directly).
-  startEndSignalLoop() {
-    this.spawnEndSignal();
-    if (this.endSignalTimer) clearInterval(this.endSignalTimer);
-    this.endSignalTimer = setInterval(() => {
-      if (!this.finished) { this.clearEndSignal(); return; }
-      this.spawnEndSignal();
-    }, 3200);
+  // Starts the full-screen pulse — a pure CSS infinite animation (see
+  // #end-signal.active in the stylesheet), so there's no JS-managed timer to
+  // track: it just keeps fading in and out (2s each way) until
+  // dismissEndSignal() removes the class.
+  startEndSignal() {
+    this.endSignalEl.classList.add('active');
   },
 
   // The one way this ongoing signal ever stops on its own: a tap/click/pen
-  // touch on the canvas itself (see the pointerdown binding in bindEvents).
-  // No-op while a countdown is still running, so this can't be mistaken for
-  // a way to cancel or skip a countdown in progress.
+  // touch anywhere on the page (see the document-level pointerdown binding
+  // in bindEvents). No-op while a countdown is still running, so this can't
+  // be mistaken for a way to cancel or skip a countdown in progress.
   dismissEndSignal() {
     if (!this.finished) return;
     this.clearEndSignal();
   },
 
   clearEndSignal() {
-    if (this.endSignalTimer) { clearInterval(this.endSignalTimer); this.endSignalTimer = null; }
-    this.signalGen++;
-    this.endSignalEl.replaceChildren();
+    this.endSignalEl.classList.remove('active');
   },
 
   toggleMode() {
