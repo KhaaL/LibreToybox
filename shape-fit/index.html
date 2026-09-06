@@ -20,7 +20,11 @@
     }
 
     * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
-    html, body { margin: 0; padding: 0; height: 100%; }
+    /* The page is a fixed-height, non-scrolling column: board and tray must
+       ALWAYS be on screen together, because a drag can't scroll the page
+       (the piece holds pointer capture and touch-action: none). 100dvh, not
+       100vh, so a collapsing mobile address bar doesn't push the tray off. */
+    html, body { margin: 0; padding: 0; height: 100vh; height: 100dvh; }
     /* Own background on html stops the body gradient propagating to the
        canvas, where it would tile — rubber-band overscroll then shows the
        wrong end of the gradient instead of blending with the page. */
@@ -33,14 +37,20 @@
       flex-direction: column;
       align-items: center;
       justify-content: flex-start;
-      overflow-x: hidden;
+      overflow: hidden;
       user-select: none;
       -webkit-user-select: none;
       -webkit-touch-callout: none;
       touch-action: manipulation;
     }
+    /* Escape hatch: if even a minCellPx board plus its tray can't fit the
+       viewport, scrolling comes back rather than clipping the tray away.
+       setCellSize() sets this class only when the fit genuinely fails. */
+    body.cramped { height: auto; min-height: 100vh; min-height: 100dvh; overflow-y: auto; }
+    body.cramped main { flex: 0 0 auto; }
 
     header {
+      flex: 0 0 auto;
       width: 100%;
       max-width: 420px;
       display: flex;
@@ -76,10 +86,20 @@
     .hold-progress { position: absolute; inset: 5px; border-radius: 50%; pointer-events: none; opacity: 0; transition: opacity .1s; }
     .top-btn.holding .hold-progress { opacity: 1; }
 
-    main { width: 100%; max-width: 420px; padding: 8px 16px 18px; display: flex; flex-direction: column; align-items: center; gap: 14px; }
+    /* main owns the leftover height; setCellSize() divides it between the
+       board and the tray. min-height: 0 lets it actually shrink below its
+       content height, which is what makes the board scale down on a short
+       (landscape phone) viewport instead of pushing the tray off screen. */
+    main { width: 100%; max-width: 420px; padding: 8px 16px 18px; display: flex; flex-direction: column; align-items: center; gap: 14px; flex: 1 1 auto; min-height: 0; }
+    /* Centres the board in whatever vertical space is left over once the
+       tray has taken its share. */
+    #board-area { flex: 1 1 auto; min-height: 0; width: 100%; display: flex; align-items: center; justify-content: center; }
 
     .grid-wrap {
+      /* Pre-JS fallback only — setCellSize() sets an explicit px width that
+         accounts for viewport HEIGHT as well as width. */
       width: min(92vw, 360px);
+      max-width: 100%;
       background: #fff;
       border: 4px solid #7AA692;
       border-radius: 14px;
@@ -145,7 +165,11 @@
     .piece.shake { animation: shake .3s ease; }
 
     #tray {
-      width: min(92vw, 400px);
+      /* Never flex — the tray takes its natural height and the board gets
+         what's left, so a wrapped tray row can't push the board off screen. */
+      flex: 0 0 auto;
+      width: 100%;
+      max-width: 400px;
       display: flex;
       flex-wrap: wrap;
       align-items: flex-start;
@@ -257,8 +281,10 @@
 
   <main>
     <div class="status" id="status" aria-live="polite"></div>
-    <div class="grid-wrap">
-      <div id="board" role="group" aria-label="Puzzle board"></div>
+    <div id="board-area">
+      <div class="grid-wrap">
+        <div id="board" role="group" aria-label="Puzzle board"></div>
+      </div>
     </div>
     <div id="tray" role="group" aria-label="Piece tray"></div>
   </main>
@@ -307,6 +333,9 @@
         { confetti: 130, notes: [523.25, 659.25, 783.99, 1046.50, 1318.51] }
       ],
       trayScale: 0.5,
+      maxBoardPx: 360,   // board never grows past this, however wide the screen
+      minCellPx: 30,     // board shrinks no further; below this the page scrolls instead
+      dragEdgePx: 4,     // a dragged piece always keeps this much of itself on screen
       liftPx: 56,        // grabbed point rides this far above the finger (touch/pen only)
       liftMs: 130,       // pickup eases into the lifted pose instead of teleporting
       snapRange: 0.8,    // max distance (in cells) a drop may be from a fitting spot
@@ -391,6 +420,9 @@
 
       cacheDOM() {
         this.board = document.getElementById('board');
+        this.gridWrap = document.querySelector('.grid-wrap');
+        this.mainEl = document.querySelector('main');
+        this.headerEl = document.querySelector('header');
         this.tray = document.getElementById('tray');
         this.status = document.getElementById('status');
         this.overlay = document.getElementById('win-overlay');
@@ -420,10 +452,21 @@
         this.settingsOverlay.querySelectorAll('.size-btn').forEach(btn => {
           btn.addEventListener('click', () => this.setSize(btn.dataset.size));
         });
-        window.addEventListener('resize', () => {
-          this.setCellSize();
-          if (this.kb) this.positionKb();
-        });
+        // orientationchange as well as resize: some mobile browsers fire the
+        // former without a useful resize, and the layout is now height-aware.
+        // rAF-debounced because setCellSize() measures, and a burst of resizes
+        // during an address-bar collapse would otherwise re-solve per event.
+        let relayout = null;
+        const onViewportChange = () => {
+          if (relayout) return;
+          relayout = requestAnimationFrame(() => {
+            relayout = null;
+            this.setCellSize();
+            if (this.kb) this.positionKb();
+          });
+        };
+        window.addEventListener('resize', onViewportChange);
+        window.addEventListener('orientationchange', onViewportChange);
       },
 
       // New Game requires a deliberate hold, not a quick tap, so an
@@ -673,9 +716,53 @@
         return el;
       },
 
+      // The board and the tray share one fixed height budget (the viewport
+      // below the header). The tray's height is a function of --cell, so this is a
+      // fixed-point solve, not a single division: guess a board side, measure
+      // the tray it produces, shrink the board by the shortfall, repeat. The
+      // tray grows monotonically with --cell, so the iteration converges
+      // downward — two passes are enough in practice, three is the cap.
       setCellSize() {
-        const w = this.board.clientWidth;
-        if (w > 0) document.documentElement.style.setProperty('--cell', (w / this.N) + 'px');
+        const cs = getComputedStyle(this.mainEl);
+        const mainW = this.mainEl.getBoundingClientRect().width;
+        if (!mainW) return; // page not laid out yet
+        const availW = mainW - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight);
+        // The height budget is derived from the VIEWPORT, not from main's own
+        // box: main's height depends on body.cramped, which this function sets,
+        // so measuring it would make the two flip-flop across resizes.
+        const availH = window.innerHeight - this.headerEl.offsetHeight
+          - parseFloat(cs.paddingTop) - parseFloat(cs.paddingBottom);
+        const gap = parseFloat(cs.rowGap) || 0;
+        // .grid-wrap's border + padding: constant, so measure it rather than
+        // hard-coding a copy of the CSS here.
+        const chrome = Math.max(0, this.gridWrap.offsetWidth - this.board.clientWidth);
+        const floorSide = CONFIG.minCellPx * this.N + chrome;
+        const capSide = Math.max(floorSide, Math.min(availW, CONFIG.maxBoardPx));
+
+        let side = capSide, trayH = 0;
+        for (let i = 0; i < 3; i++) {
+          this.applyBoardSide(side, chrome);
+          trayH = this.tray.getBoundingClientRect().height;
+          const next = Math.max(floorSide, Math.min(capSide, availH - trayH - gap));
+          if (Math.abs(next - side) < 1) break;
+          side = next;
+        }
+        this.applyBoardSide(side, chrome);
+        trayH = this.tray.getBoundingClientRect().height;
+
+        // Safety valve: if even a minCellPx board plus its tray can't fit, give
+        // the page its scrollbar back — a reachable tray beats a clipped one.
+        // The test is the same arithmetic as the solve, so it can't disagree
+        // with it, and it doesn't depend on the class it toggles.
+        document.body.classList.toggle('cramped', side + trayH + gap > availH + 1);
+      },
+
+      // Sizes the board to `side` px (outer, including .grid-wrap's chrome)
+      // and publishes the matching --cell that everything else calc()s from.
+      applyBoardSide(side, chrome) {
+        const cell = Math.max(CONFIG.minCellPx, (side - chrome) / this.N);
+        this.gridWrap.style.width = (cell * this.N + chrome) + 'px';
+        document.documentElement.style.setProperty('--cell', cell + 'px');
       },
 
       /* ---------- placement rules ---------- */
@@ -749,6 +836,13 @@
         if (this.kb) this.endKb(true);
         e.preventDefault();
         p.el.setPointerCapture(e.pointerId);
+        // A drag can't scroll the page (pointer capture + touch-action: none),
+        // so a piece picked up while the board is off screen can never be
+        // dropped — every snap target comes back null. The layout keeps both
+        // on screen; this is insurance for the cramped fallback. Reading the
+        // piece's rect AFTER any scroll keeps the grab point honest, and the
+        // clamp covers a piece that scrolled out from under the finger.
+        this.ensureBoardVisible();
         // Carry by the grabbed point: the spot under the finger stays under
         // the finger (normalized, so the tray's 0.5 scale maps to the same
         // spot at full size), riding liftPx above it so the hand never hides
@@ -757,8 +851,8 @@
         this.drag = {
           p, pointerId: e.pointerId,
           startX: e.clientX, startY: e.clientY,
-          grabX: (e.clientX - rect.left) / rect.width,
-          grabY: (e.clientY - rect.top) / rect.height,
+          grabX: Math.min(Math.max((e.clientX - rect.left) / rect.width, 0), 1),
+          grabY: Math.min(Math.max((e.clientY - rect.top) / rect.height, 0), 1),
           lift: e.pointerType === 'mouse' ? 0 : CONFIG.liftPx,
           moved: false, fromPlaced: !!p.placed, target: null, x: 0, y: 0
         };
@@ -783,10 +877,27 @@
         this.updateStatus(`Picked up the ${p.color.name} piece.`);
       },
 
+      ensureBoardVisible() {
+        const b = this.board.getBoundingClientRect();
+        if (b.top < 0 || b.bottom > window.innerHeight) {
+          this.board.scrollIntoView({ block: 'nearest' });
+        }
+      },
+
+      // A dragged piece is position:fixed at FULL size (twice its tray
+      // thumbnail), so an unclamped pose puts most of it off screen the moment
+      // the finger nears an edge — worst of all above the top, where liftPx
+      // adds to the overhang. Clamping keeps the whole piece visible. It's
+      // clamped on the logical pose d.x/d.y, not just visually, so
+      // updateGhost() previews exactly the spot the drop will land in.
       positionDrag(e) {
         const d = this.drag, el = d.p.el;
-        d.x = e.clientX - d.grabX * el.offsetWidth;
-        d.y = e.clientY - d.grabY * el.offsetHeight - d.lift;
+        const M = CONFIG.dragEdgePx;
+        const w = el.offsetWidth, h = el.offsetHeight;
+        const maxX = Math.max(M, window.innerWidth - w - M);
+        const maxY = Math.max(M, window.innerHeight - h - M);
+        d.x = Math.min(Math.max(e.clientX - d.grabX * w, M), maxX);
+        d.y = Math.min(Math.max(e.clientY - d.grabY * h - d.lift, M), maxY);
         el.style.left = d.x + 'px';
         el.style.top = d.y + 'px';
       },

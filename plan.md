@@ -29,6 +29,8 @@ Completed items live in `done.md`.
 
 ## Shape Fit (`shape-fit/index.html`)
 
+- **Feat: horizontal layout for wide screens** — the height-aware layout (2026-09-06) stops the page overflowing, but a landscape phone now pays for it in board size: at 844×390 the 5×5 board shrinks to `--cell` ~37 px and 6×6 hits the 30 px floor, while ~60% of the screen width sits empty. A side-by-side arrangement (board left, tray right) via `@media (orientation: landscape), (min-width: 800px)` would spend that width instead of shrinking the board, and would also let tablets use more than the 360 px `CONFIG.maxBoardPx` cap. Same idiom as Calm Corner's Visual Timer `.timer-layout` flip and Emoji Paint's `body.split` grid, and the same pending item as Grocery Cashier's below.
+- **Bug: tray tap targets fall below the ≥60 px rule (principle 4)** — a slot is `cell × cols × trayScale`, so the ÷N (board) and ×0.5 (tray) shrink factors multiply: a 1-cell-wide piece measures 23×45 px on iPhone SE 6×6 and 28×56 px on iPad Pro 6×6. Preferred fix is an invisible expanded hit area on `.piece.in-tray` (a `::before` with a negative `inset` driven by a JS-set `--hit-pad`, plus a matching bump to the tray `gap`) rather than raising `trayScale`, which would eat into the height budget the layout solve now allocates.
 - **Feat: add an animated tutorial**.
 - **Feat: rotation hard mode** — v1 deliberately ships without rotation (pieces arrive in their correct orientation, jigsaw-style). A later setting could deal pieces randomly rotated and let a tap on a held piece turn it 90°.
 
