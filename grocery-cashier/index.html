@@ -77,6 +77,10 @@
 
     main { width: 100%; max-width: 420px; padding: 8px 16px 18px; display: flex; flex-direction: column; align-items: center; gap: 14px; }
 
+    /* Portrait: one tall column, same as every other single-column game. */
+    .play-layout { display: flex; flex-direction: column; align-items: center; gap: 14px; width: 100%; }
+    .col-left, .col-right { display: flex; flex-direction: column; align-items: center; gap: 14px; width: 100%; }
+
     /* Visually hidden but available to screen readers (aria-live announcements
        still fire). Standard clip-based sr-only pattern. */
     .status { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); clip-path: inset(50%); white-space: nowrap; border: 0; }
@@ -93,6 +97,10 @@
       transition: background .2s, transform .2s;
     }
     .pip.filled { background: var(--accent); border-color: var(--accent); transform: scale(1.1); }
+    /* A skipped round is marked distinctly, never as if it were solved —
+       still a muted fill (not the neutral empty look) so the set visibly
+       progresses either way (design principle 5), just honestly. */
+    .pip.skipped { background: #fff; border-color: var(--accent); border-style: dashed; transform: scale(1.05); }
 
     /* The equation card — op badge, the sum itself, and (when it fits cleanly)
        a row of counting dots underneath as a visual aid (design principle 1). */
@@ -122,6 +130,9 @@
 
     .equation { font-size: 2.6rem; font-weight: bold; letter-spacing: .02em; }
     .equation .eq-q { color: var(--accent); }
+    /* Help reveal — a one-shot pop so it reads as "something just appeared
+       here", not just a silent text swap (design principle 10). */
+    .equation .eq-q.revealed { color: var(--text); animation: pop .4s ease; }
 
     /* Counting cues — flat accent dots, no gradient (principle 11). Only
        rendered when the numbers are small enough to read as a group at a
@@ -135,6 +146,22 @@
     /* A subtraction dot that's been "taken away" — faded to an outline, never
        red (red is reserved suite-wide for the wrong-answer cue). */
     .dot.gone { background: #fff; border: 2px solid var(--border); }
+
+    /* Help / Skip — a struggling child is never stuck on one problem
+       (design principle 3). Same visual language as the rest of the suite's
+       secondary buttons (flat white, darker same-hue shadow, principle 11),
+       sized as tools rather than header chrome (design principle 4). */
+    .assist-row { display: flex; gap: 12px; justify-content: center; margin-top: 12px; }
+    .assist-btn {
+      min-width: 60px; min-height: 60px; padding: 6px 16px;
+      border: 2px solid var(--border); border-radius: 16px;
+      background: #fff; color: var(--text); font-family: inherit; font-size: 1.5rem;
+      cursor: pointer; box-shadow: 0 4px 0 var(--shadow);
+      transition: transform .05s, box-shadow .05s;
+      display: flex; align-items: center; justify-content: center;
+    }
+    .assist-btn:active { transform: translateY(3px); box-shadow: 0 1px 0 var(--shadow); }
+    .assist-btn:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
 
     /* The answer entry screen the child types the answer into. */
     #answer-wrap { display: flex; align-items: center; justify-content: center; }
@@ -235,6 +262,21 @@
     .size-btn.active { box-shadow: 0 0 0 4px var(--accent), 0 4px 0 var(--shadow); }
 
     .confetti { position: fixed; top: 0; left: 0; width: 10px; height: 10px; pointer-events: none; z-index: 101; animation: fall linear forwards; }
+
+    /* Landscape (phone on its side or a tablet): the single tall column wastes
+       width and, on a short landscape viewport, can push the keypad below the
+       fold. Flip to two side-by-side columns instead — equation/visuals on
+       the left, answer box + keypad on the right — same idiom as Calm
+       Corner's Visual Timer .timer-layout row flip. No min-width gate, same
+       as that precedent: any landscape orientation benefits, since height is
+       what's scarce there, not width. */
+    @media (orientation: landscape) {
+      header { max-width: 720px; }
+      main { max-width: 720px; }
+      .play-layout { flex-direction: row; align-items: flex-start; justify-content: center; gap: 28px; }
+      .col-left { width: auto; flex: 1 1 300px; }
+      .col-right { width: auto; flex: 0 0 auto; }
+    }
   </style>
 </head>
 <body>
@@ -262,16 +304,26 @@
 
   <main>
     <div class="status" id="status" aria-live="polite"></div>
-    <div id="pips" role="img" aria-label="Progress"></div>
-    <div class="problem-card" id="problem-card">
-      <div class="op-badge" id="op-badge" aria-hidden="true">+</div>
-      <div class="equation" id="equation"></div>
-      <div class="visuals" id="visuals" aria-hidden="true"></div>
+    <div class="play-layout" id="play-layout">
+      <div class="col-left">
+        <div id="pips" role="img" aria-label="Progress"></div>
+        <div class="problem-card" id="problem-card">
+          <div class="op-badge" id="op-badge" aria-hidden="true">+</div>
+          <div class="equation" id="equation"></div>
+          <div class="visuals" id="visuals" aria-hidden="true"></div>
+          <div class="assist-row">
+            <button type="button" class="assist-btn" id="help-btn" aria-label="Show the answer">💡</button>
+            <button type="button" class="assist-btn" id="skip-btn" aria-label="Skip this one">⏭️</button>
+          </div>
+        </div>
+      </div>
+      <div class="col-right">
+        <div id="answer-wrap">
+          <div class="answer-box empty" id="answer-box"></div>
+        </div>
+        <div class="pad" id="pad" role="group" aria-label="Number pad"></div>
+      </div>
     </div>
-    <div id="answer-wrap">
-      <div class="answer-box empty" id="answer-box"></div>
-    </div>
-    <div class="pad" id="pad" role="group" aria-label="Number pad"></div>
   </main>
 
   <div class="overlay" id="win-overlay" role="dialog" aria-modal="true" aria-label="You won">
@@ -375,8 +427,8 @@ const App = {
   problem: null,       // { a, b, answer, symbol }
   expected: 0,
   entry: '',           // digits typed into the answer box
-  solved: 0,           // problems solved in the current set
-  resolving: false,    // true during the pause between a correct answer and the next problem
+  progress: [],        // 'correct' | 'skipped' per concluded round this set, in order — drives #pips
+  resolving: false,    // true during the pause between a concluded round and the next problem
   rejecting: false,    // true while the wrong-entry shake/flash plays — blocks input
   won: false,
   gameId: 0,
@@ -403,6 +455,8 @@ const App = {
     this.opBadge = document.getElementById('op-badge');
     this.equationEl = document.getElementById('equation');
     this.visualsEl = document.getElementById('visuals');
+    this.helpBtn = document.getElementById('help-btn');
+    this.skipBtn = document.getElementById('skip-btn');
     this.answerBox = document.getElementById('answer-box');
     this.pad = document.getElementById('pad');
     this.status = document.getElementById('status');
@@ -432,6 +486,8 @@ const App = {
 
   bindEvents() {
     this.bindNewGameHold();
+    this.helpBtn.addEventListener('click', () => this.useHelp());
+    this.skipBtn.addEventListener('click', () => this.skipProblem());
     this.playAgainBtn.addEventListener('click', () => this.newGame(true));
     this.settingsBtn.addEventListener('click', () => this.openSettings());
     this.closeSettingsBtn.addEventListener('click', () => this.closeSettings());
@@ -551,7 +607,7 @@ const App = {
   newGame(animated) {
     this.gameId++;
     this.won = false;
-    this.solved = 0;
+    this.progress = [];
     this.resolving = false;
     this.rejecting = false;
     this.entry = '';
@@ -571,14 +627,18 @@ const App = {
     this.updateStatus(this.promptText());
   },
 
+  // One pip per concluded round — filled (green) for a correct answer,
+  // a distinct muted tint for a skipped one, so the set still visibly
+  // progresses either way (design principle 5) without pretending a skip
+  // was a solve.
   renderPips() {
     this.pipsEl.innerHTML = '';
     for (let i = 0; i < CONFIG.roundsPerSet; i++) {
       const pip = document.createElement('div');
-      pip.className = 'pip' + (i < this.solved ? ' filled' : '');
+      pip.className = 'pip' + (i < this.progress.length ? (this.progress[i] === 'skipped' ? ' skipped' : ' filled') : '');
       this.pipsEl.appendChild(pip);
     }
-    this.pipsEl.setAttribute('aria-label', `${this.solved} of ${CONFIG.roundsPerSet} solved`);
+    this.pipsEl.setAttribute('aria-label', `${this.progress.length} of ${CONFIG.roundsPerSet} done`);
   },
 
   renderProblem(animated) {
@@ -588,6 +648,41 @@ const App = {
     this.renderVisuals(p);
     this.problemCard.classList.remove('deal');
     if (animated) { void this.problemCard.offsetWidth; this.problemCard.classList.add('deal'); }
+  },
+
+  // 💡 Help — reveals the answer in place of the "?" so the child can read
+  // it and still type it in themselves (direct manipulation is preserved;
+  // help removes the recall step, not the typing/confirming one). One-shot
+  // per round: a second tap is a no-op once revealed (design principle 2 —
+  // no latent, repeatable action once the state has changed).
+  useHelp() {
+    if (this.won || this.resolving || this.rejecting) return;
+    const q = this.equationEl.querySelector('.eq-q');
+    if (!q || q.classList.contains('revealed')) return;
+    q.textContent = this.expected;
+    q.classList.add('revealed');
+    this.playTone({ type: 'triangle', freq: 740, duration: 140, peakGain: 0.12 });
+    this.updateStatus(`The answer is ${this.expected}. Type it in.`);
+  },
+
+  // ⏭️ Skip — a problem that's too hard for right now is never a dead end
+  // (design principle 3): it counts as a concluded round (so the set still
+  // reaches its party) but is marked distinctly on the pips, never counted
+  // as a correct answer, and — like a wrong answer — carries no penalty.
+  skipProblem() {
+    if (this.won || this.resolving || this.rejecting) return;
+    this.resolving = true;
+    this.audioSkip();
+    this.progress.push('skipped');
+    this.renderPips();
+    this.updateStatus('Skipping ahead to the next one.');
+
+    const gen = this.gameId;
+    setTimeout(() => {
+      if (gen !== this.gameId) return;   // a new game replaced this set
+      if (this.progress.length >= CONFIG.roundsPerSet) this.celebrate();
+      else this.nextProblem(true);
+    }, CONFIG.advanceMs);
   },
 
   // Small counting cues under the equation — only when the numbers are few
@@ -661,14 +756,14 @@ const App = {
     void box.offsetWidth;
     box.classList.add('correct');
     this.audioRight();
-    this.solved++;
+    this.progress.push('correct');
     this.renderPips();
     this.updateStatus('Correct! Here comes the next one.');
 
     const gen = this.gameId;
     setTimeout(() => {
       if (gen !== this.gameId) return;   // a new game replaced this set
-      if (this.solved >= CONFIG.roundsPerSet) this.celebrate();
+      if (this.progress.length >= CONFIG.roundsPerSet) this.celebrate();
       else this.nextProblem(true);
     }, CONFIG.advanceMs);
   },
@@ -701,7 +796,7 @@ const App = {
     this.won = true;
     const tier = CONFIG.celebrationTiers[Object.keys(CONFIG.sizes).indexOf(this.size)];
     this.audioWin(tier.notes);
-    this.updateStatus('You solved them all! Hooray!');
+    this.updateStatus('You made it through the whole set! Hooray!');
     this.renderWinEmojis();
     this.winOverlay.classList.add('show');
     Modal.open(this.winOverlay, () => this.newGame(true));
@@ -804,6 +899,14 @@ const App = {
 
   // Gentle "hmm", not a punitive buzz (design principle 3).
   audioOops() { this.playTone({ type: 'sine', freq: 240, duration: 160, peakGain: 0.1 }); },
+
+  // Calm, neutral descending two-note "moving on" cue for Skip — deliberately
+  // neither the rising audioRight() nor the low audioOops(), since skipping
+  // is neither a success nor a mistake.
+  audioSkip() {
+    this.playTone({ type: 'triangle', freq: 392, duration: 100, peakGain: 0.12 });
+    setTimeout(() => this.playTone({ type: 'triangle', freq: 330, duration: 130, peakGain: 0.1 }), 90);
+  },
 
   audioEmoji() {
     const freq = [523, 587, 659, 784, 880][Math.floor(Math.random() * 5)]; // pentatonic chirp
