@@ -277,6 +277,20 @@
       .col-left { width: auto; flex: 1 1 300px; }
       .col-right { width: auto; flex: 0 0 auto; }
     }
+
+    /* A landscape viewport short enough that even two side-by-side columns
+       don't both fit (a phone on its side, not a tablet — the keypad column
+       alone runs ~370px tall). Rather than let the whole page scroll, which
+       would carry the equation off screen along with the keypad, cap the
+       page to the viewport and let only the taller column scroll internally
+       — same technique as Calm Corner's Visual Timer `.controls-col`, so the
+       problem stays pinned in view while just the keypad scrolls. */
+    @media (orientation: landscape) and (max-height: 500px) {
+      html, body { height: 100dvh; overflow: hidden; }
+      main { flex: 1; min-height: 0; overflow: hidden; }
+      .play-layout { height: 100%; }
+      .col-left, .col-right { max-height: 100%; overflow-y: auto; }
+    }
   </style>
 </head>
 <body>
