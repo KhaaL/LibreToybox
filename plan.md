@@ -45,11 +45,11 @@ Completed items live in `done.md`.
 
 - **Feat: add an animated tutorial**.
 
-## Grocery Cashier (`grocery-cashier/index.html`)
+## Math fun (`grocery-cashier/index.html`)
 
 - **Feat: add an animated tutorial**.
-- **Feat: horizontal layout for wide screens** — an alternate landscape layout (e.g. order/receipt on one side, register + keypad on the other) so the game uses a tablet's width instead of a single tall column. Default (portrait) layout stays as-is; the wide layout kicks in via a media query on wide/landscape viewports.
-- **Feat? wrong-answer cooldown** — Odd One Out and What Comes Next? both gained an opt-out cooldown toggle (3s lock + shrinking ring after a wrong tap). Deliberately **not** extended here yet: ringing up a wrong total is numeric-keypad entry (backspace-and-retry), not tapping through a small set of discrete option tiles, so the same "spam through every option" shape doesn't directly apply. Revisit if backspace-mashing turns out to need the same deterrent.
+- **Feat: horizontal layout for wide screens** — an alternate landscape layout (e.g. equation/visuals on one side, answer box + keypad on the other) so the game uses a tablet's width instead of a single tall column. Default (portrait) layout stays as-is; the wide layout kicks in via a media query on wide/landscape viewports. (Carried over from this directory's previous game, Grocery Cashier, which never got to it either.)
+- **Feat? wrong-answer cooldown** — Odd One Out and What Comes Next? both gained an opt-out cooldown toggle (3s lock + shrinking ring after a wrong tap). Deliberately **not** extended here yet: checking a typed answer is numeric-keypad entry (backspace-and-retry), not tapping through a small set of discrete option tiles, so the same "spam through every option" shape doesn't directly apply. Revisit if backspace-mashing turns out to need the same deterrent.
 
 ## What Comes Next? (`guess-next-sequence/index.html`)
 
