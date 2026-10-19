@@ -137,7 +137,8 @@
       z-index: 5;
     }
     .piece:focus-visible { outline: 3px solid var(--text); outline-offset: 3px; border-radius: 10px; }
-    .piece.in-tray { left: 0; top: 0; transform: scale(var(--tray-scale)); }
+    .piece.in-tray { left: var(--tray-x, 0px); top: var(--tray-y, 0px); transform: scale(var(--tray-scale)); }
+    .piece.pressed { filter: drop-shadow(0 4px 6px rgba(0,0,0,0.22)); }
     .piece.dragging {
       position: fixed;
       z-index: 60;
@@ -176,10 +177,13 @@
       justify-content: center;
       gap: 12px;
       padding: 4px 0 8px;
+      border-radius: 14px;
     }
+    #tray.drop-home { outline: 3px dashed var(--accent); outline-offset: 4px; }
     /* Slots keep their size forever — an empty slot is an invisible spacer,
-       so the tray never reflows while the child is dragging. */
-    .slot { position: relative; }
+       so the tray never reflows while the child is dragging. A slot is also
+       the piece's touch target, at least CONFIG.minHitPx square. */
+    .slot { position: relative; touch-action: none; cursor: grab; }
     .slot.deal { animation: pop .3s ease-out both; animation-delay: var(--d, 0s); }
     .slot.out, .piece.out { animation: suction .22s ease-in forwards; }
 
@@ -303,7 +307,7 @@
       <div class="size-row" role="radiogroup" aria-label="Board size">
         <button class="size-btn" data-size="tiny" role="radio" aria-label="Easy, 4 by 4">🐣<small>4×4</small></button>
         <button class="size-btn" data-size="mini" role="radio" aria-label="Normal, 5 by 5">🕊️<small>5×5</small></button>
-        <button class="size-btn" data-size="small" role="radio" aria-label="Hard, 6 by 6">🦅<small>6×6</small></button>
+        <button class="size-btn" data-size="small" role="radio" aria-label="Hard, 6 by 6, pieces turn">🦅<small>6×6</small></button>
       </div>
       <button class="top-btn" id="close-settings" aria-label="Close">✕</button>
     </div>
@@ -323,7 +327,8 @@
       sizes: {
         tiny:  { n: 4, minPiece: 3, maxPiece: 4 },
         mini:  { n: 5, minPiece: 3, maxPiece: 5 },
-        small: { n: 6, minPiece: 3, maxPiece: 5 }
+        // Hard deals every piece turned a random way; a tap turns it.
+        small: { n: 6, minPiece: 3, maxPiece: 5, rotate: true }
       },
       // Celebration grows with difficulty — Easy is today's unchanged baseline,
       // Normal/Hard add more confetti and extra rising notes on the same fanfare.
@@ -335,6 +340,7 @@
       trayScale: 0.5,
       maxBoardPx: 360,   // board never grows past this, however wide the screen
       minCellPx: 30,     // board shrinks no further; below this the page scrolls instead
+      minHitPx: 60,      // every tray slot is at least this big (principle 4)
       dragEdgePx: 4,     // a dragged piece always keeps this much of itself on screen
       liftPx: 56,        // grabbed point rides this far above the finger (touch/pen only)
       liftMs: 130,       // pickup eases into the lifted pose instead of teleporting
@@ -395,13 +401,507 @@
       }
     };
 
+    /* ===== shared:piece-drag v1 =====
+       One set of piece controls for the toybox's grid-packing games
+       (shape-fit/ and through-the-woods/). Each game is a single
+       self-contained file, so this block is copied into both;
+       scripts/check-design.js fails CI when the copies differ.
+         drag  : the piece lifts above the finger and snaps to the nearest
+                 spot it fits, within cfg.snapRange cells
+         tap   : the piece turns 90° clockwise, pivoting on the tapped cell.
+                 A piece that can't turn wiggles instead.
+         drop on the board where it doesn't fit : flies back where it came from
+         drop anywhere else                     : flies back to its tray slot
+         keys  : Enter picks up and places, arrows move, R turns,
+                 Escape puts the piece back in the tray
+       The host game owns the rules and the look. It provides:
+         board, tray, cellEls, N, gameId, won, cfg (its CONFIG)
+         fits(p, r, c, cells = p.cells)   p's own cells never block it
+         canTurn(p), turnedCells(p), applyTurn(p)
+         onPlaced(p, how)                 how: 'drop' | 'key' | 'turn' | 'return'
+         onTray(p), describe(p), updateStatus(msg)
+         audioPickup(), audioTurn(), audioOops(), audioSwoosh()
+       Each piece p carries cells [{r, c}], rows, cols, placed ({r, c} or
+       null), el (the piece element) and slotEl (built by makeSlot). */
+    const PieceDrag = {
+      host: null,
+      drag: null,  // { p, pointerId, pointerType, startX, startY, grabX, grabY, lift, moved, from, pivot, target, x, y }
+      kb: null,    // { p, r, c, from } keyboard placement cursor
+      liftTimer: null,
+
+      init(host) { this.host = host; },
+      get cfg() { return this.host.cfg; },
+
+      reset() {
+        this.drag = null;
+        this.kb = null;
+        this.clearGhost();
+        this.host.tray.classList.remove('drop-home');
+      },
+
+      relayout() { if (this.kb) this.positionKb(); },
+
+      cellPx() { return this.host.board.getBoundingClientRect().width / this.host.N; },
+
+      /* ---------- tray slots ---------- */
+
+      makeSlot(p) {
+        const slot = document.createElement('div');
+        const el = p.el;
+        slot.className = 'slot';
+        p.slotEl = slot;
+        el.classList.add('in-tray');
+        el.tabIndex = 0;
+        el.setAttribute('role', 'button');
+        slot.appendChild(el);
+        this.layoutSlot(p);
+        el.addEventListener('pointerdown', (e) => this.onDown(e, p));
+        // The slot is a hit area too: a thin piece at tray scale can be
+        // narrower than a finger, the slot never is (cfg.minHitPx).
+        slot.addEventListener('pointerdown', (e) => {
+          if (el.parentNode === slot && !el.contains(e.target)) this.onDown(e, p);
+        });
+        el.addEventListener('pointermove', (e) => this.onMove(e));
+        el.addEventListener('pointerup', (e) => this.onUp(e));
+        el.addEventListener('pointercancel', (e) => this.onCancel(e));
+        el.addEventListener('keydown', (e) => this.onKey(e, p));
+        el.addEventListener('blur', () => { if (this.kb && this.kb.p === p) this.endKb(); });
+        return slot;
+      },
+
+      // A piece that can turn gets a square slot (its longest side both
+      // ways), so turning it in the tray never reflows the row. The piece is
+      // centred in its slot through --tray-x/--tray-y.
+      layoutSlot(p) {
+        const k = this.cfg.trayScale, min = this.cfg.minHitPx;
+        const side = this.host.canTurn(p) ? Math.max(p.rows, p.cols) : 0;
+        const w = `max(${min}px, var(--cell) * ${(side || p.cols) * k})`;
+        const h = `max(${min}px, var(--cell) * ${(side || p.rows) * k})`;
+        p.slotEl.style.width = w;
+        p.slotEl.style.height = h;
+        p.el.style.setProperty('--tray-x', `calc((${w} - var(--cell) * ${p.cols * k}) / 2)`);
+        p.el.style.setProperty('--tray-y', `calc((${h} - var(--cell) * ${p.rows * k}) / 2)`);
+      },
+
+      /* ---------- pointer: press, then tap or drag ---------- */
+
+      onDown(e, p) {
+        if (this.host.won || this.drag || p.el.classList.contains('flying')) return;
+        if (e.pointerType === 'mouse' && e.button !== 0) return;
+        e.preventDefault();
+        if (this.kb) {
+          const held = this.kb.p === p;
+          this.endKb();
+          if (held) return;
+        }
+        p.el.setPointerCapture(e.pointerId);
+        this.drag = {
+          p, pointerId: e.pointerId, pointerType: e.pointerType,
+          startX: e.clientX, startY: e.clientY, grabX: 0, grabY: 0, lift: 0,
+          moved: false, from: p.placed ? { ...p.placed } : null,
+          pivot: this.pivotAt(p, e.clientX, e.clientY), target: null, x: 0, y: 0
+        };
+        p.el.classList.add('pressed');
+      },
+
+      onMove(e) {
+        const d = this.drag;
+        if (!d || e.pointerId !== d.pointerId) return;
+        if (!d.moved) {
+          if (Math.hypot(e.clientX - d.startX, e.clientY - d.startY) <= this.cfg.tapMovePx) return;
+          this.lift(d);
+        }
+        this.position(e.clientX, e.clientY);
+        this.updateGhost();
+        this.host.tray.classList.toggle('drop-home', this.overTray(e.clientX, e.clientY));
+      },
+
+      // The press became a drag: the piece leaves its slot or board spot.
+      lift(d) {
+        const p = d.p, el = p.el, h = this.host;
+        d.moved = true;
+        el.classList.remove('pressed');
+        // A drag can't scroll the page (pointer capture + touch-action: none),
+        // so a piece picked up while the board is off screen could never be
+        // dropped. The layout keeps both on screen; this is insurance for the
+        // cramped fallback.
+        this.ensureBoardVisible();
+        // Carry by the grabbed point: the spot under the finger stays under
+        // the finger (normalized, so tray scale maps to the same spot at full
+        // size), riding liftPx above it so the hand never hides the piece. A
+        // mouse cursor hides nothing, so it gets no lift. Reading the rect
+        // after any scroll keeps the grab point honest; the clamp covers a
+        // piece that scrolled out from under the finger.
+        const rect = el.getBoundingClientRect();
+        d.grabX = Math.min(Math.max((d.startX - rect.left) / rect.width, 0), 1);
+        d.grabY = Math.min(Math.max((d.startY - rect.top) / rect.height, 0), 1);
+        d.lift = d.pointerType === 'mouse' ? 0 : this.cfg.liftPx;
+        p.placed = null;
+        p.slotEl.classList.remove('deal'); // grabbed mid-pop: kill the slot transform now
+        el.classList.remove('in-tray', 'pop');
+        el.classList.add('dragging');
+        // Ease into the lifted pose from the exact current pose (position
+        // and scale) instead of teleporting under the finger.
+        el.style.left = rect.left + 'px';
+        el.style.top = rect.top + 'px';
+        el.style.transform = `scale(${rect.width / el.offsetWidth})`;
+        void el.offsetWidth;
+        el.classList.add('lifting');
+        clearTimeout(this.liftTimer);
+        this.liftTimer = setTimeout(() => el.classList.remove('lifting'), this.cfg.liftMs);
+        el.style.transform = '';
+        h.audioPickup();
+        h.updateStatus(`Picked up the ${h.describe(p)}.`);
+      },
+
+      // The dragged piece is position:fixed at full size, so it is clamped
+      // to the viewport. The clamp applies to the logical pose d.x/d.y, so
+      // updateGhost() previews exactly the spot the drop will land in.
+      position(x, y) {
+        const d = this.drag, el = d.p.el, M = this.cfg.dragEdgePx;
+        const w = el.offsetWidth, h = el.offsetHeight;
+        d.x = Math.min(Math.max(x - d.grabX * w, M), Math.max(M, window.innerWidth - w - M));
+        d.y = Math.min(Math.max(y - d.grabY * h - d.lift, M), Math.max(M, window.innerHeight - h - M));
+        el.style.left = d.x + 'px';
+        el.style.top = d.y + 'px';
+      },
+
+      onUp(e) {
+        const d = this.drag;
+        if (!d || e.pointerId !== d.pointerId) return;
+        const p = d.p, h = this.host;
+        this.drag = null;
+        this.clearGhost();
+        p.el.classList.remove('pressed');
+        h.tray.classList.remove('drop-home');
+        if (!d.moved) { this.tap(p, d.pivot); return; }
+        // .dragging stays on until the drop resolves, so the piece keeps its
+        // fixed position meanwhile.
+        if (d.target) { this.place(p, d.target.r, d.target.c, 'drop'); return; }
+        const onBoard = !this.overTray(e.clientX, e.clientY)
+          && this.rectsOverlap(p.el.getBoundingClientRect(), h.board.getBoundingClientRect());
+        if (onBoard) {
+          h.audioOops(); // it doesn't fit there: gentle, never punitive
+          h.updateStatus(`That spot does not fit. The ${h.describe(p)} went back.`);
+          this.flyBack(p, d.from);
+        } else {
+          h.audioSwoosh();
+          h.updateStatus(`Put the ${h.describe(p)} back in the tray.`);
+          this.flyBack(p, null);
+        }
+      },
+
+      onCancel(e) {
+        const d = this.drag;
+        if (!d || e.pointerId !== d.pointerId) return;
+        this.drag = null;
+        this.clearGhost();
+        d.p.el.classList.remove('pressed');
+        this.host.tray.classList.remove('drop-home');
+        if (d.moved) this.flyBack(d.p, d.from);
+      },
+
+      /* ---------- turning ---------- */
+
+      tap(p, pivot) {
+        const h = this.host;
+        if (!h.canTurn(p)) {
+          this.shake(p);
+          h.audioOops();
+          h.updateStatus(`The ${h.describe(p)} doesn't turn. Drag it to move it.`);
+          return;
+        }
+        if (!p.placed) {
+          h.applyTurn(p);
+          this.layoutSlot(p);
+          this.spin(p);
+          h.audioTurn();
+          h.updateStatus(`Turned the ${h.describe(p)}.`);
+          h.onTray(p);
+          return;
+        }
+        const spot = this.turnSpot(p, pivot);
+        if (!spot) {
+          this.shake(p);
+          h.audioOops();
+          h.updateStatus(`No room to turn the ${h.describe(p)} here.`);
+          return;
+        }
+        h.applyTurn(p);
+        this.layoutSlot(p);
+        h.audioTurn();
+        h.updateStatus(`Turned the ${h.describe(p)}.`);
+        this.place(p, spot.r, spot.c, 'turn');
+        this.spin(p);
+      },
+
+      // Where a placed piece lands after one clockwise turn. Spots that keep
+      // the tapped cell covered come first, then the one nearest the old
+      // spot, so the piece turns in place whenever there is room.
+      turnSpot(p, pivot) {
+        const h = this.host, from = p.placed, next = h.turnedCells(p);
+        const mid = (cells) => cells.reduce((m, q) => ({
+          r: m.r + q.r / cells.length, c: m.c + q.c / cells.length
+        }), { r: 0, c: 0 });
+        const was = mid(p.cells), now = mid(next);
+        const pins = [pivot, ...p.cells.map(q => ({ r: from.r + q.r, c: from.c + q.c }))].filter(Boolean);
+        const spots = [];
+        pins.forEach((pin, rank) => next.forEach(q => {
+          const r = pin.r - q.r, c = pin.c - q.c;
+          const drift = Math.hypot(r + now.r - from.r - was.r, c + now.c - from.c - was.c);
+          spots.push({ r, c, score: (rank ? 100 : 0) + drift });
+        }));
+        spots.sort((a, b) => a.score - b.score);
+        p.placed = null; // the piece's own cells don't block its turn
+        const spot = spots.find(s => h.fits(p, s.r, s.c, next));
+        p.placed = from;
+        return spot ? { r: spot.r, c: spot.c } : null;
+      },
+
+      // One-shot quarter turn around the piece's centre, so the child sees it
+      // turn instead of jumping to the new shape (principle 10).
+      spin(p) {
+        const el = p.el;
+        if (!el.animate || matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+        const s = el.classList.contains('in-tray') ? this.cfg.trayScale : 1;
+        const cx = el.offsetWidth / 2, cy = el.offsetHeight / 2;
+        const pose = (a) => `scale(${s}) translate(${cx}px, ${cy}px) rotate(${a}deg) translate(${-cx}px, ${-cy}px)`;
+        el.animate([{ transform: pose(-90) }, { transform: pose(0) }], { duration: 200, easing: 'ease-out' });
+      },
+
+      shake(p) {
+        p.el.classList.remove('shake');
+        void p.el.offsetWidth;
+        p.el.classList.add('shake');
+      },
+
+      /* ---------- landing ---------- */
+
+      place(p, r, c, how) {
+        this.settle(p, r, c, how !== 'turn');
+        this.host.onPlaced(p, how);
+      },
+
+      settle(p, r, c, pop) {
+        const el = p.el;
+        p.placed = { r, c };
+        el.classList.remove('dragging', 'flying', 'in-tray', 'pop', 'lifting', 'pressed');
+        el.style.left = `calc(var(--cell) * ${c})`;
+        el.style.top = `calc(var(--cell) * ${r})`;
+        el.style.transform = '';
+        if (el.parentNode !== this.host.board) this.host.board.appendChild(el);
+        if (!pop) return;
+        void el.offsetWidth;
+        el.classList.add('pop');
+      },
+
+      settleInTray(p) {
+        const el = p.el;
+        p.placed = null;
+        el.classList.remove('dragging', 'flying', 'pop', 'lifting', 'pressed');
+        el.classList.add('in-tray');
+        el.style.left = el.style.top = el.style.transform = '';
+        if (el.parentNode !== p.slotEl) p.slotEl.appendChild(el);
+      },
+
+      // Flies p from wherever it is now to a board spot, or to its tray slot
+      // when spot is null. A board spot is claimed at take-off, so nothing
+      // else can be dropped there mid-flight.
+      flyBack(p, spot) {
+        const h = this.host, el = p.el;
+        p.placed = null;
+        if (spot && !h.fits(p, spot.r, spot.c)) spot = null;
+        const cur = el.getBoundingClientRect();
+        el.classList.remove('dragging', 'in-tray', 'pop', 'shake', 'lifting', 'pressed');
+        el.classList.add('flying');
+        el.style.left = cur.left + 'px';
+        el.style.top = cur.top + 'px';
+        el.style.transform = `scale(${cur.width / el.offsetWidth})`;
+        void el.offsetWidth;
+        const to = spot ? this.boardPose(spot.r, spot.c) : this.trayPose(p);
+        el.style.left = to.left + 'px';
+        el.style.top = to.top + 'px';
+        el.style.transform = `scale(${to.scale})`;
+        if (spot) p.placed = { ...spot };
+        const gen = h.gameId;
+        setTimeout(() => {
+          if (gen !== h.gameId) return;
+          if (spot) { this.settle(p, spot.r, spot.c, true); h.onPlaced(p, 'return'); }
+          else { this.settleInTray(p); h.onTray(p); }
+        }, this.cfg.flyBackMs);
+      },
+
+      trayPose(p) {
+        const t = p.slotEl.getBoundingClientRect(), k = this.cfg.trayScale, cell = this.cellPx();
+        return {
+          left: t.left + (t.width - p.cols * cell * k) / 2,
+          top: t.top + (t.height - p.rows * cell * k) / 2,
+          scale: k
+        };
+      },
+
+      boardPose(r, c) {
+        const b = this.host.board.getBoundingClientRect(), cell = b.width / this.host.N;
+        return { left: b.left + c * cell, top: b.top + r * cell, scale: 1 };
+      },
+
+      /* ---------- snap preview ---------- */
+
+      // The nearest *fitting* spot within cfg.snapRange cells of the logical
+      // drag pose, so a near miss beside an occupied region still lands.
+      updateGhost() {
+        this.clearGhost();
+        const d = this.drag;
+        if (!d) return;
+        const b = this.host.board.getBoundingClientRect(), cell = b.width / this.host.N;
+        const exactR = (d.y - b.top) / cell, exactC = (d.x - b.left) / cell;
+        let best = null, bestDist = this.cfg.snapRange;
+        for (let r = Math.round(exactR) - 1; r <= Math.round(exactR) + 1; r++) {
+          for (let c = Math.round(exactC) - 1; c <= Math.round(exactC) + 1; c++) {
+            if (!this.host.fits(d.p, r, c)) continue;
+            const dist = Math.hypot(r - exactR, c - exactC);
+            if (dist < bestDist) { bestDist = dist; best = { r, c }; }
+          }
+        }
+        d.target = best;
+        if (best) this.highlight(d.p, best.r, best.c);
+      },
+
+      highlight(p, r, c) {
+        const N = this.host.N;
+        p.cells.forEach(q => this.host.cellEls[(r + q.r) * N + (c + q.c)].classList.add('ghost'));
+      },
+
+      clearGhost() {
+        (this.host.cellEls || []).forEach(el => el.classList.remove('ghost'));
+      },
+
+      /* ---------- keyboard (parity with touch, principle 8) ---------- */
+
+      onKey(e, p) {
+        const h = this.host, key = e.key;
+        if (h.won || this.drag) return;
+        const held = this.kb && this.kb.p === p;
+        if (key === 'Enter' || key === ' ') {
+          e.preventDefault();
+          if (!held) { this.startKb(p); return; }
+          const { r, c } = this.kb;
+          if (h.fits(p, r, c)) {
+            this.kb = null;
+            this.clearGhost();
+            this.place(p, r, c, 'key');
+            p.el.focus({ preventScroll: true });
+          } else {
+            this.shake(p);
+            h.audioOops();
+          }
+        } else if (key === 'r' || key === 'R') {
+          e.preventDefault();
+          if (!held || !h.canTurn(p)) { this.tap(p, null); return; }
+          h.applyTurn(p);
+          this.layoutSlot(p);
+          this.kb.r = Math.max(0, Math.min(h.N - p.rows, this.kb.r));
+          this.kb.c = Math.max(0, Math.min(h.N - p.cols, this.kb.c));
+          this.positionKb();
+          this.spin(p);
+          h.audioTurn();
+        } else if (held && key.startsWith('Arrow')) {
+          e.preventDefault();
+          if (key === 'ArrowUp') this.kb.r--;
+          if (key === 'ArrowDown') this.kb.r++;
+          if (key === 'ArrowLeft') this.kb.c--;
+          if (key === 'ArrowRight') this.kb.c++;
+          this.kb.r = Math.max(0, Math.min(h.N - p.rows, this.kb.r));
+          this.kb.c = Math.max(0, Math.min(h.N - p.cols, this.kb.c));
+          this.positionKb();
+        } else if (held && key === 'Escape') {
+          e.preventDefault();
+          this.kb = null;
+          this.clearGhost();
+          this.flyBack(p, null);
+          h.audioSwoosh();
+          h.updateStatus(`Put the ${h.describe(p)} back in the tray.`);
+        }
+      },
+
+      // Holds p over the board: a placed piece where it sits, a tray piece at
+      // the first spot it fits.
+      startKb(p) {
+        const h = this.host, from = p.placed ? { ...p.placed } : null;
+        p.placed = null;
+        let spot = from;
+        for (let r = 0; r <= h.N - p.rows && !spot; r++) {
+          for (let c = 0; c <= h.N - p.cols && !spot; c++) {
+            if (h.fits(p, r, c)) spot = { r, c };
+          }
+        }
+        if (!spot) spot = { r: 0, c: 0 };
+        this.kb = { p, r: spot.r, c: spot.c, from };
+        p.slotEl.classList.remove('deal');
+        p.el.classList.remove('in-tray', 'pop');
+        p.el.classList.add('dragging');
+        this.positionKb();
+        h.audioPickup();
+        h.updateStatus('Arrow keys move the piece. R turns it. Enter places it. Escape puts it back.');
+      },
+
+      positionKb() {
+        const { p, r, c } = this.kb, pose = this.boardPose(r, c);
+        p.el.style.left = pose.left + 'px';
+        p.el.style.top = pose.top + 'px';
+        p.el.style.transform = '';
+        this.clearGhost();
+        if (this.host.fits(p, r, c)) this.highlight(p, r, c);
+      },
+
+      // Focus left the held piece (Tab, a click elsewhere): it goes back to
+      // where it came from.
+      endKb() {
+        if (!this.kb) return;
+        const { p, from } = this.kb;
+        this.kb = null;
+        this.clearGhost();
+        this.flyBack(p, from);
+      },
+
+      /* ---------- geometry helpers ---------- */
+
+      // The board cell of p nearest (x, y), for a piece on the board; null
+      // for a piece in the tray.
+      pivotAt(p, x, y) {
+        if (!p.placed) return null;
+        const rect = p.el.getBoundingClientRect(), cell = rect.width / p.cols;
+        const lr = (y - rect.top) / cell - 0.5, lc = (x - rect.left) / cell - 0.5;
+        let best = p.cells[0], bestDist = Infinity;
+        p.cells.forEach(q => {
+          const dist = Math.hypot(q.r - lr, q.c - lc);
+          if (dist < bestDist) { bestDist = dist; best = q; }
+        });
+        return { r: p.placed.r + best.r, c: p.placed.c + best.c };
+      },
+
+      overTray(x, y) {
+        const t = this.host.tray.getBoundingClientRect();
+        return x >= t.left && x <= t.right && y >= t.top && y <= t.bottom;
+      },
+
+      rectsOverlap(a, b) {
+        return a.left < b.right && a.right > b.left && a.top < b.bottom && a.bottom > b.top;
+      },
+
+      ensureBoardVisible() {
+        const b = this.host.board.getBoundingClientRect();
+        if (b.top < 0 || b.bottom > window.innerHeight) this.host.board.scrollIntoView({ block: 'nearest' });
+      }
+    };
+    /* ===== end shared:piece-drag v1 ===== */
+
     const App = {
+      cfg: CONFIG,
       pieces: [],       // { cells:[{r,c}] normalized, rows, cols, color, placed:{r,c}|null, el, slotEl }
       N: 5,
       size: 'mini',
       won: false,
-      drag: null,       // { p, pointerId, startX, startY, moved, fromPlaced, target }
-      kb: null,         // { p, r, c } keyboard placement cursor
       gameId: 0,
       audioCtx: null,
       emojiSets: [
@@ -412,6 +912,7 @@
 
       init() {
         this.cacheDOM();
+        PieceDrag.init(this);
         this.bindEvents();
         document.documentElement.style.setProperty('--tray-scale', CONFIG.trayScale);
         this.newGame(false);
@@ -462,7 +963,7 @@
           relayout = requestAnimationFrame(() => {
             relayout = null;
             this.setCellSize();
-            if (this.kb) this.positionKb();
+            PieceDrag.relayout();
           });
         };
         window.addEventListener('resize', onViewportChange);
@@ -620,11 +1121,18 @@
         Modal.close();
         this.gameId++;
         this.won = false;
-        this.drag = null;
-        this.kb = null;
-        const { n, minPiece, maxPiece } = CONFIG.sizes[this.size];
+        PieceDrag.reset();
+        const { n, minPiece, maxPiece, rotate } = CONFIG.sizes[this.size];
         this.N = n;
         this.pieces = this.shuffle(this.generatePieces(n, minPiece, maxPiece));
+        if (rotate) {
+          this.pieces.forEach(p => {
+            for (let k = Math.floor(Math.random() * 4); k > 0; k--) {
+              p.cells = this.rotateCells(p.cells);
+              [p.rows, p.cols] = [p.cols, p.rows];
+            }
+          });
+        }
 
         if (animated && this.tray.children.length > 0) {
           // Re-deal visibly (design principle 9): everything sucks away first.
@@ -653,10 +1161,8 @@
 
         this.tray.innerHTML = '';
         this.pieces.forEach((p, i) => {
-          const slot = document.createElement('div');
-          slot.className = 'slot';
-          slot.style.width = `calc(var(--cell) * ${p.cols * CONFIG.trayScale})`;
-          slot.style.height = `calc(var(--cell) * ${p.rows * CONFIG.trayScale})`;
+          this.buildPieceEl(p);
+          const slot = PieceDrag.makeSlot(p);
           if (deal) {
             slot.classList.add('deal');
             slot.style.setProperty('--d', `${i * CONFIG.dealStaggerMs}ms`);
@@ -666,20 +1172,24 @@
             // little slot instead of the viewport.
             slot.addEventListener('animationend', () => slot.classList.remove('deal'), { once: true });
           }
-          p.slotEl = slot;
-          slot.appendChild(this.buildPieceEl(p));
           this.tray.appendChild(slot);
         });
         this.setCellSize();
       },
 
       buildPieceEl(p) {
-        const el = document.createElement('div');
-        el.className = 'piece in-tray';
+        p.el = document.createElement('div');
+        p.el.className = 'piece';
+        this.paintPiece(p);
+        return p.el;
+      },
+
+      // Draws p's blocks for its current cells (again after every turn).
+      paintPiece(p) {
+        const el = p.el;
+        el.innerHTML = '';
         el.style.width = `calc(var(--cell) * ${p.cols})`;
         el.style.height = `calc(var(--cell) * ${p.rows})`;
-        el.tabIndex = 0;
-        el.setAttribute('role', 'button');
         el.setAttribute('aria-label', `${p.color.name} piece, ${p.cells.length} blocks`);
         // Blocks merge into one solid shape: no inset or border on edges
         // shared with a sibling block; the piece's outer perimeter gets an
@@ -706,22 +1216,12 @@
           if (bevel.length) b.style.boxShadow = bevel.join(', ');
           el.appendChild(b);
         });
-        el.addEventListener('pointerdown', (e) => this.onPointerDown(e, p));
-        el.addEventListener('pointermove', (e) => this.onPointerMove(e));
-        el.addEventListener('pointerup', (e) => this.onPointerUp(e));
-        el.addEventListener('pointercancel', (e) => this.onPointerCancel(e));
-        el.addEventListener('keydown', (e) => this.onPieceKey(e, p));
-        el.addEventListener('blur', () => { if (this.kb && this.kb.p === p) this.endKb(true); });
-        p.el = el;
-        return el;
       },
 
       // The board and the tray share one fixed height budget (the viewport
-      // below the header). The tray's height is a function of --cell, so this is a
-      // fixed-point solve, not a single division: guess a board side, measure
-      // the tray it produces, shrink the board by the shortfall, repeat. The
-      // tray grows monotonically with --cell, so the iteration converges
-      // downward — two passes are enough in practice, three is the cap.
+      // below the header). The tray's height is a function of --cell, and it
+      // drops in steps whenever smaller slots fit more of them per row, so
+      // this solves for the board side instead of dividing.
       setCellSize() {
         const cs = getComputedStyle(this.mainEl);
         const mainW = this.mainEl.getBoundingClientRect().width;
@@ -739,16 +1239,24 @@
         const floorSide = CONFIG.minCellPx * this.N + chrome;
         const capSide = Math.max(floorSide, Math.min(availW, CONFIG.maxBoardPx));
 
-        let side = capSide, trayH = 0;
-        for (let i = 0; i < 3; i++) {
-          this.applyBoardSide(side, chrome);
-          trayH = this.tray.getBoundingClientRect().height;
-          const next = Math.max(floorSide, Math.min(capSide, availH - trayH - gap));
-          if (Math.abs(next - side) < 1) break;
-          side = next;
+        // Largest board side whose tray still fits underneath. The tray never
+        // gets taller as the board shrinks, so "fits" flips exactly once and a
+        // binary search finds it; 10 steps take a 360 px range below 1 px.
+        const fitsAt = (s) => {
+          this.applyBoardSide(s, chrome);
+          return s + this.tray.getBoundingClientRect().height + gap <= availH;
+        };
+        let side = capSide;
+        if (!fitsAt(side)) {
+          let lo = floorSide, hi = capSide;
+          for (let i = 0; i < 10 && hi - lo > 0.5; i++) {
+            const mid = (lo + hi) / 2;
+            if (fitsAt(mid)) lo = mid; else hi = mid;
+          }
+          side = lo;
         }
         this.applyBoardSide(side, chrome);
-        trayH = this.tray.getBoundingClientRect().height;
+        const trayH = this.tray.getBoundingClientRect().height;
 
         // Safety valve: if even a minCellPx board plus its tray can't fit, give
         // the page its scrollbar back — a reachable tray beats a clipped one.
@@ -765,299 +1273,60 @@
         document.documentElement.style.setProperty('--cell', cell + 'px');
       },
 
-      /* ---------- placement rules ---------- */
+      /* ---------- PieceDrag host: placement rules ---------- */
 
-      occupancy() {
+      describe(p) { return `${p.color.name} piece`; },
+
+      occupancy(except) {
         const occ = new Array(this.N * this.N).fill(false);
         this.pieces.forEach(p => {
-          if (!p.placed) return;
+          if (!p.placed || p === except) return;
           p.cells.forEach(({ r, c }) => { occ[(p.placed.r + r) * this.N + (p.placed.c + c)] = true; });
         });
         return occ;
       },
 
-      fits(p, r, c, occ) {
-        return p.cells.every(({ r: dr, c: dc }) => {
+      fits(p, r, c, cells = p.cells) {
+        const occ = this.occupancy(p);
+        return cells.every(({ r: dr, c: dc }) => {
           const rr = r + dr, cc = c + dc;
           return rr >= 0 && rr < this.N && cc >= 0 && cc < this.N && !occ[rr * this.N + cc];
         });
       },
 
-      placePiece(p, r, c) {
-        p.placed = { r, c };
-        const el = p.el;
-        el.classList.remove('dragging', 'flying', 'in-tray', 'pop', 'lifting');
-        el.style.left = `calc(var(--cell) * ${c})`;
-        el.style.top = `calc(var(--cell) * ${r})`;
-        el.style.transform = '';
-        this.board.appendChild(el);
-        void el.offsetWidth;
-        el.classList.add('pop');
-        this.audioPlace();
-        this.updateStatus(`Placed the ${p.color.name} piece.`);
+      // Pieces turn only on the level that deals them turned (Hard); on the
+      // others a tap just wiggles the piece.
+      canTurn() { return !!CONFIG.sizes[this.size].rotate; },
+
+      turnedCells(p) { return this.rotateCells(p.cells); },
+
+      applyTurn(p) {
+        p.cells = this.rotateCells(p.cells);
+        [p.rows, p.cols] = [p.cols, p.rows];
+        this.paintPiece(p);
+      },
+
+      // One clockwise quarter turn of a normalized cell list.
+      rotateCells(cells) {
+        const rows = Math.max(...cells.map(q => q.r)) + 1;
+        return cells.map(({ r, c }) => ({ r: c, c: rows - 1 - r }));
+      },
+
+      onPlaced(p, how) {
+        if (how === 'drop' || how === 'key') {
+          this.audioPlace();
+          this.updateStatus(`Placed the ${p.color.name} piece.`);
+        }
         this.checkWin();
       },
 
-      flyToTray(p) {
-        const el = p.el, slot = p.slotEl;
-        const cur = el.getBoundingClientRect();
-        p.placed = null;
-        el.classList.remove('dragging', 'in-tray', 'pop', 'shake', 'lifting');
-        el.classList.add('flying');
-        el.style.left = cur.left + 'px';
-        el.style.top = cur.top + 'px';
-        el.style.transform = '';
-        void el.offsetWidth;
-        const t = slot.getBoundingClientRect();
-        el.style.left = t.left + 'px';
-        el.style.top = t.top + 'px';
-        el.style.transform = `scale(${CONFIG.trayScale})`;
-        const gen = this.gameId;
-        setTimeout(() => {
-          if (gen !== this.gameId) return;
-          el.classList.remove('flying');
-          el.classList.add('in-tray');
-          el.style.left = el.style.top = el.style.transform = '';
-          if (el.parentNode !== slot) slot.appendChild(el);
-        }, CONFIG.flyBackMs);
-      },
+      onTray() {},
 
       checkWin() {
-        if (!this.pieces.every(p => p.placed)) return;
+        if (this.won || !this.pieces.every(p => p.placed)) return;
         this.won = true;
         const gen = this.gameId;
         setTimeout(() => { if (gen === this.gameId) this.celebrate(); }, 350);
-      },
-
-      /* ---------- drag interaction ---------- */
-
-      onPointerDown(e, p) {
-        if (this.won || this.drag) return;
-        if (this.kb) this.endKb(true);
-        e.preventDefault();
-        p.el.setPointerCapture(e.pointerId);
-        // A drag can't scroll the page (pointer capture + touch-action: none),
-        // so a piece picked up while the board is off screen can never be
-        // dropped — every snap target comes back null. The layout keeps both
-        // on screen; this is insurance for the cramped fallback. Reading the
-        // piece's rect AFTER any scroll keeps the grab point honest, and the
-        // clamp covers a piece that scrolled out from under the finger.
-        this.ensureBoardVisible();
-        // Carry by the grabbed point: the spot under the finger stays under
-        // the finger (normalized, so the tray's 0.5 scale maps to the same
-        // spot at full size), riding liftPx above it so the hand never hides
-        // the piece. A mouse cursor hides nothing, so it gets no lift.
-        const rect = p.el.getBoundingClientRect();
-        this.drag = {
-          p, pointerId: e.pointerId,
-          startX: e.clientX, startY: e.clientY,
-          grabX: Math.min(Math.max((e.clientX - rect.left) / rect.width, 0), 1),
-          grabY: Math.min(Math.max((e.clientY - rect.top) / rect.height, 0), 1),
-          lift: e.pointerType === 'mouse' ? 0 : CONFIG.liftPx,
-          moved: false, fromPlaced: !!p.placed, target: null, x: 0, y: 0
-        };
-        p.placed = null;
-        p.slotEl.classList.remove('deal'); // grabbed mid-pop: kill the slot transform now
-        const el = p.el;
-        el.classList.remove('in-tray', 'pop');
-        el.classList.add('dragging');
-        // Ease into the lifted pose from the exact current visual pose
-        // (position and scale) instead of teleporting under the finger.
-        el.style.left = rect.left + 'px';
-        el.style.top = rect.top + 'px';
-        el.style.transform = `scale(${rect.width / el.offsetWidth})`;
-        void el.offsetWidth;
-        el.classList.add('lifting');
-        clearTimeout(this.liftTimer);
-        this.liftTimer = setTimeout(() => el.classList.remove('lifting'), CONFIG.liftMs);
-        el.style.transform = '';
-        this.positionDrag(e);
-        this.updateGhost();
-        this.audioPickup();
-        this.updateStatus(`Picked up the ${p.color.name} piece.`);
-      },
-
-      ensureBoardVisible() {
-        const b = this.board.getBoundingClientRect();
-        if (b.top < 0 || b.bottom > window.innerHeight) {
-          this.board.scrollIntoView({ block: 'nearest' });
-        }
-      },
-
-      // A dragged piece is position:fixed at FULL size (twice its tray
-      // thumbnail), so an unclamped pose puts most of it off screen the moment
-      // the finger nears an edge — worst of all above the top, where liftPx
-      // adds to the overhang. Clamping keeps the whole piece visible. It's
-      // clamped on the logical pose d.x/d.y, not just visually, so
-      // updateGhost() previews exactly the spot the drop will land in.
-      positionDrag(e) {
-        const d = this.drag, el = d.p.el;
-        const M = CONFIG.dragEdgePx;
-        const w = el.offsetWidth, h = el.offsetHeight;
-        const maxX = Math.max(M, window.innerWidth - w - M);
-        const maxY = Math.max(M, window.innerHeight - h - M);
-        d.x = Math.min(Math.max(e.clientX - d.grabX * w, M), maxX);
-        d.y = Math.min(Math.max(e.clientY - d.grabY * h - d.lift, M), maxY);
-        el.style.left = d.x + 'px';
-        el.style.top = d.y + 'px';
-      },
-
-      onPointerMove(e) {
-        if (!this.drag || e.pointerId !== this.drag.pointerId) return;
-        if (Math.hypot(e.clientX - this.drag.startX, e.clientY - this.drag.startY) > CONFIG.tapMovePx) {
-          this.drag.moved = true;
-        }
-        this.positionDrag(e);
-        this.updateGhost();
-      },
-
-      onPointerUp(e) {
-        const d = this.drag;
-        if (!d || e.pointerId !== d.pointerId) return;
-        this.drag = null;
-        this.clearGhost();
-        const p = d.p;
-        // .dragging stays on until placePiece/flyToTray resolves the drop,
-        // so the piece keeps its fixed position meanwhile.
-        if (d.moved && d.target) {
-          this.placePiece(p, d.target.r, d.target.c);
-          return;
-        }
-        const overBoard = d.moved && this.rectsOverlap(p.el.getBoundingClientRect(), this.board.getBoundingClientRect());
-        this.flyToTray(p);
-        if (d.fromPlaced && !d.moved) {
-          this.audioSwoosh();
-          this.updateStatus(`Lifted the ${p.color.name} piece back to the tray.`);
-        } else if (overBoard) {
-          this.audioOops(); // it doesn't fit there — gentle, not punitive
-          this.updateStatus('That spot does not fit. The piece went back.');
-        } else {
-          this.audioSwoosh();
-        }
-      },
-
-      onPointerCancel(e) {
-        const d = this.drag;
-        if (!d || e.pointerId !== d.pointerId) return;
-        this.drag = null;
-        this.clearGhost();
-        this.flyToTray(d.p);
-      },
-
-      // Snap preview: where would the piece land if dropped right now?
-      // Uses the logical drag pose (d.x/d.y), not getBoundingClientRect,
-      // so the target is correct even while the pickup ease is running.
-      // Forgiving: picks the nearest *fitting* cell within snapRange, so a
-      // near-miss beside an occupied region still lands instead of failing.
-      updateGhost() {
-        this.clearGhost();
-        const d = this.drag;
-        if (!d) return;
-        const brect = this.board.getBoundingClientRect();
-        const cell = brect.width / this.N;
-        const exactC = (d.x - brect.left) / cell;
-        const exactR = (d.y - brect.top) / cell;
-        const occ = this.occupancy();
-        let best = null, bestDist = CONFIG.snapRange;
-        for (let r = Math.round(exactR) - 1; r <= Math.round(exactR) + 1; r++) {
-          for (let c = Math.round(exactC) - 1; c <= Math.round(exactC) + 1; c++) {
-            if (!this.fits(d.p, r, c, occ)) continue;
-            const dist = Math.hypot(r - exactR, c - exactC);
-            if (dist < bestDist) { bestDist = dist; best = { r, c }; }
-          }
-        }
-        d.target = best;
-        if (best) this.highlightGhost(d.p, best.r, best.c);
-      },
-
-      highlightGhost(p, r, c) {
-        p.cells.forEach(({ r: dr, c: dc }) => {
-          this.cellEls[(r + dr) * this.N + (c + dc)].classList.add('ghost');
-        });
-      },
-
-      clearGhost() {
-        this.cellEls.forEach(el => el.classList.remove('ghost'));
-      },
-
-      rectsOverlap(a, b) {
-        return a.left < b.right && a.right > b.left && a.top < b.bottom && a.bottom > b.top;
-      },
-
-      /* ---------- keyboard interaction (parity with touch) ---------- */
-
-      onPieceKey(e, p) {
-        if (this.won || this.drag) return;
-        const key = e.key;
-        if (key === 'Enter' || key === ' ') {
-          e.preventDefault();
-          if (this.kb && this.kb.p === p) {
-            const { r, c } = this.kb;
-            if (this.fits(p, r, c, this.occupancy())) {
-              this.endKb(false);
-              this.placePiece(p, r, c);
-            } else {
-              this.audioOops();
-              p.el.classList.remove('shake');
-              void p.el.offsetWidth;
-              p.el.classList.add('shake');
-            }
-          } else if (p.placed) {
-            this.flyToTray(p);
-            this.audioSwoosh();
-            this.updateStatus(`Lifted the ${p.color.name} piece back to the tray.`);
-          } else {
-            this.startKb(p);
-          }
-        } else if (this.kb && this.kb.p === p && key.startsWith('Arrow')) {
-          e.preventDefault();
-          if (key === 'ArrowUp') this.kb.r--;
-          if (key === 'ArrowDown') this.kb.r++;
-          if (key === 'ArrowLeft') this.kb.c--;
-          if (key === 'ArrowRight') this.kb.c++;
-          this.kb.r = Math.max(0, Math.min(this.N - p.rows, this.kb.r));
-          this.kb.c = Math.max(0, Math.min(this.N - p.cols, this.kb.c));
-          this.positionKb();
-        } else if (key === 'Escape' && this.kb && this.kb.p === p) {
-          e.preventDefault();
-          this.endKb(true);
-        }
-      },
-
-      startKb(p) {
-        const occ = this.occupancy();
-        let spot = null;
-        for (let r = 0; r <= this.N - p.rows && !spot; r++) {
-          for (let c = 0; c <= this.N - p.cols && !spot; c++) {
-            if (this.fits(p, r, c, occ)) spot = { r, c };
-          }
-        }
-        if (!spot) spot = { r: 0, c: 0 };
-        this.kb = { p, r: spot.r, c: spot.c };
-        p.el.classList.remove('in-tray');
-        p.el.classList.add('dragging');
-        this.positionKb();
-        this.audioPickup();
-        this.updateStatus('Arrow keys move the piece. Enter places it. Escape puts it back.');
-      },
-
-      positionKb() {
-        if (!this.kb) return;
-        const { p, r, c } = this.kb;
-        const brect = this.board.getBoundingClientRect();
-        const cell = brect.width / this.N;
-        p.el.style.left = (brect.left + c * cell) + 'px';
-        p.el.style.top = (brect.top + r * cell) + 'px';
-        this.clearGhost();
-        if (this.fits(p, r, c, this.occupancy())) this.highlightGhost(p, r, c);
-      },
-
-      endKb(fly) {
-        if (!this.kb) return;
-        const p = this.kb.p;
-        this.kb = null;
-        this.clearGhost();
-        if (fly) this.flyToTray(p);
       },
 
       /* ---------- win / settings ---------- */
@@ -1196,6 +1465,11 @@
       audioPlace() {
         this.playTone({ type: 'sine', freq: 540, duration: 80, peakGain: 0.16 });
         setTimeout(() => this.playTone({ type: 'sine', freq: 810, duration: 70, peakGain: 0.13 }), 70);
+      },
+      // A quick two-step click for a quarter turn.
+      audioTurn() {
+        this.playTone({ type: 'triangle', freq: 720, duration: 45, peakGain: 0.12 });
+        setTimeout(() => this.playTone({ type: 'triangle', freq: 960, duration: 45, peakGain: 0.1 }), 55);
       },
       // Gentle "hmm", not a punitive buzz (design principle 3)
       audioOops() { this.playTone({ type: 'sine', freq: 240, duration: 160, peakGain: 0.1 }); },
