@@ -17,6 +17,7 @@ self.addEventListener('install', (e) => {
     'odd-one-out/', 'odd-one-out/index.html',
     'grocery-cashier/', 'grocery-cashier/index.html',
     'guess-next-sequence/', 'guess-next-sequence/index.html',
+    'through-the-woods/', 'through-the-woods/index.html',
     'calm-corner/', 'calm-corner/index.html',
     'calm-corner/timer/', 'calm-corner/timer/index.html',
     'calm-corner/checkin/', 'calm-corner/checkin/index.html'

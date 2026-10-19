@@ -1,0 +1,1690 @@
+<!DOCTYPE html>
+<!-- LibreToybox · Path Home · Licensed under the GNU GPL v3.0; see ../LICENSE -->
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Path Home</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🪁</text></svg>" />
+  <link rel="manifest" href="../manifest.webmanifest" />
+  <meta name="theme-color" content="#A97A4C" />
+  <style>
+    :root {
+      --bg1: #FBF5EC;
+      --bg2: #EFDFC4;
+      --accent: #A97A4C;
+      --border: #D8C3A3;
+      --shadow: #E6D5BA;
+      --text: #4A3E33;
+      --cell: 90px;        /* set from JS: board width / N */
+      --tray-scale: 0.5;   /* set from JS: CONFIG.trayScale */
+    }
+
+    * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+    /* A fixed-height, non-scrolling column, same as Fit It!: board and tray
+       must always be on screen together, because a drag can't scroll the
+       page (the piece holds pointer capture and touch-action: none). */
+    html, body { margin: 0; padding: 0; height: 100vh; height: 100dvh; }
+    html { background: var(--bg1); }
+    body {
+      font-family: ui-rounded, 'Hiragino Maru Gothic ProN', Quicksand, Comfortaa, 'Arial Rounded MT Bold', 'Varela Round', Calibri, sans-serif;
+      background: linear-gradient(180deg, var(--bg1), var(--bg2));
+      color: var(--text);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: flex-start;
+      overflow: hidden;
+      user-select: none;
+      -webkit-user-select: none;
+      -webkit-touch-callout: none;
+      touch-action: manipulation;
+    }
+    /* Escape hatch: scrolling comes back only when even a minCellPx board
+       plus its tray can't fit the viewport (set by setCellSize()). */
+    body.cramped { height: auto; min-height: 100vh; min-height: 100dvh; overflow-y: auto; }
+    body.cramped main { flex: 0 0 auto; }
+
+    header {
+      flex: 0 0 auto;
+      width: 100%;
+      max-width: 500px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 14px 16px 6px;
+    }
+    .header-left { display: flex; align-items: center; gap: 8px; }
+    .logo { display: flex; align-items: center; }
+    .top-btns { display: flex; gap: 8px; }
+    .top-btn {
+      position: relative;
+      background: #fff;
+      border: 2px solid var(--border);
+      border-radius: 12px;
+      padding: 6px 10px;
+      font-family: inherit;
+      font-size: 1.3rem;
+      cursor: pointer;
+      box-shadow: 0 3px 0 var(--shadow);
+      transition: transform .05s;
+      min-width: 48px;
+      min-height: 48px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      text-decoration: none;
+      color: inherit;
+    }
+    .top-btn:active { transform: translateY(2px); box-shadow: 0 1px 0 var(--shadow); }
+    .hold-progress { position: absolute; inset: 5px; border-radius: 50%; pointer-events: none; opacity: 0; transition: opacity .1s; }
+    .top-btn.holding .hold-progress { opacity: 1; }
+
+    main { width: 100%; max-width: 500px; padding: 8px 16px 18px; display: flex; flex-direction: column; align-items: center; gap: 14px; flex: 1 1 auto; min-height: 0; }
+    #board-area { flex: 1 1 auto; min-height: 0; width: 100%; display: flex; align-items: center; justify-content: center; }
+
+    .grid-wrap {
+      width: min(92vw, 420px); /* pre-JS fallback; setCellSize() sets px */
+      max-width: 100%;
+      background: #fff;
+      border: 4px solid #B88E62;
+      border-radius: 14px;
+      padding: 8px;
+      box-shadow: 0 8px 22px rgba(0,0,0,0.12);
+    }
+
+    /* The board is a CSS grid of grass cells and the positioning context
+       for the scenery and the road tiles on top of it. Nothing here may
+       carry a transform or filter: that would become the containing block
+       for the dragged piece's position:fixed. */
+    #board {
+      position: relative;
+      width: 100%;
+      aspect-ratio: 1 / 1;
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      grid-template-rows: repeat(4, 1fr);
+      background: #CFE6B4;
+      border-radius: 8px;
+      touch-action: none;
+    }
+    .cell {
+      border: 2px dashed rgba(93, 140, 74, 0.28);
+      border-radius: 8px;
+      margin: 2px;
+      pointer-events: none;
+    }
+    .cell.hint { border: 3px dashed #E0A100; background: rgba(255, 230, 109, 0.5); }
+    .cell.ghost { border: 2px solid #FFF7D6; background: rgba(255, 250, 225, 0.7); }
+
+    /* Trees, the house and the friends: fixed art, one cell each. */
+    .scenery {
+      position: absolute;
+      width: var(--cell);
+      height: var(--cell);
+      display: grid;
+      place-items: center;
+      pointer-events: none;
+      z-index: 2;
+    }
+    .scenery svg { width: 86%; height: 86%; overflow: visible; }
+    .scenery.hop { animation: hop .5s ease-out 2; }
+    .door { position: absolute; background: #FFE66D; border: 2px solid #A26F3E; border-radius: 4px; }
+    .door.d0 { top: 3%; left: 37%; width: 26%; height: 10%; }
+    .door.d1 { right: 3%; top: 37%; width: 10%; height: 26%; }
+    .door.d2 { bottom: 3%; left: 37%; width: 26%; height: 10%; }
+    .door.d3 { left: 3%; top: 37%; width: 10%; height: 26%; }
+
+    /* Road tiles: one element per tile, two .road-cell squares inside.
+       Sized off --cell, so a resize only updates that one variable. */
+    .piece {
+      position: absolute;
+      transform-origin: 0 0;
+      touch-action: none;
+      cursor: grab;
+      z-index: 5;
+    }
+    .piece:focus-visible { outline: 3px solid var(--text); outline-offset: 3px; border-radius: 10px; }
+    .piece.in-tray { left: var(--tray-x, 0px); top: var(--tray-y, 0px); transform: scale(var(--tray-scale)); }
+    .piece.pressed { filter: drop-shadow(0 4px 6px rgba(0,0,0,0.22)); }
+    .piece.dragging {
+      position: fixed;
+      z-index: 60;
+      cursor: grabbing;
+      filter: drop-shadow(0 12px 14px rgba(0,0,0,0.25));
+    }
+    .piece.lifting { transition: left .13s ease-out, top .13s ease-out, transform .13s ease-out; }
+    .piece.flying {
+      position: fixed;
+      z-index: 60;
+      transition: left .25s ease, top .25s ease, transform .25s ease;
+      pointer-events: none;
+    }
+    .piece.pop .road-cell { animation: settle .22s ease-out; }
+    .piece.shake { animation: shake .3s ease; }
+    .piece.hinted { animation: hint-glow .6s ease-in-out 2; }
+    .piece.lit { filter: drop-shadow(0 0 6px #FFE66D) drop-shadow(0 0 2px #DCBC2E); }
+    /* Per-side borders and radii come from JS, so the outline runs round the
+       tile's outer edge only and the two squares read as one tile. */
+    .road-cell { position: absolute; border-style: solid; border-width: 0; }
+    .road-cell svg { position: absolute; overflow: visible; }
+    .road-edge { stroke: var(--edge); stroke-width: 46; fill: none; }
+    .road-band { stroke: #FFF4DC; stroke-width: 30; fill: none; transition: stroke .3s; }
+    .piece.lit .road-band { stroke: #FFFFFF; }
+    /* A road end that points at a tree, a wall or the edge flashes red once
+       when placed (principle 3: mistakes explain themselves visually). */
+    .end-flash { position: absolute; background: #E53935; border-radius: 6px; pointer-events: none; z-index: 2; animation: end-flash .45s ease-in-out 2 both; }
+    .end-flash[data-dir="0"] { top: -7px; left: 30%; width: 40%; height: 12px; }
+    .end-flash[data-dir="1"] { right: -7px; top: 30%; width: 12px; height: 40%; }
+    .end-flash[data-dir="2"] { bottom: -7px; left: 30%; width: 40%; height: 12px; }
+    .end-flash[data-dir="3"] { left: -7px; top: 30%; width: 12px; height: 40%; }
+
+    #tray {
+      flex: 0 0 auto;
+      width: 100%;
+      max-width: 480px;
+      display: flex;
+      flex-wrap: wrap;
+      align-items: flex-start;
+      justify-content: center;
+      gap: 14px;
+      padding: 4px 0 8px;
+      border-radius: 14px;
+    }
+    #tray.drop-home { outline: 3px dashed var(--accent); outline-offset: 4px; }
+    /* Slots keep their size forever: an empty slot is an invisible spacer,
+       so the tray never reflows while the child is dragging. */
+    .slot { position: relative; touch-action: none; cursor: grab; }
+    .slot.deal { animation: pop .3s ease-out both; animation-delay: var(--d, 0s); }
+    .slot.out, .piece.out { animation: suction .22s ease-in forwards; }
+
+    .status { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); clip-path: inset(50%); white-space: nowrap; border: 0; }
+
+    @keyframes pop { 0% { transform: scale(0.6); opacity: 0.4; } 60% { transform: scale(1.12); opacity: 1; } 100% { transform: scale(1); opacity: 1; } }
+    @keyframes settle { 0% { transform: scale(0.85); } 60% { transform: scale(1.08); } 100% { transform: scale(1); } }
+    @keyframes shake { 0%, 100% { margin-left: 0; } 25% { margin-left: -7px; } 75% { margin-left: 7px; } }
+    @keyframes suction { 0% { transform: scale(1); opacity: 1; } 100% { transform: scale(0.1); opacity: 0; } }
+    @keyframes fall { 0% { transform: translateY(-10vh) rotate(0deg); opacity: 1; } 100% { transform: translateY(110vh) rotate(720deg); opacity: 0; } }
+    @keyframes hop { 0%, 100% { transform: translateY(0); } 40% { transform: translateY(-18%); } }
+    @keyframes end-flash { 0%, 100% { opacity: 0; } 50% { opacity: 1; } }
+    @keyframes hint-glow { 50% { filter: drop-shadow(0 0 10px #FFD54F) drop-shadow(0 0 4px #E0A100); } }
+
+    .overlay {
+      position: fixed;
+      inset: 0;
+      display: none;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      z-index: 100;
+      text-align: center;
+      padding: 20px;
+    }
+    .overlay.show { display: flex; }
+    #win-overlay { background: rgba(255,255,255,0.55); justify-content: flex-end; padding-bottom: 12vh; }
+    #settings-overlay, #tutorial-overlay { background: rgba(255,255,255,0.92); }
+    .emoji-row { font-size: 4.5rem; display: flex; gap: 18px; margin-bottom: 22px; }
+    .emoji-row button { background: none; border: none; padding: 0; font: inherit; cursor: pointer; animation: pop .6s ease-out both; }
+    .emoji-row button:nth-child(2) { animation-delay: .15s; }
+    .emoji-row button:nth-child(3) { animation-delay: .3s; }
+    .emoji-row button:focus-visible { outline: 3px solid var(--text); outline-offset: 2px; border-radius: 12px; }
+    .emoji-row button.wiggle { animation: wiggle .5s ease; }
+    @keyframes wiggle { 0%, 100% { transform: rotate(0) scale(1); } 25% { transform: rotate(-12deg) scale(1.25); } 55% { transform: rotate(9deg) scale(1.12); } 80% { transform: rotate(-4deg) scale(1.04); } }
+    .confetti { position: fixed; top: 0; left: 0; width: 10px; height: 10px; pointer-events: none; z-index: 101; animation: fall linear forwards; }
+
+    .settings-card {
+      background: #fff;
+      border: 3px solid var(--border);
+      border-radius: 18px;
+      padding: 22px 26px;
+      box-shadow: 0 10px 28px rgba(0,0,0,0.15);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 14px;
+      min-width: 260px;
+    }
+    .settings-card h2 { margin: 0; font-size: 2rem; }
+    .size-row { display: flex; flex-wrap: wrap; justify-content: center; gap: 18px; max-width: 252px; }
+    .size-btn {
+      width: 72px;
+      height: 72px;
+      border: 2px solid var(--border);
+      border-radius: 16px;
+      background: #fff;
+      font-family: inherit;
+      font-size: 1.7rem;
+      cursor: pointer;
+      box-shadow: 0 4px 0 var(--shadow);
+      transition: transform .05s;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 2px;
+      color: var(--text);
+    }
+    .size-btn small { font-size: 0.8rem; }
+    .size-btn:active { transform: translateY(2px); box-shadow: 0 2px 0 var(--shadow); }
+    .size-btn.active { box-shadow: 0 0 0 4px gold, 0 4px 0 var(--shadow); }
+
+    @media (prefers-reduced-motion: reduce) {
+      .scenery.hop, .piece.hinted { animation: none; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="header-left">
+      <a class="top-btn" id="back-btn" href="../index.html" aria-label="Back to LibreToybox home">🏠</a>
+      <div class="logo" role="img" aria-label="Path Home" title="Path Home">
+        <svg viewBox="0 0 48 48" width="40" height="40" aria-hidden="true">
+          <path d="M6 45 C14 38 26 40 25 31 C24 24 30 21 34 22" fill="none" stroke="#DE9A47" stroke-width="9" stroke-linecap="round"/>
+          <path d="M6 45 C14 38 26 40 25 31 C24 24 30 21 34 22" fill="none" stroke="#F9C784" stroke-width="5" stroke-linecap="round"/>
+          <path d="M11 4 L20 20 L2 20 Z" fill="#A8E6CF" stroke="#6DBF9B" stroke-width="2" stroke-linejoin="round"/>
+          <rect x="9.5" y="20" width="3" height="6" fill="#B88E62"/>
+          <path d="M26 15 L36 6 L46 15 L43 15 L43 25 L29 25 L29 15 Z" fill="#FFB3A0" stroke="#DE7F66" stroke-width="2" stroke-linejoin="round"/>
+          <rect x="34" y="18" width="5" height="7" fill="#FFE66D" stroke="#DCBC2E" stroke-width="1.5"/>
+        </svg>
+      </div>
+    </div>
+    <div class="top-btns">
+      <button class="top-btn" id="help-btn" aria-label="Show where one road tile goes">💡</button>
+      <button class="top-btn" id="new-game" aria-label="New Game">🔄<span class="hold-progress" aria-hidden="true"></span></button>
+      <button class="top-btn" id="settings-btn" aria-label="Settings">⚙️</button>
+      <button class="top-btn" id="tutorial-btn" aria-label="How to Play">❓</button>
+    </div>
+  </header>
+
+  <main>
+    <div class="status" id="status" aria-live="polite"></div>
+    <div id="board-area">
+      <div class="grid-wrap">
+        <div id="board" role="group" aria-label="Puzzle board"></div>
+      </div>
+    </div>
+    <div id="tray" role="group" aria-label="Road tiles"></div>
+  </main>
+
+  <div class="overlay" id="win-overlay" role="dialog" aria-modal="true" aria-label="You won">
+    <div class="emoji-row" id="emoji-row"></div>
+    <div class="top-btns">
+      <a class="top-btn" id="win-home-btn" href="../index.html" aria-label="Back to LibreToybox home">🏠</a>
+      <button class="top-btn" id="play-again" aria-label="Play Again">🔄</button>
+    </div>
+  </div>
+
+  <div class="overlay" id="settings-overlay" role="dialog" aria-modal="true" aria-label="Settings">
+    <div class="settings-card">
+      <h2>⚙️</h2>
+      <div class="size-row" role="radiogroup" aria-label="Difficulty">
+        <button class="size-btn" data-size="easy" role="radio" aria-label="Easy, 1 or 2 road tiles">🐣<small>1-2</small></button>
+        <button class="size-btn" data-size="medium" role="radio" aria-label="Normal, 3 to 5 road tiles">🕊️<small>3-5</small></button>
+        <button class="size-btn" data-size="hard" role="radio" aria-label="Hard, two friends to bring home">🦅<small>+🐰</small></button>
+      </div>
+      <button class="top-btn" id="close-settings" aria-label="Close">✕</button>
+    </div>
+  </div>
+
+  <div class="overlay" id="tutorial-overlay" role="dialog" aria-modal="true" aria-label="How to Play">
+    <div class="settings-card">
+      <h2>🎓</h2>
+      <p>Tutorial coming soon!</p>
+      <button class="top-btn" id="close-tutorial" aria-label="Close">✕</button>
+    </div>
+  </div>
+
+  <script>
+    // All tuning lives here: difficulty pools, sizes, timings, colors.
+    const CONFIG = {
+      // The original game's five tile counts and its second-traveller mode,
+      // folded into the toybox's three levels (principle 9). Each level
+      // deals from these LEVELS pools: '<tiles>-<0 or 1 extra friend>'.
+      sizes: {
+        easy:   { pools: ['1-0', '2-0'] },
+        medium: { pools: ['3-0', '4-0', '5-0'] },
+        hard:   { pools: ['2-1', '3-1', '4-1', '5-1'] }
+      },
+      // Celebration grows with difficulty: Easy is the suite's baseline,
+      // Normal/Hard add more confetti and extra rising notes.
+      celebrationTiers: [
+        { confetti: 60,  notes: [523.25, 659.25, 783.99] },
+        { confetti: 90,  notes: [523.25, 659.25, 783.99, 1046.50] },
+        { confetti: 130, notes: [523.25, 659.25, 783.99, 1046.50, 1318.51] }
+      ],
+      recentMax: 8,      // a new deal skips the last few puzzles
+      trayScale: 0.5,
+      maxBoardPx: 460,   // board never grows past this, however wide the screen
+      minCellPx: 44,     // board shrinks no further; below this the page scrolls instead
+      minHitPx: 60,      // every tray slot is at least this big (principle 4)
+      dragEdgePx: 4,     // a dragged piece always keeps this much of itself on screen
+      liftPx: 56,        // grabbed point rides this far above the finger (touch/pen only)
+      liftMs: 130,       // pickup eases into the lifted pose instead of teleporting
+      snapRange: 0.8,    // max distance (in cells) a drop may be from a fitting spot
+      tapMovePx: 8,      // pointer travel below this counts as a tap
+      flyBackMs: 260,
+      dealStaggerMs: 60,
+      winDelayMs: 900,   // the lit path and hopping friends show before the party
+      palette: [
+        { fill: '#F7A6B9', edge: '#DE7590', name: 'pink' },
+        { fill: '#F9C784', edge: '#DE9A47', name: 'orange' },
+        { fill: '#FFE66D', edge: '#DCBC2E', name: 'yellow' },
+        { fill: '#A8E6CF', edge: '#6DBF9B', name: 'mint' },
+        { fill: '#8ED3F4', edge: '#54A6D2', name: 'blue' },
+        { fill: '#C3B4F7', edge: '#9480DC', name: 'purple' },
+        { fill: '#FFB3A0', edge: '#DE7F66', name: 'coral' },
+        { fill: '#C8E88A', edge: '#96C24E', name: 'green' }
+      ]
+    };
+
+    // The five road tiles. Each is a domino: in orientation 0 cell 0 sits
+    // left of cell 1, and ports[i] is the side (0 top, 1 right, 2 bottom,
+    // 3 left) where cell i's road leaves the tile. The other end of each
+    // cell's road runs into its partner cell. color names a palette entry.
+    const PIECES = {
+      sun:    { ports: [3, 1], color: 'yellow' }, // straight across
+      forget: { ports: [2, 0], color: 'blue' },   // in below the left, out above the right
+      rose:   { ports: [0, 0], color: 'pink' },   // a U: both ends up
+      poppy:  { ports: [3, 0], color: 'coral' },  // in from the left, out the top
+      violet: { ports: [0, 1], color: 'purple' }  // in from the top, out the right
+    };
+    const DIRS = [[-1, 0], [0, 1], [1, 0], [0, -1]];
+    const SIDES = ['top', 'right', 'bottom', 'left'];
+
+    // Puzzles from the original Through the Woods, each checked by an
+    // exhaustive path solver. Keys are '<road tiles>-<0, or 1 when the
+    // rabbit also needs a road home>'. A puzzle lists the house cell, its
+    // door sides, Red's cell, the rabbit's cell (or null), the trees, the
+    // tiles to place and one known solution (used by the 💡 hint).
+    const LEVELS = {"1-0":[{"house":[2,1],"doors":[2,3],"red":[3,3],"wolf":null,"trees":[[0,1],[0,2],[1,2]],"pieces":["violet"],"solution":[{"id":"violet","r":3,"c":1,"o":0}]},{"house":[2,3],"doors":[3,0],"red":[1,1],"wolf":null,"trees":[[0,0],[2,0],[3,2]],"pieces":["forget"],"solution":[{"id":"forget","r":1,"c":2,"o":1}]},{"house":[3,1],"doors":[3,0],"red":[1,2],"wolf":null,"trees":[[0,3],[2,0],[3,3]],"pieces":["forget"],"solution":[{"id":"forget","r":2,"c":1,"o":0}]},{"house":[0,3],"doors":[2,3],"red":[2,2],"wolf":null,"trees":[[0,1],[0,2],[3,2]],"pieces":["violet"],"solution":[{"id":"violet","r":1,"c":3,"o":3}]},{"house":[1,1],"doors":[0,1],"red":[2,1],"wolf":null,"trees":[[1,3],[2,0],[3,2]],"pieces":["rose"],"solution":[{"id":"rose","r":1,"c":2,"o":3}]},{"house":[0,1],"doors":[3,0],"red":[1,1],"wolf":null,"trees":[[1,2],[1,3],[3,3]],"pieces":["rose"],"solution":[{"id":"rose","r":0,"c":0,"o":1}]},{"house":[2,0],"doors":[0,1],"red":[2,3],"wolf":null,"trees":[[1,1],[1,3],[3,1]],"pieces":["sun"],"solution":[{"id":"sun","r":2,"c":1,"o":0}]},{"house":[3,3],"doors":[0,1],"red":[3,2],"wolf":null,"trees":[[0,2],[2,1],[3,0]],"pieces":["rose"],"solution":[{"id":"rose","r":2,"c":2,"o":2}]},{"house":[3,2],"doors":[0,1],"red":[0,2],"wolf":null,"trees":[[0,3],[1,0],[2,0]],"pieces":["sun"],"solution":[{"id":"sun","r":1,"c":2,"o":1}]},{"house":[3,3],"doors":[3,0],"red":[3,0],"wolf":null,"trees":[[1,3],[2,0],[2,3]],"pieces":["sun"],"solution":[{"id":"sun","r":3,"c":1,"o":0}]},{"house":[0,3],"doors":[2,3],"red":[1,1],"wolf":null,"trees":[[0,1],[2,1],[2,2]],"pieces":["poppy"],"solution":[{"id":"poppy","r":1,"c":2,"o":0}]},{"house":[2,2],"doors":[2,3],"red":[2,3],"wolf":null,"trees":[[0,0],[1,1],[3,1]],"pieces":["rose"],"solution":[{"id":"rose","r":3,"c":2,"o":0}]},{"house":[1,3],"doors":[2,3],"red":[1,2],"wolf":null,"trees":[[1,0],[1,1],[2,0]],"pieces":["rose"],"solution":[{"id":"rose","r":2,"c":2,"o":0}]},{"house":[0,1],"doors":[1,2],"red":[1,3],"wolf":null,"trees":[[0,2],[2,0],[2,2]],"pieces":["violet"],"solution":[{"id":"violet","r":1,"c":1,"o":0}]},{"house":[2,3],"doors":[2,3],"red":[3,3],"wolf":null,"trees":[[1,1],[1,2],[3,1]],"pieces":["rose"],"solution":[{"id":"rose","r":2,"c":2,"o":1}]},{"house":[0,0],"doors":[2,3],"red":[0,1],"wolf":null,"trees":[[1,2],[2,2],[3,2]],"pieces":["rose"],"solution":[{"id":"rose","r":1,"c":0,"o":0}]},{"house":[3,3],"doors":[3,0],"red":[0,3],"wolf":null,"trees":[[0,2],[2,1],[3,2]],"pieces":["sun"],"solution":[{"id":"sun","r":1,"c":3,"o":1}]},{"house":[3,2],"doors":[3,0],"red":[1,1],"wolf":null,"trees":[[0,3],[1,0],[2,1]],"pieces":["poppy"],"solution":[{"id":"poppy","r":1,"c":2,"o":3}]},{"house":[2,0],"doors":[1,2],"red":[2,3],"wolf":null,"trees":[[0,1],[0,3],[3,3]],"pieces":["sun"],"solution":[{"id":"sun","r":2,"c":1,"o":0}]},{"house":[1,2],"doors":[0,1],"red":[3,3],"wolf":null,"trees":[[0,0],[1,1],[2,0]],"pieces":["poppy"],"solution":[{"id":"poppy","r":1,"c":3,"o":3}]},{"house":[1,3],"doors":[0,1],"red":[0,1],"wolf":null,"trees":[[2,2],[2,3],[3,0]],"pieces":["violet"],"solution":[{"id":"violet","r":0,"c":2,"o":2}]},{"house":[2,1],"doors":[3,0],"red":[1,1],"wolf":null,"trees":[[1,3],[3,2],[3,3]],"pieces":["rose"],"solution":[{"id":"rose","r":1,"c":0,"o":1}]}],"2-0":[{"house":[2,1],"doors":[2,3],"red":[1,3],"wolf":null,"trees":[[0,1],[3,0],[3,1]],"pieces":["rose","sun"],"solution":[{"id":"rose","r":1,"c":0,"o":1},{"id":"sun","r":1,"c":1,"o":0}]},{"house":[2,3],"doors":[0,1],"red":[2,0],"wolf":null,"trees":[[1,0],[1,1],[3,2]],"pieces":["rose","poppy"],"solution":[{"id":"rose","r":1,"c":2,"o":2},{"id":"poppy","r":2,"c":1,"o":0}]},{"house":[1,0],"doors":[0,1],"red":[3,3],"wolf":null,"trees":[[0,0],[0,2],[2,1]],"pieces":["poppy","sun"],"solution":[{"id":"sun","r":1,"c":1,"o":0},{"id":"poppy","r":1,"c":3,"o":3}]},{"house":[2,3],"doors":[0,1],"red":[3,1],"wolf":null,"trees":[[0,0],[1,0],[3,2]],"pieces":["rose","forget"],"solution":[{"id":"rose","r":1,"c":2,"o":2},{"id":"forget","r":2,"c":1,"o":0}]},{"house":[3,2],"doors":[3,0],"red":[1,3],"wolf":null,"trees":[[0,3],[1,0],[1,2]],"pieces":["poppy","rose"],"solution":[{"id":"rose","r":2,"c":1,"o":1},{"id":"poppy","r":2,"c":2,"o":0}]},{"house":[2,1],"doors":[1,2],"red":[3,1],"wolf":null,"trees":[[0,1],[1,1],[3,0]],"pieces":["poppy","violet"],"solution":[{"id":"violet","r":2,"c":2,"o":2},{"id":"poppy","r":3,"c":2,"o":0}]},{"house":[3,0],"doors":[0,1],"red":[1,3],"wolf":null,"trees":[[0,1],[1,0],[2,0]],"pieces":["forget","poppy"],"solution":[{"id":"poppy","r":3,"c":1,"o":0},{"id":"forget","r":2,"c":2,"o":0}]},{"house":[2,0],"doors":[2,3],"red":[2,1],"wolf":null,"trees":[[0,1],[1,0],[1,3]],"pieces":["rose","violet"],"solution":[{"id":"violet","r":3,"c":0,"o":0},{"id":"rose","r":2,"c":2,"o":3}]},{"house":[3,1],"doors":[1,2],"red":[0,1],"wolf":null,"trees":[[1,2],[1,3],[3,3]],"pieces":["rose","poppy"],"solution":[{"id":"rose","r":2,"c":2,"o":3},{"id":"poppy","r":1,"c":1,"o":1}]},{"house":[2,2],"doors":[3,0],"red":[0,1],"wolf":null,"trees":[[1,0],[2,0],[3,1]],"pieces":["violet","forget"],"solution":[{"id":"forget","r":1,"c":2,"o":0},{"id":"violet","r":0,"c":2,"o":2}]},{"house":[1,0],"doors":[0,1],"red":[1,3],"wolf":null,"trees":[[1,2],[3,0],[3,2]],"pieces":["violet","poppy"],"solution":[{"id":"poppy","r":0,"c":0,"o":2},{"id":"violet","r":0,"c":2,"o":2}]},{"house":[3,2],"doors":[0,1],"red":[2,2],"wolf":null,"trees":[[0,0],[2,1],[3,0]],"pieces":["rose","violet"],"solution":[{"id":"violet","r":2,"c":3,"o":3},{"id":"rose","r":1,"c":2,"o":2}]},{"house":[2,0],"doors":[1,2],"red":[1,2],"wolf":null,"trees":[[0,1],[1,1],[3,2]],"pieces":["rose","sun"],"solution":[{"id":"sun","r":2,"c":1,"o":0},{"id":"rose","r":1,"c":3,"o":3}]},{"house":[3,2],"doors":[1,2],"red":[3,1],"wolf":null,"trees":[[1,2],[2,0],[3,0]],"pieces":["poppy","rose"],"solution":[{"id":"rose","r":2,"c":3,"o":3},{"id":"poppy","r":2,"c":1,"o":2}]},{"house":[2,2],"doors":[3,0],"red":[0,1],"wolf":null,"trees":[[1,3],[3,2],[3,3]],"pieces":["forget","violet"],"solution":[{"id":"violet","r":2,"c":0,"o":0},{"id":"forget","r":1,"c":0,"o":0}]},{"house":[2,2],"doors":[0,1],"red":[3,2],"wolf":null,"trees":[[0,0],[0,2],[0,3]],"pieces":["rose","violet"],"solution":[{"id":"rose","r":1,"c":2,"o":2},{"id":"violet","r":2,"c":3,"o":3}]},{"house":[2,0],"doors":[1,2],"red":[1,0],"wolf":null,"trees":[[1,2],[2,3],[3,3]],"pieces":["rose","poppy"],"solution":[{"id":"rose","r":3,"c":0,"o":0},{"id":"poppy","r":1,"c":1,"o":3}]},{"house":[3,0],"doors":[1,2],"red":[1,3],"wolf":null,"trees":[[0,1],[2,2],[3,3]],"pieces":["violet","poppy"],"solution":[{"id":"violet","r":2,"c":1,"o":3},{"id":"poppy","r":1,"c":1,"o":2}]},{"house":[0,3],"doors":[2,3],"red":[1,1],"wolf":null,"trees":[[1,3],[3,0],[3,3]],"pieces":["rose","violet"],"solution":[{"id":"violet","r":0,"c":2,"o":1},{"id":"rose","r":2,"c":1,"o":0}]},{"house":[2,1],"doors":[0,1],"red":[0,0],"wolf":null,"trees":[[2,0],[3,0],[3,2]],"pieces":["rose","forget"],"solution":[{"id":"rose","r":1,"c":2,"o":3},{"id":"forget","r":0,"c":1,"o":1}]},{"house":[1,0],"doors":[1,2],"red":[2,2],"wolf":null,"trees":[[3,0],[3,1],[3,3]],"pieces":["sun","rose"],"solution":[{"id":"sun","r":1,"c":1,"o":0},{"id":"rose","r":1,"c":3,"o":3}]},{"house":[3,3],"doors":[3,0],"red":[0,3],"wolf":null,"trees":[[1,0],[1,1],[3,0]],"pieces":["violet","rose"],"solution":[{"id":"rose","r":2,"c":2,"o":1},{"id":"violet","r":1,"c":3,"o":3}]}],"3-0":[{"house":[2,0],"doors":[2,3],"red":[0,1],"wolf":null,"trees":[[0,0],[0,3],[1,3]],"pieces":["poppy","forget","rose"],"solution":[{"id":"rose","r":3,"c":0,"o":0},{"id":"forget","r":2,"c":1,"o":0},{"id":"poppy","r":0,"c":2,"o":3}]},{"house":[1,1],"doors":[0,1],"red":[3,0],"wolf":null,"trees":[[3,1],[3,2],[3,3]],"pieces":["sun","rose","poppy"],"solution":[{"id":"rose","r":0,"c":2,"o":3},{"id":"poppy","r":0,"c":0,"o":2},{"id":"sun","r":1,"c":0,"o":1}]},{"house":[3,0],"doors":[0,1],"red":[2,2],"wolf":null,"trees":[[0,3],[3,1],[3,2]],"pieces":["violet","sun","rose"],"solution":[{"id":"violet","r":1,"c":0,"o":1},{"id":"sun","r":1,"c":1,"o":0},{"id":"rose","r":1,"c":3,"o":3}]},{"house":[2,2],"doors":[3,0],"red":[1,0],"wolf":null,"trees":[[0,0],[2,3],[3,0]],"pieces":["violet","poppy","rose"],"solution":[{"id":"poppy","r":0,"c":2,"o":3},{"id":"violet","r":0,"c":1,"o":1},{"id":"rose","r":2,"c":0,"o":0}]},{"house":[1,0],"doors":[0,1],"red":[3,3],"wolf":null,"trees":[[1,1],[2,0],[3,0]],"pieces":["violet","poppy","sun"],"solution":[{"id":"poppy","r":0,"c":0,"o":2},{"id":"violet","r":0,"c":2,"o":2},{"id":"sun","r":1,"c":3,"o":1}]},{"house":[2,2],"doors":[3,0],"red":[0,1],"wolf":null,"trees":[[0,0],[0,3],[2,3]],"pieces":["violet","poppy","rose"],"solution":[{"id":"violet","r":2,"c":0,"o":0},{"id":"poppy","r":1,"c":0,"o":2},{"id":"rose","r":0,"c":2,"o":3}]},{"house":[3,2],"doors":[0,1],"red":[2,0],"wolf":null,"trees":[[0,1],[0,2],[0,3]],"pieces":["forget","poppy","violet"],"solution":[{"id":"forget","r":2,"c":2,"o":0},{"id":"violet","r":1,"c":2,"o":2},{"id":"poppy","r":1,"c":0,"o":2}]},{"house":[2,2],"doors":[2,3],"red":[0,3],"wolf":null,"trees":[[1,2],[2,3],[3,1]],"pieces":["sun","forget","rose"],"solution":[{"id":"forget","r":1,"c":1,"o":1},{"id":"rose","r":0,"c":0,"o":1},{"id":"sun","r":0,"c":1,"o":0}]},{"house":[1,1],"doors":[2,3],"red":[0,3],"wolf":null,"trees":[[1,2],[1,3],[3,0]],"pieces":["violet","rose","sun"],"solution":[{"id":"rose","r":2,"c":0,"o":0},{"id":"violet","r":0,"c":0,"o":1},{"id":"sun","r":0,"c":1,"o":0}]},{"house":[2,1],"doors":[3,0],"red":[1,3],"wolf":null,"trees":[[0,0],[0,2],[2,2]],"pieces":["sun","violet","rose"],"solution":[{"id":"rose","r":2,"c":0,"o":1},{"id":"sun","r":3,"c":1,"o":0},{"id":"violet","r":2,"c":3,"o":3}]},{"house":[1,0],"doors":[1,2],"red":[0,2],"wolf":null,"trees":[[0,0],[1,3],[2,0]],"pieces":["rose","poppy","sun"],"solution":[{"id":"poppy","r":1,"c":1,"o":3},{"id":"rose","r":3,"c":1,"o":0},{"id":"sun","r":1,"c":2,"o":1}]},{"house":[1,3],"doors":[3,0],"red":[3,2],"wolf":null,"trees":[[0,0],[3,1],[3,3]],"pieces":["rose","violet","sun"],"solution":[{"id":"sun","r":1,"c":1,"o":0},{"id":"rose","r":1,"c":0,"o":1},{"id":"violet","r":2,"c":1,"o":2}]},{"house":[3,2],"doors":[0,1],"red":[2,0],"wolf":null,"trees":[[0,3],[1,3],[2,1]],"pieces":["poppy","rose","forget"],"solution":[{"id":"rose","r":2,"c":3,"o":3},{"id":"forget","r":1,"c":2,"o":1},{"id":"poppy","r":1,"c":0,"o":2}]},{"house":[0,3],"doors":[3,0],"red":[3,1],"wolf":null,"trees":[[2,1],[2,2],[2,3]],"pieces":["sun","violet","poppy"],"solution":[{"id":"sun","r":0,"c":1,"o":0},{"id":"violet","r":0,"c":0,"o":1},{"id":"poppy","r":2,"c":0,"o":1}]},{"house":[0,2],"doors":[1,2],"red":[1,0],"wolf":null,"trees":[[2,1],[3,0],[3,1]],"pieces":["poppy","rose","violet"],"solution":[{"id":"poppy","r":0,"c":3,"o":3},{"id":"rose","r":2,"c":2,"o":0},{"id":"violet","r":1,"c":1,"o":2}]},{"house":[2,1],"doors":[0,1],"red":[3,3],"wolf":null,"trees":[[2,0],[2,2],[3,2]],"pieces":["forget","rose","sun"],"solution":[{"id":"forget","r":1,"c":1,"o":0},{"id":"rose","r":0,"c":2,"o":2},{"id":"sun","r":1,"c":3,"o":1}]},{"house":[3,2],"doors":[0,1],"red":[0,0],"wolf":null,"trees":[[0,1],[0,3],[3,1]],"pieces":["poppy","rose","sun"],"solution":[{"id":"rose","r":2,"c":3,"o":3},{"id":"sun","r":2,"c":1,"o":0},{"id":"poppy","r":1,"c":0,"o":1}]},{"house":[3,1],"doors":[3,0],"red":[0,3],"wolf":null,"trees":[[0,2],[1,0],[1,1]],"pieces":["forget","rose","poppy"],"solution":[{"id":"rose","r":2,"c":0,"o":1},{"id":"poppy","r":2,"c":1,"o":0},{"id":"forget","r":1,"c":2,"o":0}]},{"house":[0,3],"doors":[3,0],"red":[0,0],"wolf":null,"trees":[[1,0],[1,3],[2,3]],"pieces":["poppy","rose","violet"],"solution":[{"id":"violet","r":0,"c":2,"o":1},{"id":"rose","r":2,"c":1,"o":0},{"id":"poppy","r":0,"c":1,"o":3}]},{"house":[1,0],"doors":[0,1],"red":[2,2],"wolf":null,"trees":[[2,1],[3,2],[3,3]],"pieces":["violet","poppy","forget"],"solution":[{"id":"poppy","r":0,"c":0,"o":2},{"id":"violet","r":0,"c":2,"o":2},{"id":"forget","r":1,"c":2,"o":0}]},{"house":[2,1],"doors":[3,0],"red":[3,3],"wolf":null,"trees":[[0,2],[2,2],[3,0]],"pieces":["sun","rose","poppy"],"solution":[{"id":"rose","r":1,"c":0,"o":1},{"id":"sun","r":1,"c":1,"o":0},{"id":"poppy","r":1,"c":3,"o":3}]},{"house":[1,0],"doors":[0,1],"red":[1,3],"wolf":null,"trees":[[0,1],[3,0],[3,1]],"pieces":["forget","violet","rose"],"solution":[{"id":"forget","r":1,"c":1,"o":1},{"id":"violet","r":1,"c":2,"o":3},{"id":"rose","r":0,"c":2,"o":2}]}],"4-0":[{"house":[3,3],"doors":[0,1],"red":[1,0],"wolf":null,"trees":[[2,2],[3,0],[3,2]],"pieces":["forget","poppy","violet","rose"],"solution":[{"id":"poppy","r":1,"c":3,"o":3},{"id":"forget","r":0,"c":2,"o":1},{"id":"violet","r":0,"c":1,"o":1},{"id":"rose","r":2,"c":0,"o":0}]},{"house":[2,1],"doors":[3,0],"red":[0,2],"wolf":null,"trees":[[0,0],[1,0],[1,2]],"pieces":["rose","violet","poppy","sun"],"solution":[{"id":"rose","r":2,"c":0,"o":1},{"id":"sun","r":3,"c":1,"o":0},{"id":"violet","r":2,"c":3,"o":3},{"id":"poppy","r":0,"c":3,"o":3}]},{"house":[2,1],"doors":[2,3],"red":[0,2],"wolf":null,"trees":[[1,0],[1,2],[2,2]],"pieces":["sun","poppy","rose","violet"],"solution":[{"id":"rose","r":2,"c":0,"o":1},{"id":"sun","r":3,"c":1,"o":0},{"id":"violet","r":2,"c":3,"o":3},{"id":"poppy","r":0,"c":3,"o":3}]},{"house":[2,0],"doors":[1,2],"red":[0,1],"wolf":null,"trees":[[1,0],[2,2],[3,0]],"pieces":["violet","poppy","forget","sun"],"solution":[{"id":"forget","r":2,"c":1,"o":1},{"id":"poppy","r":3,"c":2,"o":0},{"id":"sun","r":1,"c":3,"o":1},{"id":"violet","r":0,"c":2,"o":2}]},{"house":[1,2],"doors":[1,2],"red":[0,2],"wolf":null,"trees":[[1,3],[2,3],[3,2]],"pieces":["forget","poppy","rose","sun"],"solution":[{"id":"forget","r":2,"c":1,"o":0},{"id":"rose","r":3,"c":0,"o":0},{"id":"sun","r":1,"c":0,"o":1},{"id":"poppy","r":0,"c":0,"o":2}]},{"house":[1,3],"doors":[2,3],"red":[2,3],"wolf":null,"trees":[[0,2],[0,3],[3,0]],"pieces":["rose","forget","poppy","sun"],"solution":[{"id":"sun","r":1,"c":1,"o":0},{"id":"rose","r":1,"c":0,"o":1},{"id":"forget","r":2,"c":1,"o":1},{"id":"poppy","r":3,"c":2,"o":0}]},{"house":[2,1],"doors":[3,0],"red":[2,2],"wolf":null,"trees":[[0,3],[3,0],[3,1]],"pieces":["rose","poppy","forget","violet"],"solution":[{"id":"violet","r":0,"c":1,"o":1},{"id":"forget","r":0,"c":2,"o":1},{"id":"poppy","r":1,"c":3,"o":3},{"id":"rose","r":3,"c":2,"o":0}]},{"house":[3,0],"doors":[0,1],"red":[0,2],"wolf":null,"trees":[[0,0],[2,0],[3,3]],"pieces":["violet","rose","poppy","forget"],"solution":[{"id":"poppy","r":3,"c":1,"o":0},{"id":"forget","r":2,"c":2,"o":0},{"id":"violet","r":1,"c":2,"o":2},{"id":"rose","r":0,"c":1,"o":1}]},{"house":[0,0],"doors":[2,3],"red":[2,3],"wolf":null,"trees":[[0,2],[1,3],[3,3]],"pieces":["rose","forget","violet","sun"],"solution":[{"id":"sun","r":1,"c":0,"o":1},{"id":"rose","r":3,"c":0,"o":0},{"id":"violet","r":1,"c":1,"o":1},{"id":"forget","r":1,"c":2,"o":1}]},{"house":[2,2],"doors":[3,0],"red":[1,2],"wolf":null,"trees":[[3,0],[3,1],[3,2]],"pieces":["violet","poppy","forget","rose"],"solution":[{"id":"violet","r":2,"c":0,"o":0},{"id":"forget","r":1,"c":0,"o":0},{"id":"poppy","r":0,"c":1,"o":2},{"id":"rose","r":0,"c":3,"o":3}]},{"house":[3,1],"doors":[3,0],"red":[3,2],"wolf":null,"trees":[[0,0],[0,3],[2,1]],"pieces":["rose","sun","forget","poppy"],"solution":[{"id":"poppy","r":2,"c":0,"o":1},{"id":"forget","r":1,"c":0,"o":0},{"id":"rose","r":0,"c":1,"o":2},{"id":"sun","r":1,"c":2,"o":1}]},{"house":[1,0],"doors":[1,2],"red":[1,1],"wolf":null,"trees":[[0,1],[0,2],[1,3]],"pieces":["sun","violet","rose","poppy"],"solution":[{"id":"poppy","r":2,"c":0,"o":1},{"id":"sun","r":3,"c":1,"o":0},{"id":"rose","r":2,"c":3,"o":3},{"id":"violet","r":2,"c":1,"o":0}]},{"house":[2,3],"doors":[3,0],"red":[2,0],"wolf":null,"trees":[[0,0],[3,2],[3,3]],"pieces":["violet","forget","rose","poppy"],"solution":[{"id":"poppy","r":0,"c":3,"o":3},{"id":"violet","r":0,"c":2,"o":1},{"id":"forget","r":2,"c":1,"o":0},{"id":"rose","r":3,"c":0,"o":0}]},{"house":[1,1],"doors":[2,3],"red":[3,2],"wolf":null,"trees":[[2,0],[2,2],[3,0]],"pieces":["violet","rose","sun","poppy"],"solution":[{"id":"rose","r":0,"c":0,"o":1},{"id":"sun","r":0,"c":1,"o":0},{"id":"poppy","r":0,"c":3,"o":3},{"id":"violet","r":2,"c":3,"o":3}]},{"house":[1,2],"doors":[2,3],"red":[1,1],"wolf":null,"trees":[[0,2],[0,3],[3,0]],"pieces":["forget","violet","poppy","rose"],"solution":[{"id":"violet","r":2,"c":2,"o":3},{"id":"forget","r":2,"c":1,"o":1},{"id":"poppy","r":1,"c":0,"o":1},{"id":"rose","r":0,"c":0,"o":2}]},{"house":[3,1],"doors":[0,1],"red":[0,3],"wolf":null,"trees":[[1,3],[2,3],[3,2]],"pieces":["violet","forget","sun","rose"],"solution":[{"id":"forget","r":2,"c":1,"o":0},{"id":"violet","r":1,"c":1,"o":2},{"id":"rose","r":0,"c":0,"o":1},{"id":"sun","r":0,"c":1,"o":0}]},{"house":[0,2],"doors":[3,0],"red":[2,1],"wolf":null,"trees":[[1,1],[1,2],[3,3]],"pieces":["poppy","rose","sun","violet"],"solution":[{"id":"poppy","r":0,"c":0,"o":2},{"id":"sun","r":1,"c":0,"o":1},{"id":"violet","r":3,"c":0,"o":0},{"id":"rose","r":2,"c":2,"o":3}]},{"house":[2,2],"doors":[2,3],"red":[1,2],"wolf":null,"trees":[[3,0],[3,2],[3,3]],"pieces":["violet","forget","rose","poppy"],"solution":[{"id":"violet","r":2,"c":0,"o":0},{"id":"forget","r":1,"c":0,"o":0},{"id":"poppy","r":0,"c":1,"o":2},{"id":"rose","r":0,"c":3,"o":3}]},{"house":[1,1],"doors":[2,3],"red":[0,3],"wolf":null,"trees":[[0,2],[1,2],[3,0]],"pieces":["forget","sun","rose","poppy"],"solution":[{"id":"rose","r":1,"c":0,"o":1},{"id":"forget","r":2,"c":1,"o":1},{"id":"poppy","r":3,"c":2,"o":0},{"id":"sun","r":1,"c":3,"o":1}]},{"house":[1,1],"doors":[0,1],"red":[3,2],"wolf":null,"trees":[[1,3],[2,1],[3,3]],"pieces":["rose","violet","sun","poppy"],"solution":[{"id":"rose","r":0,"c":2,"o":3},{"id":"poppy","r":0,"c":0,"o":2},{"id":"sun","r":1,"c":0,"o":1},{"id":"violet","r":3,"c":0,"o":0}]},{"house":[2,1],"doors":[0,1],"red":[0,2],"wolf":null,"trees":[[0,3],[1,2],[1,3]],"pieces":["rose","violet","sun","poppy"],"solution":[{"id":"rose","r":2,"c":2,"o":3},{"id":"violet","r":3,"c":0,"o":0},{"id":"sun","r":1,"c":0,"o":1},{"id":"poppy","r":0,"c":0,"o":2}]},{"house":[3,2],"doors":[1,2],"red":[1,1],"wolf":null,"trees":[[2,0],[2,2],[3,0]],"pieces":["poppy","sun","rose","violet"],"solution":[{"id":"violet","r":2,"c":3,"o":3},{"id":"poppy","r":0,"c":3,"o":3},{"id":"sun","r":0,"c":1,"o":0},{"id":"rose","r":0,"c":0,"o":1}]}],"5-0":[{"house":[3,2],"doors":[1,2],"red":[2,2],"wolf":null,"trees":[[2,0],[3,0],[3,1]],"pieces":["rose","violet","forget","poppy","sun"],"solution":[{"id":"violet","r":2,"c":3,"o":3},{"id":"poppy","r":0,"c":3,"o":3},{"id":"sun","r":0,"c":1,"o":0},{"id":"rose","r":0,"c":0,"o":1},{"id":"forget","r":1,"c":1,"o":1}]},{"house":[3,3],"doors":[3,0],"red":[1,0],"wolf":null,"trees":[[0,1],[2,2],[3,2]],"pieces":["rose","violet","sun","forget","poppy"],"solution":[{"id":"sun","r":1,"c":3,"o":1},{"id":"rose","r":0,"c":2,"o":2},{"id":"forget","r":1,"c":1,"o":0},{"id":"violet","r":2,"c":1,"o":3},{"id":"poppy","r":2,"c":0,"o":1}]},{"house":[0,0],"doors":[1,2],"red":[1,2],"wolf":null,"trees":[[1,0],[3,0],[3,3]],"pieces":["poppy","forget","rose","sun","violet"],"solution":[{"id":"sun","r":0,"c":1,"o":0},{"id":"poppy","r":0,"c":3,"o":3},{"id":"forget","r":2,"c":2,"o":0},{"id":"rose","r":3,"c":1,"o":0},{"id":"violet","r":1,"c":1,"o":1}]},{"house":[2,1],"doors":[3,0],"red":[2,0],"wolf":null,"trees":[[0,1],[1,0],[2,2]],"pieces":["forget","violet","sun","poppy","rose"],"solution":[{"id":"forget","r":1,"c":1,"o":0},{"id":"rose","r":0,"c":2,"o":2},{"id":"sun","r":1,"c":3,"o":1},{"id":"poppy","r":3,"c":2,"o":0},{"id":"violet","r":3,"c":0,"o":0}]},{"house":[0,1],"doors":[2,3],"red":[1,1],"wolf":null,"trees":[[0,3],[1,3],[2,1]],"pieces":["forget","rose","poppy","violet","sun"],"solution":[{"id":"violet","r":0,"c":0,"o":1},{"id":"poppy","r":2,"c":0,"o":1},{"id":"sun","r":3,"c":1,"o":0},{"id":"rose","r":2,"c":3,"o":3},{"id":"forget","r":1,"c":2,"o":1}]},{"house":[3,1],"doors":[0,1],"red":[2,3],"wolf":null,"trees":[[2,0],[3,0],[3,2]],"pieces":["poppy","sun","rose","forget","violet"],"solution":[{"id":"forget","r":2,"c":1,"o":0},{"id":"violet","r":1,"c":1,"o":2},{"id":"rose","r":0,"c":0,"o":1},{"id":"sun","r":0,"c":1,"o":0},{"id":"poppy","r":0,"c":3,"o":3}]},{"house":[3,2],"doors":[3,0],"red":[1,1],"wolf":null,"trees":[[1,2],[3,0],[3,1]],"pieces":["rose","forget","violet","poppy","sun"],"solution":[{"id":"forget","r":2,"c":2,"o":0},{"id":"poppy","r":0,"c":3,"o":3},{"id":"sun","r":0,"c":1,"o":0},{"id":"violet","r":0,"c":0,"o":1},{"id":"rose","r":2,"c":0,"o":0}]},{"house":[3,2],"doors":[0,1],"red":[1,1],"wolf":null,"trees":[[1,2],[3,1],[3,3]],"pieces":["sun","forget","rose","violet","poppy"],"solution":[{"id":"forget","r":2,"c":2,"o":0},{"id":"poppy","r":0,"c":3,"o":3},{"id":"sun","r":0,"c":1,"o":0},{"id":"violet","r":0,"c":0,"o":1},{"id":"rose","r":2,"c":0,"o":0}]},{"house":[3,2],"doors":[3,0],"red":[2,2],"wolf":null,"trees":[[0,3],[2,1],[3,3]],"pieces":["poppy","violet","forget","sun","rose"],"solution":[{"id":"violet","r":3,"c":0,"o":0},{"id":"sun","r":1,"c":0,"o":1},{"id":"poppy","r":0,"c":0,"o":2},{"id":"forget","r":0,"c":2,"o":1},{"id":"rose","r":1,"c":3,"o":3}]},{"house":[3,0],"doors":[1,2],"red":[0,2],"wolf":null,"trees":[[0,3],[2,0],[2,1]],"pieces":["rose","violet","poppy","forget","sun"],"solution":[{"id":"sun","r":3,"c":1,"o":0},{"id":"rose","r":2,"c":3,"o":3},{"id":"forget","r":1,"c":2,"o":1},{"id":"violet","r":1,"c":0,"o":0},{"id":"poppy","r":0,"c":0,"o":2}]},{"house":[1,0],"doors":[1,2],"red":[3,1],"wolf":null,"trees":[[0,0],[2,0],[3,0]],"pieces":["violet","rose","sun","poppy","forget"],"solution":[{"id":"forget","r":1,"c":1,"o":1},{"id":"violet","r":1,"c":2,"o":3},{"id":"rose","r":0,"c":2,"o":2},{"id":"sun","r":1,"c":3,"o":1},{"id":"poppy","r":3,"c":2,"o":0}]},{"house":[0,1],"doors":[3,0],"red":[1,1],"wolf":null,"trees":[[0,2],[1,3],[2,1]],"pieces":["forget","sun","violet","rose","poppy"],"solution":[{"id":"violet","r":0,"c":0,"o":1},{"id":"poppy","r":2,"c":0,"o":1},{"id":"sun","r":3,"c":1,"o":0},{"id":"rose","r":2,"c":3,"o":3},{"id":"forget","r":1,"c":2,"o":1}]},{"house":[0,2],"doors":[3,0],"red":[3,0],"wolf":null,"trees":[[0,3],[1,3],[2,1]],"pieces":["poppy","violet","forget","rose","sun"],"solution":[{"id":"poppy","r":0,"c":0,"o":2},{"id":"violet","r":1,"c":0,"o":0},{"id":"forget","r":1,"c":2,"o":1},{"id":"rose","r":2,"c":3,"o":3},{"id":"sun","r":3,"c":1,"o":0}]},{"house":[2,1],"doors":[0,1],"red":[2,0],"wolf":null,"trees":[[0,0],[0,1],[1,0]],"pieces":["rose","poppy","forget","violet","sun"],"solution":[{"id":"forget","r":1,"c":1,"o":0},{"id":"rose","r":0,"c":2,"o":2},{"id":"sun","r":1,"c":3,"o":1},{"id":"poppy","r":3,"c":2,"o":0},{"id":"violet","r":3,"c":0,"o":0}]},{"house":[2,3],"doors":[3,0],"red":[0,0],"wolf":null,"trees":[[0,1],[1,1],[3,2]],"pieces":["forget","sun","violet","rose","poppy"],"solution":[{"id":"poppy","r":0,"c":3,"o":3},{"id":"violet","r":0,"c":2,"o":1},{"id":"forget","r":2,"c":1,"o":0},{"id":"rose","r":3,"c":0,"o":0},{"id":"sun","r":1,"c":0,"o":1}]},{"house":[3,2],"doors":[3,0],"red":[2,2],"wolf":null,"trees":[[1,1],[2,1],[3,3]],"pieces":["sun","violet","forget","poppy","rose"],"solution":[{"id":"violet","r":3,"c":0,"o":0},{"id":"sun","r":1,"c":0,"o":1},{"id":"poppy","r":0,"c":0,"o":2},{"id":"forget","r":0,"c":2,"o":1},{"id":"rose","r":1,"c":3,"o":3}]},{"house":[1,2],"doors":[3,0],"red":[2,0],"wolf":null,"trees":[[0,0],[1,0],[3,0]],"pieces":["sun","rose","poppy","forget","violet"],"solution":[{"id":"rose","r":0,"c":1,"o":1},{"id":"violet","r":0,"c":2,"o":2},{"id":"sun","r":1,"c":3,"o":1},{"id":"poppy","r":3,"c":2,"o":0},{"id":"forget","r":2,"c":1,"o":1}]},{"house":[3,2],"doors":[0,1],"red":[1,1],"wolf":null,"trees":[[3,0],[3,1],[3,3]],"pieces":["violet","rose","poppy","forget","sun"],"solution":[{"id":"forget","r":2,"c":2,"o":0},{"id":"poppy","r":0,"c":3,"o":3},{"id":"sun","r":0,"c":1,"o":0},{"id":"violet","r":0,"c":0,"o":1},{"id":"rose","r":2,"c":0,"o":0}]},{"house":[3,3],"doors":[0,1],"red":[1,0],"wolf":null,"trees":[[0,0],[0,1],[2,2]],"pieces":["sun","violet","rose","forget","poppy"],"solution":[{"id":"sun","r":1,"c":3,"o":1},{"id":"rose","r":0,"c":2,"o":2},{"id":"forget","r":1,"c":1,"o":0},{"id":"violet","r":2,"c":1,"o":3},{"id":"poppy","r":2,"c":0,"o":1}]},{"house":[3,1],"doors":[1,2],"red":[1,0],"wolf":null,"trees":[[0,0],[2,0],[3,0]],"pieces":["rose","sun","forget","poppy","violet"],"solution":[{"id":"poppy","r":3,"c":2,"o":0},{"id":"sun","r":1,"c":3,"o":1},{"id":"rose","r":0,"c":2,"o":2},{"id":"violet","r":1,"c":2,"o":3},{"id":"forget","r":1,"c":1,"o":1}]},{"house":[1,3],"doors":[3,0],"red":[2,1],"wolf":null,"trees":[[0,3],[2,3],[3,3]],"pieces":["violet","forget","rose","sun","poppy"],"solution":[{"id":"forget","r":0,"c":2,"o":1},{"id":"poppy","r":0,"c":0,"o":2},{"id":"sun","r":1,"c":0,"o":1},{"id":"violet","r":3,"c":0,"o":0},{"id":"rose","r":2,"c":2,"o":3}]},{"house":[3,0],"doors":[0,1],"red":[0,2],"wolf":null,"trees":[[1,3],[2,0],[2,1]],"pieces":["violet","sun","forget","poppy","rose"],"solution":[{"id":"sun","r":3,"c":1,"o":0},{"id":"rose","r":2,"c":3,"o":3},{"id":"forget","r":1,"c":2,"o":1},{"id":"violet","r":1,"c":0,"o":0},{"id":"poppy","r":0,"c":0,"o":2}]}],"2-1":[{"house":[1,1],"doors":[1,2],"red":[0,3],"wolf":[3,0],"trees":[[0,1],[2,3],[3,2]],"pieces":["forget","poppy"],"solution":[{"id":"poppy","r":1,"c":2,"o":0},{"id":"forget","r":2,"c":0,"o":0}]},{"house":[1,2],"doors":[0,1],"red":[0,0],"wolf":[3,3],"trees":[[0,3],[1,0],[3,2]],"pieces":["violet","poppy"],"solution":[{"id":"violet","r":0,"c":1,"o":2},{"id":"poppy","r":1,"c":3,"o":3}]},{"house":[2,1],"doors":[2,3],"red":[2,2],"wolf":[0,0],"trees":[[1,1],[1,2],[2,3]],"pieces":["rose","poppy"],"solution":[{"id":"rose","r":3,"c":1,"o":0},{"id":"poppy","r":1,"c":0,"o":1}]},{"house":[2,2],"doors":[2,3],"red":[2,3],"wolf":[3,0],"trees":[[0,3],[1,1],[1,2]],"pieces":["rose","poppy"],"solution":[{"id":"rose","r":3,"c":2,"o":0},{"id":"poppy","r":2,"c":0,"o":2}]},{"house":[3,1],"doors":[0,1],"red":[3,0],"wolf":[1,2],"trees":[[0,0],[0,1],[1,0]],"pieces":["rose","violet"],"solution":[{"id":"rose","r":2,"c":0,"o":2},{"id":"violet","r":2,"c":2,"o":3}]},{"house":[1,3],"doors":[3,0],"red":[1,0],"wolf":[0,1],"trees":[[0,0],[2,0],[3,3]],"pieces":["sun","violet"],"solution":[{"id":"sun","r":1,"c":1,"o":0},{"id":"violet","r":0,"c":2,"o":2}]},{"house":[1,2],"doors":[3,0],"red":[0,0],"wolf":[1,3],"trees":[[2,3],[3,0],[3,1]],"pieces":["violet","rose"],"solution":[{"id":"violet","r":1,"c":0,"o":0},{"id":"rose","r":0,"c":2,"o":2}]},{"house":[0,1],"doors":[1,2],"red":[1,3],"wolf":[0,0],"trees":[[0,3],[2,1],[3,0]],"pieces":["forget","rose"],"solution":[{"id":"forget","r":0,"c":2,"o":1},{"id":"rose","r":1,"c":0,"o":0}]},{"house":[2,0],"doors":[0,1],"red":[0,1],"wolf":[1,2],"trees":[[0,0],[0,2],[3,0]],"pieces":["poppy","forget"],"solution":[{"id":"forget","r":1,"c":0,"o":0},{"id":"poppy","r":2,"c":1,"o":0}]},{"house":[1,2],"doors":[2,3],"red":[1,3],"wolf":[2,0],"trees":[[0,0],[0,3],[3,1]],"pieces":["rose","poppy"],"solution":[{"id":"rose","r":2,"c":2,"o":0},{"id":"poppy","r":1,"c":0,"o":2}]},{"house":[2,1],"doors":[3,0],"red":[3,1],"wolf":[0,2],"trees":[[0,0],[0,1],[3,2]],"pieces":["rose","forget"],"solution":[{"id":"rose","r":2,"c":0,"o":1},{"id":"forget","r":1,"c":1,"o":0}]},{"house":[1,2],"doors":[1,2],"red":[0,2],"wolf":[3,1],"trees":[[0,0],[1,0],[3,3]],"pieces":["forget","rose"],"solution":[{"id":"rose","r":0,"c":3,"o":3},{"id":"forget","r":2,"c":1,"o":0}]},{"house":[2,1],"doors":[1,2],"red":[1,3],"wolf":[3,3],"trees":[[0,2],[1,0],[3,0]],"pieces":["violet","poppy"],"solution":[{"id":"poppy","r":2,"c":2,"o":0},{"id":"violet","r":3,"c":1,"o":0}]},{"house":[1,0],"doors":[0,1],"red":[0,2],"wolf":[1,3],"trees":[[2,1],[3,0],[3,2]],"pieces":["poppy","sun"],"solution":[{"id":"poppy","r":0,"c":0,"o":2},{"id":"sun","r":1,"c":1,"o":0}]},{"house":[1,0],"doors":[1,2],"red":[1,3],"wolf":[2,2],"trees":[[0,1],[0,3],[3,1]],"pieces":["sun","violet"],"solution":[{"id":"sun","r":1,"c":1,"o":0},{"id":"violet","r":2,"c":0,"o":0}]},{"house":[3,1],"doors":[0,1],"red":[0,1],"wolf":[1,2],"trees":[[0,2],[1,3],[2,0]],"pieces":["violet","sun"],"solution":[{"id":"sun","r":1,"c":1,"o":1},{"id":"violet","r":2,"c":2,"o":3}]},{"house":[1,2],"doors":[2,3],"red":[3,3],"wolf":[0,0],"trees":[[1,3],[2,0],[3,0]],"pieces":["violet","poppy"],"solution":[{"id":"poppy","r":2,"c":2,"o":1},{"id":"violet","r":1,"c":0,"o":0}]},{"house":[2,0],"doors":[1,2],"red":[1,0],"wolf":[3,2],"trees":[[0,0],[0,1],[0,2]],"pieces":["violet","rose"],"solution":[{"id":"rose","r":1,"c":1,"o":3},{"id":"violet","r":3,"c":0,"o":0}]},{"house":[2,3],"doors":[3,0],"red":[2,0],"wolf":[1,1],"trees":[[0,0],[1,0],[3,2]],"pieces":["sun","violet"],"solution":[{"id":"sun","r":2,"c":1,"o":0},{"id":"violet","r":1,"c":2,"o":2}]},{"house":[0,2],"doors":[2,3],"red":[2,1],"wolf":[1,0],"trees":[[0,3],[3,0],[3,1]],"pieces":["forget","poppy"],"solution":[{"id":"forget","r":1,"c":1,"o":0},{"id":"poppy","r":0,"c":0,"o":2}]},{"house":[2,1],"doors":[1,2],"red":[3,3],"wolf":[2,0],"trees":[[0,0],[0,2],[2,3]],"pieces":["forget","rose"],"solution":[{"id":"forget","r":2,"c":2,"o":1},{"id":"rose","r":3,"c":0,"o":0}]},{"house":[3,3],"doors":[3,0],"red":[2,1],"wolf":[1,2],"trees":[[0,0],[0,3],[1,1]],"pieces":["poppy","forget"],"solution":[{"id":"forget","r":2,"c":2,"o":1},{"id":"poppy","r":1,"c":3,"o":3}]}],"3-1":[{"house":[1,2],"doors":[0,1],"red":[2,0],"wolf":[3,3],"trees":[[0,3],[1,0],[2,2]],"pieces":["poppy","violet","rose"],"solution":[{"id":"rose","r":0,"c":1,"o":2},{"id":"violet","r":1,"c":1,"o":3},{"id":"poppy","r":1,"c":3,"o":3}]},{"house":[2,1],"doors":[0,1],"red":[0,2],"wolf":[3,3],"trees":[[1,0],[2,0],[3,0]],"pieces":["forget","poppy","rose"],"solution":[{"id":"poppy","r":1,"c":1,"o":2},{"id":"rose","r":0,"c":3,"o":3},{"id":"forget","r":2,"c":2,"o":1}]},{"house":[3,2],"doors":[3,0],"red":[0,0],"wolf":[0,2],"trees":[[0,1],[1,3],[3,3]],"pieces":["sun","forget","poppy"],"solution":[{"id":"forget","r":2,"c":1,"o":1},{"id":"poppy","r":1,"c":0,"o":1},{"id":"sun","r":1,"c":2,"o":1}]},{"house":[1,0],"doors":[1,2],"red":[3,3],"wolf":[3,1],"trees":[[0,1],[1,3],[3,2]],"pieces":["violet","poppy","forget"],"solution":[{"id":"forget","r":1,"c":1,"o":1},{"id":"violet","r":2,"c":2,"o":2},{"id":"poppy","r":2,"c":0,"o":1}]},{"house":[3,1],"doors":[0,1],"red":[0,3],"wolf":[1,2],"trees":[[1,0],[3,0],[3,3]],"pieces":["poppy","violet","sun"],"solution":[{"id":"sun","r":1,"c":1,"o":1},{"id":"poppy","r":0,"c":1,"o":2},{"id":"violet","r":2,"c":2,"o":3}]},{"house":[3,3],"doors":[3,0],"red":[3,0],"wolf":[0,3],"trees":[[0,0],[1,0],[3,1]],"pieces":["poppy","sun","forget"],"solution":[{"id":"forget","r":2,"c":2,"o":1},{"id":"poppy","r":2,"c":0,"o":2},{"id":"sun","r":1,"c":3,"o":1}]},{"house":[3,3],"doors":[3,0],"red":[3,0],"wolf":[1,2],"trees":[[0,2],[0,3],[1,1]],"pieces":["poppy","rose","violet"],"solution":[{"id":"violet","r":3,"c":1,"o":0},{"id":"rose","r":2,"c":0,"o":2},{"id":"poppy","r":1,"c":3,"o":3}]},{"house":[0,1],"doors":[1,2],"red":[1,3],"wolf":[3,1],"trees":[[0,0],[0,3],[2,0]],"pieces":["rose","sun","poppy"],"solution":[{"id":"poppy","r":0,"c":2,"o":3},{"id":"rose","r":2,"c":2,"o":0},{"id":"sun","r":1,"c":1,"o":1}]},{"house":[0,3],"doors":[2,3],"red":[1,1],"wolf":[0,0],"trees":[[2,0],[2,3],[3,3]],"pieces":["rose","forget","sun"],"solution":[{"id":"forget","r":1,"c":2,"o":0},{"id":"rose","r":2,"c":1,"o":0},{"id":"sun","r":0,"c":1,"o":0}]},{"house":[3,1],"doors":[0,1],"red":[1,0],"wolf":[1,2],"trees":[[0,2],[2,0],[3,0]],"pieces":["sun","violet","rose"],"solution":[{"id":"sun","r":1,"c":1,"o":1},{"id":"rose","r":0,"c":0,"o":2},{"id":"violet","r":2,"c":2,"o":3}]},{"house":[3,2],"doors":[3,0],"red":[0,2],"wolf":[1,3],"trees":[[0,3],[1,0],[2,0]],"pieces":["forget","poppy","violet"],"solution":[{"id":"poppy","r":2,"c":1,"o":1},{"id":"violet","r":0,"c":1,"o":1},{"id":"forget","r":2,"c":2,"o":0}]},{"house":[0,2],"doors":[1,2],"red":[3,2],"wolf":[2,1],"trees":[[0,0],[0,1],[1,0]],"pieces":["forget","poppy","violet"],"solution":[{"id":"poppy","r":0,"c":3,"o":3},{"id":"violet","r":2,"c":3,"o":3},{"id":"forget","r":1,"c":1,"o":0}]},{"house":[1,3],"doors":[2,3],"red":[2,1],"wolf":[0,3],"trees":[[0,0],[1,0],[1,1]],"pieces":["rose","violet","forget"],"solution":[{"id":"violet","r":2,"c":3,"o":3},{"id":"forget","r":2,"c":2,"o":1},{"id":"rose","r":0,"c":2,"o":1}]},{"house":[3,3],"doors":[3,0],"red":[1,0],"wolf":[0,3],"trees":[[2,0],[2,1],[3,1]],"pieces":["poppy","violet","sun"],"solution":[{"id":"poppy","r":2,"c":2,"o":1},{"id":"violet","r":1,"c":1,"o":2},{"id":"sun","r":1,"c":3,"o":1}]},{"house":[0,1],"doors":[1,2],"red":[3,3],"wolf":[2,2],"trees":[[0,0],[1,0],[3,2]],"pieces":["poppy","sun","violet"],"solution":[{"id":"violet","r":0,"c":2,"o":2},{"id":"sun","r":1,"c":3,"o":1},{"id":"poppy","r":1,"c":1,"o":1}]},{"house":[1,1],"doors":[0,1],"red":[3,0],"wolf":[2,3],"trees":[[0,3],[2,1],[3,3]],"pieces":["sun","violet","rose"],"solution":[{"id":"rose","r":0,"c":0,"o":2},{"id":"sun","r":1,"c":0,"o":1},{"id":"violet","r":1,"c":2,"o":2}]},{"house":[1,0],"doors":[0,1],"red":[1,3],"wolf":[2,0],"trees":[[0,3],[2,3],[3,1]],"pieces":["rose","poppy","forget"],"solution":[{"id":"poppy","r":0,"c":0,"o":2},{"id":"forget","r":0,"c":2,"o":1},{"id":"rose","r":1,"c":1,"o":3}]},{"house":[1,0],"doors":[1,2],"red":[3,3],"wolf":[3,1],"trees":[[0,0],[0,3],[1,2]],"pieces":["violet","forget","poppy"],"solution":[{"id":"forget","r":1,"c":1,"o":1},{"id":"violet","r":2,"c":2,"o":2},{"id":"poppy","r":2,"c":0,"o":1}]},{"house":[2,2],"doors":[1,2],"red":[0,1],"wolf":[3,0],"trees":[[0,3],[1,0],[1,1]],"pieces":["rose","poppy","forget"],"solution":[{"id":"rose","r":1,"c":3,"o":3},{"id":"forget","r":0,"c":2,"o":1},{"id":"poppy","r":3,"c":1,"o":0}]},{"house":[0,0],"doors":[1,2],"red":[3,2],"wolf":[3,0],"trees":[[0,2],[0,3],[2,1]],"pieces":["poppy","sun","forget"],"solution":[{"id":"forget","r":0,"c":1,"o":1},{"id":"poppy","r":1,"c":2,"o":3},{"id":"sun","r":1,"c":0,"o":1}]},{"house":[0,3],"doors":[2,3],"red":[3,3],"wolf":[1,1],"trees":[[0,0],[1,0],[2,1]],"pieces":["violet","poppy","rose"],"solution":[{"id":"violet","r":1,"c":3,"o":3},{"id":"rose","r":2,"c":2,"o":1},{"id":"poppy","r":0,"c":1,"o":2}]},{"house":[3,0],"doors":[0,1],"red":[0,0],"wolf":[2,2],"trees":[[0,2],[1,3],[2,1]],"pieces":["poppy","rose","violet"],"solution":[{"id":"violet","r":1,"c":0,"o":1},{"id":"rose","r":0,"c":1,"o":3},{"id":"poppy","r":3,"c":1,"o":0}]}],"4-1":[{"house":[3,2],"doors":[3,0],"red":[2,0],"wolf":[0,0],"trees":[[0,3],[3,0],[3,3]],"pieces":["poppy","rose","sun","violet"],"solution":[{"id":"poppy","r":2,"c":1,"o":1},{"id":"rose","r":1,"c":0,"o":2},{"id":"sun","r":1,"c":2,"o":1},{"id":"violet","r":0,"c":1,"o":2}]},{"house":[2,0],"doors":[0,1],"red":[1,2],"wolf":[3,2],"trees":[[2,3],[3,1],[3,3]],"pieces":["rose","poppy","forget","violet"],"solution":[{"id":"forget","r":1,"c":0,"o":0},{"id":"poppy","r":0,"c":1,"o":2},{"id":"rose","r":0,"c":3,"o":3},{"id":"violet","r":2,"c":1,"o":2}]},{"house":[2,2],"doors":[2,3],"red":[1,2],"wolf":[0,1],"trees":[[0,0],[0,3],[3,0]],"pieces":["poppy","forget","violet","rose"],"solution":[{"id":"rose","r":3,"c":2,"o":0},{"id":"poppy","r":1,"c":3,"o":3},{"id":"violet","r":2,"c":0,"o":0},{"id":"forget","r":1,"c":0,"o":0}]},{"house":[1,1],"doors":[0,1],"red":[3,0],"wolf":[0,3],"trees":[[0,2],[3,1],[3,3]],"pieces":["rose","sun","violet","forget"],"solution":[{"id":"rose","r":0,"c":0,"o":2},{"id":"sun","r":1,"c":0,"o":1},{"id":"forget","r":1,"c":2,"o":1},{"id":"violet","r":1,"c":3,"o":3}]},{"house":[1,0],"doors":[0,1],"red":[1,3],"wolf":[3,1],"trees":[[1,2],[2,0],[3,0]],"pieces":["forget","rose","poppy","violet"],"solution":[{"id":"poppy","r":0,"c":0,"o":2},{"id":"violet","r":0,"c":2,"o":2},{"id":"forget","r":1,"c":1,"o":1},{"id":"rose","r":2,"c":2,"o":3}]},{"house":[3,2],"doors":[3,0],"red":[0,0],"wolf":[1,1],"trees":[[0,3],[3,0],[3,3]],"pieces":["forget","sun","poppy","rose"],"solution":[{"id":"forget","r":2,"c":1,"o":1},{"id":"poppy","r":1,"c":0,"o":1},{"id":"sun","r":1,"c":2,"o":1},{"id":"rose","r":0,"c":1,"o":2}]},{"house":[3,3],"doors":[3,0],"red":[2,1],"wolf":[0,1],"trees":[[0,3],[1,0],[1,1]],"pieces":["sun","forget","poppy","rose"],"solution":[{"id":"sun","r":3,"c":1,"o":0},{"id":"rose","r":2,"c":0,"o":1},{"id":"poppy","r":1,"c":3,"o":3},{"id":"forget","r":0,"c":2,"o":1}]},{"house":[3,2],"doors":[3,0],"red":[0,0],"wolf":[0,2],"trees":[[1,1],[3,0],[3,3]],"pieces":["violet","forget","rose","poppy"],"solution":[{"id":"forget","r":2,"c":1,"o":1},{"id":"poppy","r":1,"c":0,"o":1},{"id":"violet","r":1,"c":2,"o":1},{"id":"rose","r":0,"c":3,"o":3}]},{"house":[3,2],"doors":[3,0],"red":[0,0],"wolf":[0,2],"trees":[[0,1],[1,1],[1,2]],"pieces":["poppy","forget","violet","sun"],"solution":[{"id":"violet","r":3,"c":0,"o":0},{"id":"sun","r":1,"c":0,"o":1},{"id":"forget","r":2,"c":2,"o":0},{"id":"poppy","r":0,"c":3,"o":3}]},{"house":[2,2],"doors":[2,3],"red":[0,1],"wolf":[1,0],"trees":[[1,2],[2,0],[3,0]],"pieces":["sun","violet","forget","rose"],"solution":[{"id":"rose","r":3,"c":2,"o":0},{"id":"sun","r":1,"c":3,"o":1},{"id":"violet","r":0,"c":2,"o":2},{"id":"forget","r":1,"c":1,"o":1}]},{"house":[0,2],"doors":[2,3],"red":[3,2],"wolf":[1,0],"trees":[[0,3],[2,0],[3,0]],"pieces":["forget","violet","poppy","rose"],"solution":[{"id":"forget","r":1,"c":1,"o":0},{"id":"violet","r":2,"c":1,"o":0},{"id":"rose","r":2,"c":3,"o":3},{"id":"poppy","r":0,"c":0,"o":2}]},{"house":[1,3],"doors":[2,3],"red":[2,1],"wolf":[1,0],"trees":[[0,1],[0,2],[0,3]],"pieces":["rose","poppy","sun","forget"],"solution":[{"id":"forget","r":2,"c":2,"o":0},{"id":"poppy","r":3,"c":1,"o":0},{"id":"rose","r":2,"c":0,"o":1},{"id":"sun","r":1,"c":1,"o":0}]},{"house":[0,3],"doors":[2,3],"red":[3,3],"wolf":[2,0],"trees":[[2,1],[2,3],[3,0]],"pieces":["forget","violet","poppy","sun"],"solution":[{"id":"forget","r":1,"c":2,"o":0},{"id":"poppy","r":2,"c":2,"o":1},{"id":"sun","r":0,"c":1,"o":0},{"id":"violet","r":0,"c":0,"o":1}]},{"house":[2,3],"doors":[3,0],"red":[2,0],"wolf":[0,0],"trees":[[0,3],[1,0],[3,2]],"pieces":["poppy","rose","forget","violet"],"solution":[{"id":"poppy","r":2,"c":1,"o":2},{"id":"rose","r":3,"c":0,"o":0},{"id":"violet","r":1,"c":2,"o":2},{"id":"forget","r":0,"c":1,"o":1}]},{"house":[0,0],"doors":[1,2],"red":[2,1],"wolf":[3,0],"trees":[[0,2],[1,3],[3,3]],"pieces":["forget","rose","sun","poppy"],"solution":[{"id":"forget","r":0,"c":1,"o":1},{"id":"poppy","r":1,"c":2,"o":3},{"id":"rose","r":3,"c":1,"o":0},{"id":"sun","r":1,"c":0,"o":1}]},{"house":[2,0],"doors":[0,1],"red":[0,3],"wolf":[3,2],"trees":[[0,0],[3,0],[3,1]],"pieces":["rose","sun","forget","poppy"],"solution":[{"id":"forget","r":1,"c":0,"o":0},{"id":"poppy","r":0,"c":1,"o":2},{"id":"sun","r":2,"c":1,"o":0},{"id":"rose","r":2,"c":3,"o":3}]},{"house":[0,3],"doors":[2,3],"red":[2,2],"wolf":[2,0],"trees":[[1,0],[3,0],[3,1]],"pieces":["poppy","violet","sun","rose"],"solution":[{"id":"sun","r":1,"c":3,"o":1},{"id":"rose","r":3,"c":2,"o":0},{"id":"poppy","r":0,"c":1,"o":2},{"id":"violet","r":1,"c":1,"o":3}]},{"house":[1,1],"doors":[0,1],"red":[3,0],"wolf":[3,2],"trees":[[0,2],[2,1],[3,1]],"pieces":["forget","rose","sun","violet"],"solution":[{"id":"rose","r":0,"c":0,"o":2},{"id":"sun","r":1,"c":0,"o":1},{"id":"violet","r":1,"c":2,"o":2},{"id":"forget","r":2,"c":2,"o":0}]},{"house":[2,1],"doors":[0,1],"red":[3,3],"wolf":[3,1],"trees":[[0,0],[0,3],[2,0]],"pieces":["rose","violet","poppy","forget"],"solution":[{"id":"violet","r":0,"c":1,"o":1},{"id":"forget","r":0,"c":2,"o":1},{"id":"poppy","r":1,"c":3,"o":3},{"id":"rose","r":2,"c":2,"o":3}]},{"house":[0,3],"doors":[2,3],"red":[3,3],"wolf":[3,1],"trees":[[0,0],[1,0],[2,0]],"pieces":["poppy","sun","violet","rose"],"solution":[{"id":"violet","r":1,"c":3,"o":3},{"id":"rose","r":2,"c":2,"o":1},{"id":"poppy","r":0,"c":1,"o":2},{"id":"sun","r":1,"c":1,"o":1}]},{"house":[0,3],"doors":[2,3],"red":[3,3],"wolf":[1,1],"trees":[[2,0],[2,1],[2,3]],"pieces":["poppy","forget","rose","sun"],"solution":[{"id":"forget","r":1,"c":2,"o":0},{"id":"poppy","r":2,"c":2,"o":1},{"id":"sun","r":0,"c":1,"o":0},{"id":"rose","r":0,"c":0,"o":1}]},{"house":[2,1],"doors":[3,0],"red":[1,3],"wolf":[0,0],"trees":[[0,2],[0,3],[2,2]],"pieces":["violet","sun","poppy","rose"],"solution":[{"id":"rose","r":2,"c":0,"o":1},{"id":"sun","r":3,"c":1,"o":0},{"id":"violet","r":2,"c":3,"o":3},{"id":"poppy","r":0,"c":1,"o":3}]}],"5-1":[{"house":[0,2],"doors":[2,3],"red":[3,0],"wolf":[1,0],"trees":[[0,3],[1,3],[2,0]],"pieces":["forget","poppy","violet","sun","rose"],"solution":[{"id":"forget","r":1,"c":1,"o":0},{"id":"violet","r":2,"c":1,"o":0},{"id":"rose","r":2,"c":3,"o":3},{"id":"sun","r":3,"c":1,"o":0},{"id":"poppy","r":0,"c":0,"o":2}]},{"house":[1,0],"doors":[1,2],"red":[3,3],"wolf":[3,1],"trees":[[0,0],[0,1],[3,2]],"pieces":["sun","rose","violet","forget","poppy"],"solution":[{"id":"forget","r":1,"c":1,"o":1},{"id":"violet","r":1,"c":2,"o":3},{"id":"rose","r":0,"c":2,"o":2},{"id":"sun","r":1,"c":3,"o":1},{"id":"poppy","r":2,"c":0,"o":1}]},{"house":[1,2],"doors":[2,3],"red":[1,3],"wolf":[0,0],"trees":[[0,2],[0,3],[1,0]],"pieces":["rose","violet","poppy","sun","forget"],"solution":[{"id":"poppy","r":2,"c":1,"o":0},{"id":"rose","r":2,"c":0,"o":1},{"id":"sun","r":3,"c":1,"o":0},{"id":"violet","r":2,"c":3,"o":3},{"id":"forget","r":0,"c":1,"o":1}]},{"house":[2,1],"doors":[1,2],"red":[0,0],"wolf":[2,0],"trees":[[1,0],[1,1],[1,2]],"pieces":["poppy","forget","sun","rose","violet"],"solution":[{"id":"forget","r":2,"c":2,"o":1},{"id":"violet","r":2,"c":3,"o":3},{"id":"poppy","r":0,"c":3,"o":3},{"id":"sun","r":0,"c":1,"o":0},{"id":"rose","r":3,"c":0,"o":0}]},{"house":[2,2],"doors":[0,1],"red":[1,0],"wolf":[3,0],"trees":[[1,1],[2,0],[2,1]],"pieces":["sun","violet","poppy","rose","forget"],"solution":[{"id":"forget","r":1,"c":2,"o":0},{"id":"violet","r":0,"c":2,"o":2},{"id":"poppy","r":0,"c":0,"o":2},{"id":"rose","r":2,"c":3,"o":3},{"id":"sun","r":3,"c":1,"o":0}]},{"house":[0,0],"doors":[1,2],"red":[3,2],"wolf":[3,0],"trees":[[0,2],[0,3],[3,3]],"pieces":["sun","violet","forget","poppy","rose"],"solution":[{"id":"forget","r":0,"c":1,"o":1},{"id":"violet","r":1,"c":2,"o":2},{"id":"poppy","r":2,"c":2,"o":0},{"id":"rose","r":2,"c":1,"o":1},{"id":"sun","r":1,"c":0,"o":1}]},{"house":[1,1],"doors":[2,3],"red":[2,3],"wolf":[0,3],"trees":[[1,2],[1,3],[2,2]],"pieces":["poppy","violet","rose","sun","forget"],"solution":[{"id":"forget","r":2,"c":0,"o":0},{"id":"violet","r":3,"c":0,"o":0},{"id":"poppy","r":3,"c":2,"o":0},{"id":"rose","r":0,"c":0,"o":1},{"id":"sun","r":0,"c":1,"o":0}]},{"house":[2,2],"doors":[0,1],"red":[3,0],"wolf":[3,2],"trees":[[1,1],[2,1],[3,1]],"pieces":["sun","poppy","violet","forget","rose"],"solution":[{"id":"forget","r":1,"c":2,"o":0},{"id":"violet","r":0,"c":2,"o":2},{"id":"poppy","r":0,"c":0,"o":2},{"id":"sun","r":1,"c":0,"o":1},{"id":"rose","r":2,"c":3,"o":3}]},{"house":[1,3],"doors":[3,0],"red":[2,3],"wolf":[0,1],"trees":[[0,0],[2,2],[3,0]],"pieces":["rose","sun","forget","poppy","violet"],"solution":[{"id":"sun","r":1,"c":1,"o":0},{"id":"rose","r":1,"c":0,"o":1},{"id":"forget","r":2,"c":1,"o":1},{"id":"poppy","r":3,"c":2,"o":0},{"id":"violet","r":0,"c":2,"o":2}]},{"house":[2,3],"doors":[3,0],"red":[2,0],"wolf":[0,0],"trees":[[1,0],[3,2],[3,3]],"pieces":["rose","forget","poppy","sun","violet"],"solution":[{"id":"forget","r":1,"c":2,"o":1},{"id":"violet","r":1,"c":1,"o":1},{"id":"rose","r":3,"c":0,"o":0},{"id":"poppy","r":0,"c":3,"o":3},{"id":"sun","r":0,"c":1,"o":0}]},{"house":[1,2],"doors":[3,0],"red":[3,1],"wolf":[3,3],"trees":[[2,1],[2,2],[3,2]],"pieces":["rose","forget","violet","sun","poppy"],"solution":[{"id":"forget","r":0,"c":1,"o":1},{"id":"violet","r":0,"c":0,"o":1},{"id":"poppy","r":2,"c":0,"o":1},{"id":"rose","r":0,"c":2,"o":2},{"id":"sun","r":1,"c":3,"o":1}]},{"house":[3,1],"doors":[0,1],"red":[0,1],"wolf":[0,3],"trees":[[0,2],[2,0],[3,0]],"pieces":["sun","violet","rose","forget","poppy"],"solution":[{"id":"forget","r":2,"c":1,"o":0},{"id":"violet","r":1,"c":1,"o":2},{"id":"rose","r":0,"c":0,"o":1},{"id":"poppy","r":3,"c":2,"o":0},{"id":"sun","r":1,"c":3,"o":1}]},{"house":[1,3],"doors":[2,3],"red":[2,1],"wolf":[0,1],"trees":[[0,0],[0,3],[2,2]],"pieces":["forget","violet","rose","poppy","sun"],"solution":[{"id":"violet","r":2,"c":3,"o":3},{"id":"sun","r":3,"c":1,"o":0},{"id":"poppy","r":2,"c":0,"o":1},{"id":"rose","r":1,"c":0,"o":2},{"id":"forget","r":0,"c":2,"o":1}]},{"house":[2,0],"doors":[0,1],"red":[1,2],"wolf":[2,3],"trees":[[1,1],[2,2],[3,0]],"pieces":["rose","forget","violet","poppy","sun"],"solution":[{"id":"violet","r":0,"c":0,"o":1},{"id":"sun","r":0,"c":1,"o":0},{"id":"rose","r":0,"c":3,"o":3},{"id":"forget","r":2,"c":1,"o":1},{"id":"poppy","r":3,"c":2,"o":0}]},{"house":[3,2],"doors":[3,0],"red":[1,3],"wolf":[3,3],"trees":[[0,3],[1,1],[2,1]],"pieces":["forget","poppy","rose","sun","violet"],"solution":[{"id":"violet","r":3,"c":0,"o":0},{"id":"sun","r":1,"c":0,"o":1},{"id":"poppy","r":0,"c":0,"o":2},{"id":"forget","r":0,"c":2,"o":1},{"id":"rose","r":2,"c":2,"o":2}]},{"house":[1,1],"doors":[1,2],"red":[0,1],"wolf":[3,0],"trees":[[0,0],[1,0],[3,1]],"pieces":["violet","sun","poppy","rose","forget"],"solution":[{"id":"poppy","r":1,"c":2,"o":3},{"id":"rose","r":3,"c":2,"o":0},{"id":"sun","r":1,"c":3,"o":1},{"id":"violet","r":0,"c":2,"o":2},{"id":"forget","r":2,"c":0,"o":0}]},{"house":[2,2],"doors":[3,0],"red":[3,2],"wolf":[0,3],"trees":[[0,2],[2,3],[3,3]],"pieces":["rose","violet","sun","poppy","forget"],"solution":[{"id":"poppy","r":1,"c":1,"o":1},{"id":"rose","r":0,"c":0,"o":2},{"id":"sun","r":1,"c":0,"o":1},{"id":"violet","r":3,"c":0,"o":0},{"id":"forget","r":1,"c":2,"o":0}]},{"house":[2,3],"doors":[3,0],"red":[0,0],"wolf":[0,2],"trees":[[0,1],[3,2],[3,3]],"pieces":["sun","violet","poppy","rose","forget"],"solution":[{"id":"forget","r":1,"c":2,"o":1},{"id":"violet","r":1,"c":1,"o":1},{"id":"rose","r":3,"c":0,"o":0},{"id":"sun","r":1,"c":0,"o":1},{"id":"poppy","r":0,"c":3,"o":3}]},{"house":[2,0],"doors":[1,2],"red":[1,0],"wolf":[3,2],"trees":[[0,3],[1,1],[3,3]],"pieces":["forget","violet","poppy","rose","sun"],"solution":[{"id":"sun","r":2,"c":1,"o":0},{"id":"rose","r":1,"c":3,"o":3},{"id":"forget","r":0,"c":2,"o":1},{"id":"poppy","r":0,"c":0,"o":2},{"id":"violet","r":3,"c":0,"o":0}]},{"house":[3,3],"doors":[3,0],"red":[0,1],"wolf":[0,3],"trees":[[0,0],[3,0],[3,1]],"pieces":["forget","violet","poppy","rose","sun"],"solution":[{"id":"forget","r":2,"c":2,"o":1},{"id":"violet","r":2,"c":0,"o":0},{"id":"poppy","r":1,"c":0,"o":2},{"id":"rose","r":0,"c":2,"o":3},{"id":"sun","r":1,"c":3,"o":1}]},{"house":[1,3],"doors":[3,0],"red":[2,3],"wolf":[0,1],"trees":[[0,0],[2,2],[3,0]],"pieces":["sun","forget","poppy","rose","violet"],"solution":[{"id":"sun","r":1,"c":1,"o":0},{"id":"rose","r":1,"c":0,"o":1},{"id":"forget","r":2,"c":1,"o":1},{"id":"poppy","r":3,"c":2,"o":0},{"id":"violet","r":0,"c":2,"o":2}]},{"house":[1,2],"doors":[3,0],"red":[3,1],"wolf":[3,3],"trees":[[2,1],[2,2],[3,2]],"pieces":["rose","sun","forget","poppy","violet"],"solution":[{"id":"forget","r":0,"c":1,"o":1},{"id":"violet","r":0,"c":0,"o":1},{"id":"poppy","r":2,"c":0,"o":1},{"id":"rose","r":0,"c":2,"o":2},{"id":"sun","r":1,"c":3,"o":1}]}]};
+
+    // The cells and road ends of tile `id` turned clockwise `o` quarter
+    // turns, normalized so its top-left cell is (0, 0).
+    function shapeOf(id, o) {
+      o = ((o % 4) + 4) % 4;
+      const pts = [[0, 0], [0, 1]].map(([r, c]) => {
+        for (let i = 0; i < o; i++) [r, c] = [c, -r];
+        return [r, c];
+      });
+      const minR = Math.min(...pts.map(q => q[0])), minC = Math.min(...pts.map(q => q[1]));
+      const cells = pts.map(([r, c]) => ({ r: r - minR + 0, c: c - minC + 0 }));
+      return {
+        cells,
+        ports: PIECES[id].ports.map(d => (d + o) % 4),
+        rows: Math.max(...cells.map(q => q.r)) + 1,
+        cols: Math.max(...cells.map(q => q.c)) + 1
+      };
+    }
+
+    // A road through one square, from side a to side b, in a 100×100 box.
+    // Opposite sides make a straight road; neighbours make a curve.
+    function roadPath(a, b) {
+      const mid = [[50, 0], [100, 50], [50, 100], [0, 50]], p = mid[a], q = mid[b];
+      if ((a + 2) % 4 === b) return `M${p[0]} ${p[1]} L${q[0]} ${q[1]}`;
+      const near = (pt) => [pt[0] + (50 - pt[0]) * 0.46, pt[1] + (50 - pt[1]) * 0.46];
+      return `M${p.join(' ')} L${near(p).join(' ')} Q50 50 ${near(q).join(' ')} L${q.join(' ')}`;
+    }
+
+    const ART = {
+      tree: `<svg viewBox="0 0 100 100" aria-hidden="true"><ellipse cx="50" cy="93" rx="32" ry="6" fill="#294c3a" opacity=".18"/><rect x="43" y="65" width="14" height="24" rx="4" fill="#705c45"/><path d="M50 6Q42 29 23 46L37 45Q27 57 14 72Q50 88 85 72Q71 57 63 45L77 46Q56 23 50 6Z" fill="#417256" stroke="#2b5747" stroke-width="4"/><path d="M50 11Q45 34 31 44M50 34Q42 60 28 68" fill="none" stroke="#90ac7c" stroke-width="4" stroke-linecap="round" opacity=".8"/></svg>`,
+      house: `<svg viewBox="0 0 100 100" aria-hidden="true"><ellipse cx="52" cy="92" rx="35" ry="6" fill="#2e4636" opacity=".18"/><rect x="24" y="40" width="55" height="49" rx="3" fill="#efc686" stroke="#a66f48" stroke-width="3"/><path d="M14 45L52 12L90 45Z" fill="#b44c3a" stroke="#80392d" stroke-width="4" stroke-linejoin="round"/><path d="M66 22V7h13v27" fill="#be7855" stroke="#783d36" stroke-width="3"/><rect x="38" y="54" width="17" height="17" rx="2" fill="#ffebb1" stroke="#b17a55" stroke-width="3"/><path d="M46 54v17m-8-9h17" stroke="#b17a55" stroke-width="2"/><rect x="58" y="66" width="16" height="23" rx="3" fill="#864f3b"/></svg>`,
+      red: `<svg viewBox="0 0 100 100" aria-hidden="true"><ellipse cx="50" cy="91" rx="27" ry="7" fill="#344b3b" opacity=".2"/><path d="M14 81Q9 37 34 12Q49 4 65 13Q91 35 86 82Q52 94 14 81Z" fill="#b94336" stroke="#892f2c" stroke-width="4"/><ellipse cx="50" cy="49" rx="28" ry="29" fill="#f9d3ab" stroke="#d28a70" stroke-width="2"/><path d="M20 40Q27 13 50 13Q74 13 80 41Q67 31 63 24Q48 37 20 40Z" fill="#b94336"/><path d="M33 46q6 -6 12 0" fill="none" stroke="#544039" stroke-width="3" stroke-linecap="round"/><path d="M55 46q6 -6 12 0" fill="none" stroke="#544039" stroke-width="3" stroke-linecap="round"/><path d="M40 61Q50 70 61 61" fill="none" stroke="#a75c4d" stroke-width="3" stroke-linecap="round"/><circle cx="29" cy="57" r="4" fill="#e9a390" opacity=".6"/><circle cx="71" cy="57" r="4" fill="#e9a390" opacity=".6"/></svg>`,
+      rabbit: `<svg viewBox="0 0 100 100" aria-hidden="true"><ellipse cx="50" cy="94" rx="30" ry="5" fill="#334a3c" opacity=".18"/><circle cx="50" cy="49" r="41" fill="#e8eee0" stroke="#7b9b87" stroke-width="3.5"/><path d="M35 48Q26 34 27 15Q29 4 37 10Q45 17 45 46Z" fill="#f7f5eb" stroke="#a9a69c" stroke-width="2.5" stroke-linejoin="round"/><path d="M65 48Q74 34 73 15Q71 4 63 10Q55 17 55 46Z" fill="#f7f5eb" stroke="#a9a69c" stroke-width="2.5" stroke-linejoin="round"/><path d="M36 38Q32 27 32 16Q35 12 38 22Q41 33 40 39Z" fill="#e9acaa"/><path d="M64 38Q68 27 68 16Q65 12 62 22Q59 33 60 39Z" fill="#e9acaa"/><ellipse cx="50" cy="63" rx="28" ry="26" fill="#f8f6ee" stroke="#a9a69c" stroke-width="2.5"/><ellipse cx="40.5" cy="58" rx="3.3" ry="4" fill="#353934"/><ellipse cx="59.5" cy="58" rx="3.3" ry="4" fill="#353934"/><circle cx="41.3" cy="56.7" r="1" fill="#fff"/><circle cx="60.3" cy="56.7" r="1" fill="#fff"/><path d="M45 68Q50 64 55 68Q51 74 50 74Q49 74 45 68Z" fill="#c88886"/><path d="M50 74V77M50 77Q46 82 42 77M50 77Q54 82 58 77" fill="none" stroke="#867b70" stroke-width="2" stroke-linecap="round"/><ellipse cx="32" cy="72" rx="4" ry="2.3" fill="#edc3b9" opacity=".55"/><ellipse cx="68" cy="72" rx="4" ry="2.3" fill="#edc3b9" opacity=".55"/></svg>`
+    };
+
+    // --- Shared modal a11y helper (copied into each game; the suite ships no
+    // bundler). Moves focus into an opened overlay, traps Tab within it, closes
+    // on Escape, and restores focus to the opener on close (design principle 8). ---
+    const Modal = {
+      opener: null, overlay: null, onDismiss: null, handler: null,
+      focusable(el) {
+        return [...el.querySelectorAll('a[href], button:not([disabled]), input, select, textarea, [tabindex]:not([tabindex="-1"])')]
+          .filter(n => n.getClientRects().length > 0);
+      },
+      open(overlay, onDismiss) {
+        this.opener = document.activeElement;
+        this.overlay = overlay;
+        this.onDismiss = onDismiss || null;
+        const items = this.focusable(overlay);
+        (items[0] || overlay).focus({ preventScroll: true });
+        this.handler = (e) => {
+          if (e.key === 'Escape') {
+            e.preventDefault();
+            if (this.onDismiss) this.onDismiss(); else this.close();
+          } else if (e.key === 'Tab') {
+            const f = this.focusable(overlay);
+            if (!f.length) { e.preventDefault(); return; }
+            const first = f[0], last = f[f.length - 1];
+            if (e.shiftKey && (document.activeElement === first || !overlay.contains(document.activeElement))) {
+              e.preventDefault(); last.focus();
+            } else if (!e.shiftKey && (document.activeElement === last || !overlay.contains(document.activeElement))) {
+              e.preventDefault(); first.focus();
+            }
+          }
+        };
+        document.addEventListener('keydown', this.handler, true);
+      },
+      close() {
+        if (this.handler) document.removeEventListener('keydown', this.handler, true);
+        this.handler = null;
+        const opener = this.opener;
+        this.opener = this.overlay = this.onDismiss = null;
+        if (opener && opener.focus) opener.focus({ preventScroll: true });
+      }
+    };
+
+    /* ===== shared:piece-drag v1 =====
+       One set of piece controls for the toybox's grid-packing games
+       (shape-fit/ and through-the-woods/). Each game is a single
+       self-contained file, so this block is copied into both;
+       scripts/check-design.js fails CI when the copies differ.
+         drag  : the piece lifts above the finger and snaps to the nearest
+                 spot it fits, within cfg.snapRange cells
+         tap   : the piece turns 90° clockwise, pivoting on the tapped cell.
+                 A piece that can't turn wiggles instead.
+         drop on the board where it doesn't fit : flies back where it came from
+         drop anywhere else                     : flies back to its tray slot
+         keys  : Enter picks up and places, arrows move, R turns,
+                 Escape puts the piece back in the tray
+       The host game owns the rules and the look. It provides:
+         board, tray, cellEls, N, gameId, won, cfg (its CONFIG)
+         fits(p, r, c, cells = p.cells)   p's own cells never block it
+         canTurn(p), turnedCells(p), applyTurn(p)
+         onPlaced(p, how)                 how: 'drop' | 'key' | 'turn' | 'return'
+         onTray(p), describe(p), updateStatus(msg)
+         audioPickup(), audioTurn(), audioOops(), audioSwoosh()
+       Each piece p carries cells [{r, c}], rows, cols, placed ({r, c} or
+       null), el (the piece element) and slotEl (built by makeSlot). */
+    const PieceDrag = {
+      host: null,
+      drag: null,  // { p, pointerId, pointerType, startX, startY, grabX, grabY, lift, moved, from, pivot, target, x, y }
+      kb: null,    // { p, r, c, from } keyboard placement cursor
+      liftTimer: null,
+
+      init(host) { this.host = host; },
+      get cfg() { return this.host.cfg; },
+
+      reset() {
+        this.drag = null;
+        this.kb = null;
+        this.clearGhost();
+        this.host.tray.classList.remove('drop-home');
+      },
+
+      relayout() { if (this.kb) this.positionKb(); },
+
+      cellPx() { return this.host.board.getBoundingClientRect().width / this.host.N; },
+
+      /* ---------- tray slots ---------- */
+
+      makeSlot(p) {
+        const slot = document.createElement('div');
+        const el = p.el;
+        slot.className = 'slot';
+        p.slotEl = slot;
+        el.classList.add('in-tray');
+        el.tabIndex = 0;
+        el.setAttribute('role', 'button');
+        slot.appendChild(el);
+        this.layoutSlot(p);
+        el.addEventListener('pointerdown', (e) => this.onDown(e, p));
+        // The slot is a hit area too: a thin piece at tray scale can be
+        // narrower than a finger, the slot never is (cfg.minHitPx).
+        slot.addEventListener('pointerdown', (e) => {
+          if (el.parentNode === slot && !el.contains(e.target)) this.onDown(e, p);
+        });
+        el.addEventListener('pointermove', (e) => this.onMove(e));
+        el.addEventListener('pointerup', (e) => this.onUp(e));
+        el.addEventListener('pointercancel', (e) => this.onCancel(e));
+        el.addEventListener('keydown', (e) => this.onKey(e, p));
+        el.addEventListener('blur', () => { if (this.kb && this.kb.p === p) this.endKb(); });
+        return slot;
+      },
+
+      // A piece that can turn gets a square slot (its longest side both
+      // ways), so turning it in the tray never reflows the row. The piece is
+      // centred in its slot through --tray-x/--tray-y.
+      layoutSlot(p) {
+        const k = this.cfg.trayScale, min = this.cfg.minHitPx;
+        const side = this.host.canTurn(p) ? Math.max(p.rows, p.cols) : 0;
+        const w = `max(${min}px, var(--cell) * ${(side || p.cols) * k})`;
+        const h = `max(${min}px, var(--cell) * ${(side || p.rows) * k})`;
+        p.slotEl.style.width = w;
+        p.slotEl.style.height = h;
+        p.el.style.setProperty('--tray-x', `calc((${w} - var(--cell) * ${p.cols * k}) / 2)`);
+        p.el.style.setProperty('--tray-y', `calc((${h} - var(--cell) * ${p.rows * k}) / 2)`);
+      },
+
+      /* ---------- pointer: press, then tap or drag ---------- */
+
+      onDown(e, p) {
+        if (this.host.won || this.drag || p.el.classList.contains('flying')) return;
+        if (e.pointerType === 'mouse' && e.button !== 0) return;
+        e.preventDefault();
+        if (this.kb) {
+          const held = this.kb.p === p;
+          this.endKb();
+          if (held) return;
+        }
+        p.el.setPointerCapture(e.pointerId);
+        this.drag = {
+          p, pointerId: e.pointerId, pointerType: e.pointerType,
+          startX: e.clientX, startY: e.clientY, grabX: 0, grabY: 0, lift: 0,
+          moved: false, from: p.placed ? { ...p.placed } : null,
+          pivot: this.pivotAt(p, e.clientX, e.clientY), target: null, x: 0, y: 0
+        };
+        p.el.classList.add('pressed');
+      },
+
+      onMove(e) {
+        const d = this.drag;
+        if (!d || e.pointerId !== d.pointerId) return;
+        if (!d.moved) {
+          if (Math.hypot(e.clientX - d.startX, e.clientY - d.startY) <= this.cfg.tapMovePx) return;
+          this.lift(d);
+        }
+        this.position(e.clientX, e.clientY);
+        this.updateGhost();
+        this.host.tray.classList.toggle('drop-home', this.overTray(e.clientX, e.clientY));
+      },
+
+      // The press became a drag: the piece leaves its slot or board spot.
+      lift(d) {
+        const p = d.p, el = p.el, h = this.host;
+        d.moved = true;
+        el.classList.remove('pressed');
+        // A drag can't scroll the page (pointer capture + touch-action: none),
+        // so a piece picked up while the board is off screen could never be
+        // dropped. The layout keeps both on screen; this is insurance for the
+        // cramped fallback.
+        this.ensureBoardVisible();
+        // Carry by the grabbed point: the spot under the finger stays under
+        // the finger (normalized, so tray scale maps to the same spot at full
+        // size), riding liftPx above it so the hand never hides the piece. A
+        // mouse cursor hides nothing, so it gets no lift. Reading the rect
+        // after any scroll keeps the grab point honest; the clamp covers a
+        // piece that scrolled out from under the finger.
+        const rect = el.getBoundingClientRect();
+        d.grabX = Math.min(Math.max((d.startX - rect.left) / rect.width, 0), 1);
+        d.grabY = Math.min(Math.max((d.startY - rect.top) / rect.height, 0), 1);
+        d.lift = d.pointerType === 'mouse' ? 0 : this.cfg.liftPx;
+        p.placed = null;
+        p.slotEl.classList.remove('deal'); // grabbed mid-pop: kill the slot transform now
+        el.classList.remove('in-tray', 'pop');
+        el.classList.add('dragging');
+        // Ease into the lifted pose from the exact current pose (position
+        // and scale) instead of teleporting under the finger.
+        el.style.left = rect.left + 'px';
+        el.style.top = rect.top + 'px';
+        el.style.transform = `scale(${rect.width / el.offsetWidth})`;
+        void el.offsetWidth;
+        el.classList.add('lifting');
+        clearTimeout(this.liftTimer);
+        this.liftTimer = setTimeout(() => el.classList.remove('lifting'), this.cfg.liftMs);
+        el.style.transform = '';
+        h.audioPickup();
+        h.updateStatus(`Picked up the ${h.describe(p)}.`);
+      },
+
+      // The dragged piece is position:fixed at full size, so it is clamped
+      // to the viewport. The clamp applies to the logical pose d.x/d.y, so
+      // updateGhost() previews exactly the spot the drop will land in.
+      position(x, y) {
+        const d = this.drag, el = d.p.el, M = this.cfg.dragEdgePx;
+        const w = el.offsetWidth, h = el.offsetHeight;
+        d.x = Math.min(Math.max(x - d.grabX * w, M), Math.max(M, window.innerWidth - w - M));
+        d.y = Math.min(Math.max(y - d.grabY * h - d.lift, M), Math.max(M, window.innerHeight - h - M));
+        el.style.left = d.x + 'px';
+        el.style.top = d.y + 'px';
+      },
+
+      onUp(e) {
+        const d = this.drag;
+        if (!d || e.pointerId !== d.pointerId) return;
+        const p = d.p, h = this.host;
+        this.drag = null;
+        this.clearGhost();
+        p.el.classList.remove('pressed');
+        h.tray.classList.remove('drop-home');
+        if (!d.moved) { this.tap(p, d.pivot); return; }
+        // .dragging stays on until the drop resolves, so the piece keeps its
+        // fixed position meanwhile.
+        if (d.target) { this.place(p, d.target.r, d.target.c, 'drop'); return; }
+        const onBoard = !this.overTray(e.clientX, e.clientY)
+          && this.rectsOverlap(p.el.getBoundingClientRect(), h.board.getBoundingClientRect());
+        if (onBoard) {
+          h.audioOops(); // it doesn't fit there: gentle, never punitive
+          h.updateStatus(`That spot does not fit. The ${h.describe(p)} went back.`);
+          this.flyBack(p, d.from);
+        } else {
+          h.audioSwoosh();
+          h.updateStatus(`Put the ${h.describe(p)} back in the tray.`);
+          this.flyBack(p, null);
+        }
+      },
+
+      onCancel(e) {
+        const d = this.drag;
+        if (!d || e.pointerId !== d.pointerId) return;
+        this.drag = null;
+        this.clearGhost();
+        d.p.el.classList.remove('pressed');
+        this.host.tray.classList.remove('drop-home');
+        if (d.moved) this.flyBack(d.p, d.from);
+      },
+
+      /* ---------- turning ---------- */
+
+      tap(p, pivot) {
+        const h = this.host;
+        if (!h.canTurn(p)) {
+          this.shake(p);
+          h.audioOops();
+          h.updateStatus(`The ${h.describe(p)} doesn't turn. Drag it to move it.`);
+          return;
+        }
+        if (!p.placed) {
+          h.applyTurn(p);
+          this.layoutSlot(p);
+          this.spin(p);
+          h.audioTurn();
+          h.updateStatus(`Turned the ${h.describe(p)}.`);
+          h.onTray(p);
+          return;
+        }
+        const spot = this.turnSpot(p, pivot);
+        if (!spot) {
+          this.shake(p);
+          h.audioOops();
+          h.updateStatus(`No room to turn the ${h.describe(p)} here.`);
+          return;
+        }
+        h.applyTurn(p);
+        this.layoutSlot(p);
+        h.audioTurn();
+        h.updateStatus(`Turned the ${h.describe(p)}.`);
+        this.place(p, spot.r, spot.c, 'turn');
+        this.spin(p);
+      },
+
+      // Where a placed piece lands after one clockwise turn. Spots that keep
+      // the tapped cell covered come first, then the one nearest the old
+      // spot, so the piece turns in place whenever there is room.
+      turnSpot(p, pivot) {
+        const h = this.host, from = p.placed, next = h.turnedCells(p);
+        const mid = (cells) => cells.reduce((m, q) => ({
+          r: m.r + q.r / cells.length, c: m.c + q.c / cells.length
+        }), { r: 0, c: 0 });
+        const was = mid(p.cells), now = mid(next);
+        const pins = [pivot, ...p.cells.map(q => ({ r: from.r + q.r, c: from.c + q.c }))].filter(Boolean);
+        const spots = [];
+        pins.forEach((pin, rank) => next.forEach(q => {
+          const r = pin.r - q.r, c = pin.c - q.c;
+          const drift = Math.hypot(r + now.r - from.r - was.r, c + now.c - from.c - was.c);
+          spots.push({ r, c, score: (rank ? 100 : 0) + drift });
+        }));
+        spots.sort((a, b) => a.score - b.score);
+        p.placed = null; // the piece's own cells don't block its turn
+        const spot = spots.find(s => h.fits(p, s.r, s.c, next));
+        p.placed = from;
+        return spot ? { r: spot.r, c: spot.c } : null;
+      },
+
+      // One-shot quarter turn around the piece's centre, so the child sees it
+      // turn instead of jumping to the new shape (principle 10).
+      spin(p) {
+        const el = p.el;
+        if (!el.animate || matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+        const s = el.classList.contains('in-tray') ? this.cfg.trayScale : 1;
+        const cx = el.offsetWidth / 2, cy = el.offsetHeight / 2;
+        const pose = (a) => `scale(${s}) translate(${cx}px, ${cy}px) rotate(${a}deg) translate(${-cx}px, ${-cy}px)`;
+        el.animate([{ transform: pose(-90) }, { transform: pose(0) }], { duration: 200, easing: 'ease-out' });
+      },
+
+      shake(p) {
+        p.el.classList.remove('shake');
+        void p.el.offsetWidth;
+        p.el.classList.add('shake');
+      },
+
+      /* ---------- landing ---------- */
+
+      place(p, r, c, how) {
+        this.settle(p, r, c, how !== 'turn');
+        this.host.onPlaced(p, how);
+      },
+
+      settle(p, r, c, pop) {
+        const el = p.el;
+        p.placed = { r, c };
+        el.classList.remove('dragging', 'flying', 'in-tray', 'pop', 'lifting', 'pressed');
+        el.style.left = `calc(var(--cell) * ${c})`;
+        el.style.top = `calc(var(--cell) * ${r})`;
+        el.style.transform = '';
+        if (el.parentNode !== this.host.board) this.host.board.appendChild(el);
+        if (!pop) return;
+        void el.offsetWidth;
+        el.classList.add('pop');
+      },
+
+      settleInTray(p) {
+        const el = p.el;
+        p.placed = null;
+        el.classList.remove('dragging', 'flying', 'pop', 'lifting', 'pressed');
+        el.classList.add('in-tray');
+        el.style.left = el.style.top = el.style.transform = '';
+        if (el.parentNode !== p.slotEl) p.slotEl.appendChild(el);
+      },
+
+      // Flies p from wherever it is now to a board spot, or to its tray slot
+      // when spot is null. A board spot is claimed at take-off, so nothing
+      // else can be dropped there mid-flight.
+      flyBack(p, spot) {
+        const h = this.host, el = p.el;
+        p.placed = null;
+        if (spot && !h.fits(p, spot.r, spot.c)) spot = null;
+        const cur = el.getBoundingClientRect();
+        el.classList.remove('dragging', 'in-tray', 'pop', 'shake', 'lifting', 'pressed');
+        el.classList.add('flying');
+        el.style.left = cur.left + 'px';
+        el.style.top = cur.top + 'px';
+        el.style.transform = `scale(${cur.width / el.offsetWidth})`;
+        void el.offsetWidth;
+        const to = spot ? this.boardPose(spot.r, spot.c) : this.trayPose(p);
+        el.style.left = to.left + 'px';
+        el.style.top = to.top + 'px';
+        el.style.transform = `scale(${to.scale})`;
+        if (spot) p.placed = { ...spot };
+        const gen = h.gameId;
+        setTimeout(() => {
+          if (gen !== h.gameId) return;
+          if (spot) { this.settle(p, spot.r, spot.c, true); h.onPlaced(p, 'return'); }
+          else { this.settleInTray(p); h.onTray(p); }
+        }, this.cfg.flyBackMs);
+      },
+
+      trayPose(p) {
+        const t = p.slotEl.getBoundingClientRect(), k = this.cfg.trayScale, cell = this.cellPx();
+        return {
+          left: t.left + (t.width - p.cols * cell * k) / 2,
+          top: t.top + (t.height - p.rows * cell * k) / 2,
+          scale: k
+        };
+      },
+
+      boardPose(r, c) {
+        const b = this.host.board.getBoundingClientRect(), cell = b.width / this.host.N;
+        return { left: b.left + c * cell, top: b.top + r * cell, scale: 1 };
+      },
+
+      /* ---------- snap preview ---------- */
+
+      // The nearest *fitting* spot within cfg.snapRange cells of the logical
+      // drag pose, so a near miss beside an occupied region still lands.
+      updateGhost() {
+        this.clearGhost();
+        const d = this.drag;
+        if (!d) return;
+        const b = this.host.board.getBoundingClientRect(), cell = b.width / this.host.N;
+        const exactR = (d.y - b.top) / cell, exactC = (d.x - b.left) / cell;
+        let best = null, bestDist = this.cfg.snapRange;
+        for (let r = Math.round(exactR) - 1; r <= Math.round(exactR) + 1; r++) {
+          for (let c = Math.round(exactC) - 1; c <= Math.round(exactC) + 1; c++) {
+            if (!this.host.fits(d.p, r, c)) continue;
+            const dist = Math.hypot(r - exactR, c - exactC);
+            if (dist < bestDist) { bestDist = dist; best = { r, c }; }
+          }
+        }
+        d.target = best;
+        if (best) this.highlight(d.p, best.r, best.c);
+      },
+
+      highlight(p, r, c) {
+        const N = this.host.N;
+        p.cells.forEach(q => this.host.cellEls[(r + q.r) * N + (c + q.c)].classList.add('ghost'));
+      },
+
+      clearGhost() {
+        (this.host.cellEls || []).forEach(el => el.classList.remove('ghost'));
+      },
+
+      /* ---------- keyboard (parity with touch, principle 8) ---------- */
+
+      onKey(e, p) {
+        const h = this.host, key = e.key;
+        if (h.won || this.drag) return;
+        const held = this.kb && this.kb.p === p;
+        if (key === 'Enter' || key === ' ') {
+          e.preventDefault();
+          if (!held) { this.startKb(p); return; }
+          const { r, c } = this.kb;
+          if (h.fits(p, r, c)) {
+            this.kb = null;
+            this.clearGhost();
+            this.place(p, r, c, 'key');
+            p.el.focus({ preventScroll: true });
+          } else {
+            this.shake(p);
+            h.audioOops();
+          }
+        } else if (key === 'r' || key === 'R') {
+          e.preventDefault();
+          if (!held || !h.canTurn(p)) { this.tap(p, null); return; }
+          h.applyTurn(p);
+          this.layoutSlot(p);
+          this.kb.r = Math.max(0, Math.min(h.N - p.rows, this.kb.r));
+          this.kb.c = Math.max(0, Math.min(h.N - p.cols, this.kb.c));
+          this.positionKb();
+          this.spin(p);
+          h.audioTurn();
+        } else if (held && key.startsWith('Arrow')) {
+          e.preventDefault();
+          if (key === 'ArrowUp') this.kb.r--;
+          if (key === 'ArrowDown') this.kb.r++;
+          if (key === 'ArrowLeft') this.kb.c--;
+          if (key === 'ArrowRight') this.kb.c++;
+          this.kb.r = Math.max(0, Math.min(h.N - p.rows, this.kb.r));
+          this.kb.c = Math.max(0, Math.min(h.N - p.cols, this.kb.c));
+          this.positionKb();
+        } else if (held && key === 'Escape') {
+          e.preventDefault();
+          this.kb = null;
+          this.clearGhost();
+          this.flyBack(p, null);
+          h.audioSwoosh();
+          h.updateStatus(`Put the ${h.describe(p)} back in the tray.`);
+        }
+      },
+
+      // Holds p over the board: a placed piece where it sits, a tray piece at
+      // the first spot it fits.
+      startKb(p) {
+        const h = this.host, from = p.placed ? { ...p.placed } : null;
+        p.placed = null;
+        let spot = from;
+        for (let r = 0; r <= h.N - p.rows && !spot; r++) {
+          for (let c = 0; c <= h.N - p.cols && !spot; c++) {
+            if (h.fits(p, r, c)) spot = { r, c };
+          }
+        }
+        if (!spot) spot = { r: 0, c: 0 };
+        this.kb = { p, r: spot.r, c: spot.c, from };
+        p.slotEl.classList.remove('deal');
+        p.el.classList.remove('in-tray', 'pop');
+        p.el.classList.add('dragging');
+        this.positionKb();
+        h.audioPickup();
+        h.updateStatus('Arrow keys move the piece. R turns it. Enter places it. Escape puts it back.');
+      },
+
+      positionKb() {
+        const { p, r, c } = this.kb, pose = this.boardPose(r, c);
+        p.el.style.left = pose.left + 'px';
+        p.el.style.top = pose.top + 'px';
+        p.el.style.transform = '';
+        this.clearGhost();
+        if (this.host.fits(p, r, c)) this.highlight(p, r, c);
+      },
+
+      // Focus left the held piece (Tab, a click elsewhere): it goes back to
+      // where it came from.
+      endKb() {
+        if (!this.kb) return;
+        const { p, from } = this.kb;
+        this.kb = null;
+        this.clearGhost();
+        this.flyBack(p, from);
+      },
+
+      /* ---------- geometry helpers ---------- */
+
+      // The board cell of p nearest (x, y), for a piece on the board; null
+      // for a piece in the tray.
+      pivotAt(p, x, y) {
+        if (!p.placed) return null;
+        const rect = p.el.getBoundingClientRect(), cell = rect.width / p.cols;
+        const lr = (y - rect.top) / cell - 0.5, lc = (x - rect.left) / cell - 0.5;
+        let best = p.cells[0], bestDist = Infinity;
+        p.cells.forEach(q => {
+          const dist = Math.hypot(q.r - lr, q.c - lc);
+          if (dist < bestDist) { bestDist = dist; best = q; }
+        });
+        return { r: p.placed.r + best.r, c: p.placed.c + best.c };
+      },
+
+      overTray(x, y) {
+        const t = this.host.tray.getBoundingClientRect();
+        return x >= t.left && x <= t.right && y >= t.top && y <= t.bottom;
+      },
+
+      rectsOverlap(a, b) {
+        return a.left < b.right && a.right > b.left && a.top < b.bottom && a.bottom > b.top;
+      },
+
+      ensureBoardVisible() {
+        const b = this.host.board.getBoundingClientRect();
+        if (b.top < 0 || b.bottom > window.innerHeight) this.host.board.scrollIntoView({ block: 'nearest' });
+      }
+    };
+    /* ===== end shared:piece-drag v1 ===== */
+
+    const App = {
+      cfg: CONFIG,
+      N: 4,
+      size: 'easy',
+      puzzle: null,
+      pieces: [],       // { id, o, cells, ports, rows, cols, color, placed: {r,c} | null, el, slotEl }
+      cellEls: [],
+      fixed: null,      // Map 'r,c' -> 'house' | 'red' | 'rabbit' | 'tree'
+      recent: [],       // ids of the last few puzzles dealt
+      hint: null,       // the solution entry the 💡 is pointing at
+      won: false,
+      gameId: 0,
+      audioCtx: null,
+      emojiSets: [
+        ['🏡', '🌟', '🎉'],
+        ['🌲', '🐰', '🎊'],
+        ['🥳', '✨', '🌼']
+      ],
+
+      init() {
+        this.cacheDOM();
+        PieceDrag.init(this);
+        this.bindEvents();
+        document.documentElement.style.setProperty('--tray-scale', CONFIG.trayScale);
+        this.newGame(false);
+        this.setupPWA();
+      },
+
+      cacheDOM() {
+        this.board = document.getElementById('board');
+        this.gridWrap = document.querySelector('.grid-wrap');
+        this.mainEl = document.querySelector('main');
+        this.headerEl = document.querySelector('header');
+        this.tray = document.getElementById('tray');
+        this.status = document.getElementById('status');
+        this.overlay = document.getElementById('win-overlay');
+        this.helpBtn = document.getElementById('help-btn');
+        this.newGameBtn = document.getElementById('new-game');
+        this.playAgainBtn = document.getElementById('play-again');
+        this.settingsOverlay = document.getElementById('settings-overlay');
+        this.settingsBtn = document.getElementById('settings-btn');
+        this.closeSettingsBtn = document.getElementById('close-settings');
+        this.tutorialOverlay = document.getElementById('tutorial-overlay');
+        this.tutorialBtn = document.getElementById('tutorial-btn');
+        this.closeTutorialBtn = document.getElementById('close-tutorial');
+      },
+
+      bindEvents() {
+        this.bindNewGameHold();
+        this.helpBtn.addEventListener('click', () => this.useHelp());
+        this.playAgainBtn.addEventListener('click', () => this.newGame(true));
+        this.settingsBtn.addEventListener('click', () => this.openSettings());
+        this.closeSettingsBtn.addEventListener('click', () => this.closeSettings());
+        this.settingsOverlay.addEventListener('click', (e) => {
+          if (e.target === this.settingsOverlay) this.closeSettings();
+        });
+        this.tutorialBtn.addEventListener('click', () => this.openTutorial());
+        this.closeTutorialBtn.addEventListener('click', () => this.closeTutorial());
+        this.tutorialOverlay.addEventListener('click', (e) => {
+          if (e.target === this.tutorialOverlay) this.closeTutorial();
+        });
+        this.settingsOverlay.querySelectorAll('.size-btn').forEach(btn => {
+          btn.addEventListener('click', () => this.setSize(btn.dataset.size));
+        });
+        // rAF-debounced: setCellSize() measures, and a burst of resizes
+        // during an address-bar collapse would otherwise re-solve per event.
+        let relayout = null;
+        const onViewportChange = () => {
+          if (relayout) return;
+          relayout = requestAnimationFrame(() => {
+            relayout = null;
+            this.setCellSize();
+            PieceDrag.relayout();
+          });
+        };
+        window.addEventListener('resize', onViewportChange);
+        window.addEventListener('orientationchange', onViewportChange);
+      },
+
+      // New Game requires a deliberate hold, so an accidental tap can't
+      // silently wipe the board. Only a sustained HOLD_MS hold re-deals.
+      bindNewGameHold() {
+        const HOLD_MS = 500;
+        const btn = this.newGameBtn;
+        const ring = btn.querySelector('.hold-progress');
+        let timer = null, raf = null, startTime = null, startPt = null, active = false;
+
+        const tick = () => {
+          const pct = Math.min(100, ((performance.now() - startTime) / HOLD_MS) * 100);
+          ring.style.background = `conic-gradient(rgba(169,122,76,0.85) ${pct}%, transparent ${pct}%)`;
+          if (pct < 100) raf = requestAnimationFrame(tick);
+        };
+        const start = () => {
+          if (active) return;
+          active = true;
+          startTime = performance.now();
+          btn.classList.add('holding');
+          tick();
+          timer = setTimeout(() => {
+            active = false;
+            btn.classList.remove('holding');
+            if (navigator.vibrate) navigator.vibrate(40);
+            this.newGame(true);
+          }, HOLD_MS);
+        };
+        const cancel = () => {
+          if (!active) return;
+          active = false;
+          clearTimeout(timer);
+          if (raf) cancelAnimationFrame(raf);
+          btn.classList.remove('holding');
+          ring.style.background = '';
+        };
+
+        btn.addEventListener('pointerdown', (e) => { startPt = { x: e.clientX, y: e.clientY }; start(); });
+        btn.addEventListener('pointermove', (e) => {
+          if (!active || !startPt) return;
+          if (Math.hypot(e.clientX - startPt.x, e.clientY - startPt.y) > 10) cancel();
+        });
+        btn.addEventListener('pointerup', cancel);
+        btn.addEventListener('pointercancel', cancel);
+        btn.addEventListener('pointerleave', cancel);
+        btn.addEventListener('keydown', (e) => {
+          if ((e.key === 'Enter' || e.key === ' ') && !e.repeat) { e.preventDefault(); start(); }
+        });
+        btn.addEventListener('keyup', (e) => {
+          if (e.key === 'Enter' || e.key === ' ') cancel();
+        });
+      },
+
+      /* ---------- game flow ---------- */
+
+      // A random puzzle from the chosen level's pools, skipping the last
+      // CONFIG.recentMax deals so a replay feels fresh.
+      pickPuzzle() {
+        const all = [];
+        CONFIG.sizes[this.size].pools.forEach(key => LEVELS[key].forEach((_, i) => all.push(`${key}:${i}`)));
+        const fresh = all.filter(id => !this.recent.includes(id));
+        const pool = fresh.length ? fresh : all;
+        const pick = pool[Math.floor(Math.random() * pool.length)];
+        this.recent = [pick, ...this.recent].slice(0, CONFIG.recentMax);
+        const [key, i] = pick.split(':');
+        return LEVELS[key][+i];
+      },
+
+      newGame(animated) {
+        this.overlay.classList.remove('show');
+        Modal.close();
+        this.gameId++;
+        this.won = false;
+        this.hint = null;
+        PieceDrag.reset();
+        this.loadPuzzle(this.pickPuzzle());
+        if (animated && this.tray.children.length > 0) {
+          // Re-deal visibly (design principle 9): everything sucks away first.
+          this.audioSwoosh();
+          [...this.tray.children].forEach(el => el.classList.add('out'));
+          [...this.board.querySelectorAll('.piece')].forEach(el => el.classList.add('out'));
+          const gen = this.gameId;
+          setTimeout(() => { if (gen === this.gameId) this.renderAll(true); }, 230);
+        } else {
+          this.renderAll(animated);
+        }
+      },
+
+      loadPuzzle(puzzle) {
+        this.puzzle = puzzle;
+        this.fixed = new Map();
+        const mark = ([r, c], what) => this.fixed.set(`${r},${c}`, what);
+        puzzle.trees.forEach(t => mark(t, 'tree'));
+        mark(puzzle.house, 'house');
+        mark(puzzle.red, 'red');
+        if (puzzle.wolf) mark(puzzle.wolf, 'rabbit');
+        this.pieces = this.shuffle(puzzle.pieces.map(id => {
+          const color = CONFIG.palette.find(c => c.name === PIECES[id].color);
+          return { id, o: 0, color, placed: null, el: null, slotEl: null };
+        }));
+        this.updateStatus(puzzle.wolf
+          ? 'Build a road from Red to one door and from the rabbit to the other.'
+          : 'Build a road from Red to a door of the house.');
+      },
+
+      renderAll(deal) {
+        this.board.innerHTML = '';
+        this.cellEls = [];
+        for (let i = 0; i < this.N * this.N; i++) {
+          const cell = document.createElement('div');
+          cell.className = 'cell';
+          cell.setAttribute('aria-hidden', 'true');
+          this.board.appendChild(cell);
+          this.cellEls.push(cell);
+        }
+        const p = this.puzzle;
+        p.trees.forEach(t => this.addScenery(t, 'tree'));
+        const house = this.addScenery(p.house, 'house');
+        p.doors.forEach(d => {
+          const door = document.createElement('span');
+          door.className = `door d${d}`;
+          house.appendChild(door);
+        });
+        this.addScenery(p.red, 'red').classList.add('friend');
+        if (p.wolf) this.addScenery(p.wolf, 'rabbit').classList.add('friend');
+        this.board.setAttribute('aria-label', this.describeBoard());
+
+        this.tray.innerHTML = '';
+        this.pieces.forEach((piece, i) => {
+          piece.el = document.createElement('div');
+          piece.el.className = 'piece';
+          this.paintPiece(piece);
+          const slot = PieceDrag.makeSlot(piece);
+          if (deal) {
+            slot.classList.add('deal');
+            slot.style.setProperty('--d', `${i * CONFIG.dealStaggerMs}ms`);
+            // The pop-in's transform must go once it ends: a transformed
+            // ancestor would anchor the dragged piece's position:fixed to
+            // this slot instead of the viewport.
+            slot.addEventListener('animationend', () => slot.classList.remove('deal'), { once: true });
+          }
+          this.tray.appendChild(slot);
+        });
+        this.setCellSize();
+      },
+
+      addScenery([r, c], kind) {
+        const el = document.createElement('div');
+        el.className = `scenery ${kind}`;
+        el.style.left = `calc(var(--cell) * ${c})`;
+        el.style.top = `calc(var(--cell) * ${r})`;
+        el.innerHTML = ART[kind];
+        this.board.appendChild(el);
+        return el;
+      },
+
+      describeBoard() {
+        const p = this.puzzle, at = ([r, c]) => `row ${r + 1}, column ${c + 1}`;
+        let text = `Puzzle board, 4 by 4. Red is at ${at(p.red)}.`;
+        if (p.wolf) text += ` The rabbit is at ${at(p.wolf)}.`;
+        text += ` The house is at ${at(p.house)}, with doors on its ${p.doors.map(d => SIDES[d]).join(' and ')} side.`;
+        text += ` Trees at ${p.trees.map(at).join('; ')}.`;
+        return text;
+      },
+
+      // Draws tile p in its current orientation: two squares with per-side
+      // borders (the shared edge has none, so they read as one tile) and a
+      // road through each square.
+      paintPiece(p) {
+        Object.assign(p, shapeOf(p.id, p.o));
+        const el = p.el, INSET = 2, EDGE = 3, RADIUS = 10;
+        el.innerHTML = '';
+        el.style.width = `calc(var(--cell) * ${p.cols})`;
+        el.style.height = `calc(var(--cell) * ${p.rows})`;
+        el.style.setProperty('--edge', p.color.edge);
+        el.setAttribute('aria-label', `${p.color.name} road tile`);
+        p.cells.forEach((q, i) => {
+          const other = p.cells[1 - i];
+          const inner = DIRS.findIndex(([dr, dc]) => q.r + dr === other.r && q.c + dc === other.c);
+          const [up, right, down, left] = [0, 1, 2, 3].map(d => d !== inner); // sides on the tile's outline
+          const sq = document.createElement('div');
+          sq.className = 'road-cell';
+          sq.style.left = `calc(var(--cell) * ${q.c} + ${left ? INSET : 0}px)`;
+          sq.style.top = `calc(var(--cell) * ${q.r} + ${up ? INSET : 0}px)`;
+          sq.style.width = `calc(var(--cell) - ${(left ? INSET : 0) + (right ? INSET : 0)}px)`;
+          sq.style.height = `calc(var(--cell) - ${(up ? INSET : 0) + (down ? INSET : 0)}px)`;
+          sq.style.background = p.color.fill;
+          sq.style.borderColor = p.color.edge;
+          sq.style.borderWidth = `${up ? EDGE : 0}px ${right ? EDGE : 0}px ${down ? EDGE : 0}px ${left ? EDGE : 0}px`;
+          sq.style.borderRadius = `${up && left ? RADIUS : 0}px ${up && right ? RADIUS : 0}px ${down && right ? RADIUS : 0}px ${down && left ? RADIUS : 0}px`;
+          // The road runs over the border too, so it meets the tile's edge.
+          const path = roadPath(p.ports[i], inner);
+          const grow = (a, b) => (a ? EDGE : 0) + (b ? EDGE : 0);
+          sq.innerHTML = `<svg viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true"`
+            + ` style="left:${left ? -EDGE : 0}px;top:${up ? -EDGE : 0}px;`
+            + `width:calc(100% + ${grow(left, right)}px);height:calc(100% + ${grow(up, down)}px)">`
+            + `<path class="road-edge" d="${path}"/><path class="road-band" d="${path}"/></svg>`;
+          el.appendChild(sq);
+        });
+      },
+
+      /* ---------- layout (same height-aware solve as Fit It!) ---------- */
+
+      // The board and the tray share one fixed height budget (the viewport
+      // below the header). The tray's height is a function of --cell, and it
+      // drops in steps whenever smaller slots fit more of them per row, so
+      // this solves for the board side instead of dividing.
+      setCellSize() {
+        const cs = getComputedStyle(this.mainEl);
+        const mainW = this.mainEl.getBoundingClientRect().width;
+        if (!mainW) return; // page not laid out yet
+        const availW = mainW - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight);
+        // From the viewport, not main's own box: main's height depends on
+        // body.cramped, which this function sets.
+        const availH = window.innerHeight - this.headerEl.offsetHeight
+          - parseFloat(cs.paddingTop) - parseFloat(cs.paddingBottom);
+        const gap = parseFloat(cs.rowGap) || 0;
+        const chrome = Math.max(0, this.gridWrap.offsetWidth - this.board.clientWidth);
+        const floorSide = CONFIG.minCellPx * this.N + chrome;
+        const capSide = Math.max(floorSide, Math.min(availW, CONFIG.maxBoardPx));
+
+        // Largest board side whose tray still fits underneath. The tray never
+        // gets taller as the board shrinks, so "fits" flips exactly once and a
+        // binary search finds it; 10 steps take a 360 px range below 1 px.
+        const fitsAt = (s) => {
+          this.applyBoardSide(s, chrome);
+          return s + this.tray.getBoundingClientRect().height + gap <= availH;
+        };
+        let side = capSide;
+        if (!fitsAt(side)) {
+          let lo = floorSide, hi = capSide;
+          for (let i = 0; i < 10 && hi - lo > 0.5; i++) {
+            const mid = (lo + hi) / 2;
+            if (fitsAt(mid)) lo = mid; else hi = mid;
+          }
+          side = lo;
+        }
+        this.applyBoardSide(side, chrome);
+        const trayH = this.tray.getBoundingClientRect().height;
+        document.body.classList.toggle('cramped', side + trayH + gap > availH + 1);
+      },
+
+      applyBoardSide(side, chrome) {
+        const cell = Math.max(CONFIG.minCellPx, (side - chrome) / this.N);
+        this.gridWrap.style.width = (cell * this.N + chrome) + 'px';
+        document.documentElement.style.setProperty('--cell', cell + 'px');
+      },
+
+      /* ---------- PieceDrag host: placement rules ---------- */
+
+      describe(p) { return `${p.color.name} road tile`; },
+
+      // Cells taken by scenery and by every placed tile except `except`.
+      taken(except) {
+        const set = new Set(this.fixed.keys());
+        this.pieces.forEach(o => {
+          if (o === except || !o.placed) return;
+          o.cells.forEach(q => set.add(`${o.placed.r + q.r},${o.placed.c + q.c}`));
+        });
+        return set;
+      },
+
+      fits(p, r, c, cells = p.cells) {
+        const taken = this.taken(p);
+        return cells.every(q => {
+          const rr = r + q.r, cc = c + q.c;
+          return rr >= 0 && rr < this.N && cc >= 0 && cc < this.N && !taken.has(`${rr},${cc}`);
+        });
+      },
+
+      canTurn() { return true; }, // every road tile turns; turning is the puzzle
+
+      turnedCells(p) { return shapeOf(p.id, p.o + 1).cells; },
+
+      applyTurn(p) {
+        p.o = (p.o + 1) % 4;
+        this.paintPiece(p);
+      },
+
+      onPlaced(p, how) {
+        if (how === 'drop' || how === 'key') {
+          this.audioPlace();
+          this.updateStatus(`Placed the ${this.describe(p)}.`);
+        }
+        if (this.hint && this.hint.id === p.id) this.clearHint();
+        if (how !== 'return') this.flashBadEnds(p);
+        this.checkWin();
+      },
+
+      onTray() {},
+
+      /* ---------- roads ---------- */
+
+      // Road ends of a placed tile: the cell each leaves from, its side,
+      // and the cell it points into.
+      endsOf(p) {
+        return p.cells.map((q, i) => {
+          const r = p.placed.r + q.r, c = p.placed.c + q.c, dir = p.ports[i];
+          return { p, i, r, c, dir, to: { r: r + DIRS[dir][0], c: c + DIRS[dir][1] } };
+        });
+      },
+
+      // What sits in each occupied cell: scenery kinds, or { road: tile }.
+      cellMap() {
+        const map = new Map();
+        this.fixed.forEach((kind, key) => map.set(key, { kind }));
+        this.pieces.forEach(p => {
+          if (p.placed) p.cells.forEach(q => map.set(`${p.placed.r + q.r},${p.placed.c + q.c}`, { kind: 'road', p }));
+        });
+        return map;
+      },
+
+      // True when the road end meets nothing it could ever join: the board
+      // edge, a tree, a house wall without a door, or the side of a tile
+      // with no road end facing back.
+      deadEnd(end, map) {
+        const { r, c } = end.to;
+        if (r < 0 || r >= this.N || c < 0 || c >= this.N) return true;
+        const hit = map.get(`${r},${c}`);
+        if (!hit) return false;
+        if (hit.kind === 'tree') return true;
+        if (hit.kind === 'house') return !this.puzzle.doors.includes((end.dir + 2) % 4);
+        if (hit.kind === 'road') return !this.facing(end, hit.p);
+        return false;
+      },
+
+      // Does tile o have a road end pointing straight back at `end`?
+      facing(end, o) {
+        return this.endsOf(o).some(e => e.r === end.to.r && e.c === end.to.c && e.dir === (end.dir + 2) % 4);
+      },
+
+      // Flashes every dead road end that involves tile p: its own, and
+      // other tiles' ends that now run into its side.
+      flashBadEnds(p) {
+        const map = this.cellMap();
+        const mine = new Set(p.cells.map(q => `${p.placed.r + q.r},${p.placed.c + q.c}`));
+        this.pieces.filter(o => o.placed).forEach(o => this.endsOf(o).forEach(end => {
+          if (o !== p && !mine.has(`${end.to.r},${end.to.c}`)) return;
+          if (!this.deadEnd(end, map)) return;
+          const flash = document.createElement('span');
+          flash.className = 'end-flash';
+          flash.dataset.dir = end.dir;
+          flash.addEventListener('animationend', () => flash.remove(), { once: true });
+          o.el.children[end.i].appendChild(flash);
+        }));
+      },
+
+      // Follows the road from a friend's cell to the house. Returns the
+      // tiles it used and the door it reached, or null if it breaks off.
+      trace([fr, fc], map) {
+        const ends = this.pieces.filter(p => p.placed).flatMap(p => this.endsOf(p));
+        const starts = ends.filter(e => e.to.r === fr && e.to.c === fc);
+        if (starts.length !== 1) return null;
+        const visited = new Set();
+        let at = starts[0];
+        while (at) {
+          if (visited.has(at.p)) return null;
+          visited.add(at.p);
+          const out = this.endsOf(at.p)[1 - at.i];
+          const dest = map.get(`${out.to.r},${out.to.c}`);
+          if (!dest) return null;
+          if (dest.kind === 'house') {
+            const door = (out.dir + 2) % 4;
+            return this.puzzle.doors.includes(door) ? { visited, door } : null;
+          }
+          if (dest.kind !== 'road') return null;
+          at = this.endsOf(dest.p).find(e => e.r === out.to.r && e.c === out.to.c && e.dir === (out.dir + 2) % 4);
+        }
+        return null;
+      },
+
+      // The original game's win rule: every tile is down, no road end is
+      // dead, each friend touches exactly one road, each door takes at most
+      // one road, and every tile sits on a friend's path home. With the
+      // rabbit, the two paths share no tile and reach different doors.
+      solved() {
+        if (!this.pieces.every(p => p.placed)) return false;
+        const map = this.cellMap(), doors = new Set(), touches = { red: 0, rabbit: 0 };
+        for (const p of this.pieces) {
+          for (const end of this.endsOf(p)) {
+            if (this.deadEnd(end, map)) return false;
+            const hit = map.get(`${end.to.r},${end.to.c}`);
+            if (!hit) continue;
+            if (hit.kind === 'house') {
+              const door = (end.dir + 2) % 4;
+              if (doors.has(door)) return false;
+              doors.add(door);
+            } else if (hit.kind === 'red' || hit.kind === 'rabbit') {
+              if (++touches[hit.kind] > 1) return false;
+            }
+          }
+        }
+        const red = this.trace(this.puzzle.red, map);
+        if (!red) return false;
+        let used = red.visited;
+        if (this.puzzle.wolf) {
+          const rabbit = this.trace(this.puzzle.wolf, map);
+          if (!rabbit || rabbit.door === red.door || [...red.visited].some(p => rabbit.visited.has(p))) return false;
+          used = new Set([...red.visited, ...rabbit.visited]);
+        }
+        return used.size === this.pieces.length;
+      },
+
+      /* ---------- 💡 hint ---------- */
+
+      pieceById(id) { return this.pieces.find(p => p.id === id); },
+
+      // Is tile p exactly where solution entry s puts it? Compared as road
+      // ends, so a straight tile turned end for end still counts.
+      atSolution(p, s) {
+        if (!p.placed) return false;
+        const want = shapeOf(s.id, s.o);
+        const key = (r, c, dir) => `${r},${c},${dir}`;
+        const target = new Set(want.cells.map((q, i) => key(s.r + q.r, s.c + q.c, want.ports[i])));
+        return this.endsOf(p).every(e => target.has(key(e.r, e.c, e.dir)));
+      },
+
+      // Shows where one tile goes: its target squares glow and the tile
+      // itself pulses. A tile still in the tray turns to face the right way.
+      useHelp() {
+        if (this.won || PieceDrag.drag || PieceDrag.kb) return;
+        const next = this.puzzle.solution.find(s => !this.atSolution(this.pieceById(s.id), s));
+        if (!next) return;
+        const p = this.pieceById(next.id);
+        this.clearHint();
+        this.hint = next;
+        if (!p.placed && p.o !== next.o) {
+          p.o = next.o;
+          this.paintPiece(p);
+          PieceDrag.layoutSlot(p);
+          PieceDrag.spin(p);
+        }
+        shapeOf(next.id, next.o).cells.forEach(q => {
+          this.cellEls[(next.r + q.r) * this.N + (next.c + q.c)].classList.add('hint');
+        });
+        p.el.classList.remove('hinted');
+        void p.el.offsetWidth;
+        p.el.classList.add('hinted');
+        this.audioHint();
+        this.updateStatus(`The ${this.describe(p)} goes on the glowing squares.`);
+      },
+
+      clearHint() {
+        this.hint = null;
+        this.cellEls.forEach(el => el.classList.remove('hint'));
+      },
+
+      /* ---------- win / settings ---------- */
+
+      checkWin() {
+        if (this.won || !this.solved()) return;
+        this.won = true;
+        this.clearHint();
+        this.pieces.forEach(p => p.el.classList.add('lit'));
+        this.board.querySelectorAll('.scenery.friend').forEach(el => el.classList.add('hop'));
+        this.audioPath();
+        const gen = this.gameId;
+        setTimeout(() => { if (gen === this.gameId) this.celebrate(); }, CONFIG.winDelayMs);
+      },
+
+      celebrate() {
+        const tier = CONFIG.celebrationTiers[Object.keys(CONFIG.sizes).indexOf(this.size)];
+        this.audioWin(tier.notes);
+        this.updateStatus(this.puzzle.wolf ? 'Both friends are home. You did it!' : 'Red is home. You did it!');
+        this.renderWinEmojis();
+        this.overlay.classList.add('show');
+        Modal.open(this.overlay, () => this.newGame(true));
+        for (let i = 0; i < tier.confetti; i++) {
+          const conf = document.createElement('div');
+          conf.className = 'confetti';
+          conf.style.left = Math.random() * 100 + 'vw';
+          conf.style.background = CONFIG.palette[Math.floor(Math.random() * CONFIG.palette.length)].fill;
+          conf.style.width = (6 + Math.random() * 8) + 'px';
+          conf.style.height = (6 + Math.random() * 8) + 'px';
+          conf.style.animationDuration = (1.5 + Math.random() * 2) + 's';
+          conf.style.animationDelay = (Math.random() * 0.8) + 's';
+          document.body.appendChild(conf);
+          setTimeout(() => conf.remove(), 4500);
+        }
+      },
+
+      renderWinEmojis() {
+        const row = document.getElementById('emoji-row');
+        const set = this.emojiSets[Math.floor(Math.random() * this.emojiSets.length)];
+        row.innerHTML = set.map(e => `<button>${e}</button>`).join('');
+        // Poking a celebration emoji wiggles it and chirps: a tiny toy.
+        row.querySelectorAll('button').forEach(btn => btn.addEventListener('click', () => {
+          btn.classList.remove('wiggle');
+          void btn.offsetWidth;
+          btn.classList.add('wiggle');
+          this.audioEmoji();
+        }));
+      },
+
+      openSettings() {
+        this.settingsOverlay.classList.add('show');
+        this.updateSizeButtons();
+        Modal.open(this.settingsOverlay, () => this.closeSettings());
+      },
+
+      closeSettings() {
+        this.settingsOverlay.classList.remove('show');
+        Modal.close();
+      },
+
+      openTutorial() {
+        this.tutorialOverlay.classList.add('show');
+        Modal.open(this.tutorialOverlay, () => this.closeTutorial());
+      },
+
+      closeTutorial() {
+        this.tutorialOverlay.classList.remove('show');
+        Modal.close();
+      },
+
+      setSize(size) {
+        if (size === this.size) {
+          this.closeSettings();
+          return;
+        }
+        this.size = size;
+        this.recent = [];
+        this.updateSizeButtons();
+        // Close first so the re-deal is visible, never a silent reset
+        // behind the overlay (design principle 9).
+        this.closeSettings();
+        this.newGame(true);
+      },
+
+      updateSizeButtons() {
+        this.settingsOverlay.querySelectorAll('.size-btn').forEach(btn => {
+          const active = btn.dataset.size === this.size;
+          btn.classList.toggle('active', active);
+          btn.setAttribute('aria-checked', active ? 'true' : 'false');
+        });
+      },
+
+      shuffle(arr) {
+        for (let i = arr.length - 1; i > 0; i--) {
+          const j = Math.floor(Math.random() * (i + 1));
+          [arr[i], arr[j]] = [arr[j], arr[i]];
+        }
+        return arr;
+      },
+
+      updateStatus(msg) {
+        this.status.textContent = msg;
+      },
+
+      /* ---------- PWA ---------- */
+
+      setupPWA() {
+        // The whole toybox is one PWA: a single shared manifest
+        // (../manifest.webmanifest, linked in <head>) and one root-scoped
+        // service worker. Browsers reject blob:/data: worker scripts and
+        // file:// has no SW support, so register only over http(s).
+        if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
+          navigator.serviceWorker.register('../sw.js').then((root) => {
+            // Drop any old per-game worker from before unification so the one
+            // root worker controls this page (longest scope wins).
+            navigator.serviceWorker.getRegistrations().then((regs) =>
+              regs.forEach((r) => {
+                if (r !== root && r.scope.startsWith(root.scope) && r.scope !== root.scope) r.unregister();
+              })
+            );
+          }).catch(() => {});
+        }
+      },
+
+      /* ---------- audio ---------- */
+
+      ensureAudio() {
+        if (!this.audioCtx) this.audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        if (this.audioCtx.state === 'suspended') this.audioCtx.resume();
+      },
+
+      playTone({ type = 'sine', freq = 440, duration = 100, startGain = 0.0001, peakGain = 0.15 }) {
+        this.ensureAudio();
+        const ctx = this.audioCtx;
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = type;
+        osc.frequency.setValueAtTime(freq, ctx.currentTime);
+        gain.gain.setValueAtTime(startGain, ctx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(peakGain, ctx.currentTime + 0.01);
+        gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + duration / 1000);
+        osc.connect(gain).connect(ctx.destination);
+        osc.start();
+        osc.stop(ctx.currentTime + duration / 1000 + 0.02);
+      },
+
+      audioPickup() { this.playTone({ type: 'sine', freq: 660, duration: 60, peakGain: 0.1 }); },
+      audioPlace() {
+        this.playTone({ type: 'sine', freq: 540, duration: 80, peakGain: 0.16 });
+        setTimeout(() => this.playTone({ type: 'sine', freq: 810, duration: 70, peakGain: 0.13 }), 70);
+      },
+      // A quick two-step click for a quarter turn.
+      audioTurn() {
+        this.playTone({ type: 'triangle', freq: 720, duration: 45, peakGain: 0.12 });
+        setTimeout(() => this.playTone({ type: 'triangle', freq: 960, duration: 45, peakGain: 0.1 }), 55);
+      },
+      // Gentle "hmm", never a punitive buzz (design principle 3)
+      audioOops() { this.playTone({ type: 'sine', freq: 240, duration: 160, peakGain: 0.1 }); },
+      audioHint() {
+        this.playTone({ type: 'sine', freq: 880, duration: 120, peakGain: 0.1 });
+        setTimeout(() => this.playTone({ type: 'sine', freq: 1175, duration: 160, peakGain: 0.09 }), 110);
+      },
+      // The path lights up: a quick run up the scale before the fanfare.
+      audioPath() {
+        [392, 440, 494, 587].forEach((freq, i) => {
+          setTimeout(() => this.playTone({ type: 'sine', freq, duration: 110, peakGain: 0.12 }), i * 90);
+        });
+      },
+      audioEmoji() {
+        const freq = [523, 587, 659, 784, 880][Math.floor(Math.random() * 5)]; // pentatonic chirp
+        this.playTone({ type: 'sine', freq, duration: 140, peakGain: 0.15 });
+      },
+      audioSwoosh() {
+        this.ensureAudio();
+        const ctx = this.audioCtx;
+        const bufferSize = ctx.sampleRate * 0.1;
+        const buffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
+        const data = buffer.getChannelData(0);
+        for (let i = 0; i < bufferSize; i++) data[i] = (Math.random() * 2 - 1) * (1 - i / bufferSize);
+        const src = ctx.createBufferSource();
+        src.buffer = buffer;
+        const gain = ctx.createGain();
+        gain.gain.setValueAtTime(0.12, ctx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.1);
+        src.connect(gain).connect(ctx.destination);
+        src.start();
+      },
+      audioWin(notes) {
+        notes.forEach((freq, i) => {
+          setTimeout(() => this.playTone({ type: 'sine', freq, duration: 220, peakGain: 0.18 }), i * 180);
+        });
+      }
+    };
+
+    App.init();
+  </script>
+</body>
+</html>

@@ -4,8 +4,9 @@
 // modal overlays as dialogs. The whole toybox is ONE PWA — a single root
 // manifest.webmanifest + one root sw.js — so this checks that every page links
 // the shared manifest and sets a theme-color, and that the single root worker
-// exists once (not a per-directory worker). Dependency-free, in the spirit of
-// check-links.js. Run over every page (index.html plus */index.html).
+// exists once (not a per-directory worker). It also keeps copied shared code
+// blocks identical across games (see SHARED_START below). Dependency-free, in
+// the spirit of check-links.js. Run over every page (index.html plus */index.html).
 'use strict';
 
 const fs = require('fs');
@@ -18,6 +19,14 @@ if (files.length === 0) {
 }
 
 let errors = 0;
+
+// Code shared between games is copied into each file, because every game is
+// one self-contained index.html. Each copy sits between
+//   /* ===== shared:<name> v<N> =====   and   /* ===== end shared:<name> v<N> ===== */
+// and every copy of a name must match line for line (indentation aside), so
+// a fix to one copy can't silently skip the other.
+const SHARED_START = /\/\* ===== shared:([a-z0-9-]+) (v\d+) =====/g;
+const sharedCopies = new Map(); // name -> [{ file, version, lines }]
 
 // The unified service worker lives once at the repo root (scope "/"), not per
 // game directory. Check it exists a single time, relative to this script.
@@ -44,6 +53,33 @@ for (const file of files) {
   while ((m = TAG_RE.exec(html))) {
     if (!/\brole="dialog"/.test(m[0])) {
       fail(`overlay without role="dialog": ${m[0].slice(0, 80)}...`);
+    }
+  }
+
+  for (const s of html.matchAll(SHARED_START)) {
+    const [, name, version] = s;
+    const endMarker = `/* ===== end shared:${name} ${version} ===== */`;
+    const end = html.indexOf(endMarker, s.index);
+    if (end < 0) { fail(`shared:${name} ${version} has no end marker`); continue; }
+    const lines = html.slice(s.index, end).split('\n').map(l => l.trim());
+    if (!sharedCopies.has(name)) sharedCopies.set(name, []);
+    sharedCopies.get(name).push({ file, version, lines });
+  }
+}
+
+for (const [name, copies] of sharedCopies) {
+  const [first, ...rest] = copies;
+  for (const other of rest) {
+    if (other.version !== first.version) {
+      console.error(`shared:${name}: ${first.file} has ${first.version}, ${other.file} has ${other.version}`);
+      errors++;
+      continue;
+    }
+    const at = first.lines.findIndex((l, i) => l !== other.lines[i]);
+    if (at >= 0 || first.lines.length !== other.lines.length) {
+      const line = at >= 0 ? at : Math.min(first.lines.length, other.lines.length);
+      console.error(`shared:${name} ${first.version}: ${other.file} differs from ${first.file} at block line ${line + 1}`);
+      errors++;
     }
   }
 }
