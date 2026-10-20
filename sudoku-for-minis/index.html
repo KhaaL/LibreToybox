@@ -22,7 +22,10 @@
     }
 
     * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
-    html, body { margin: 0; padding: 0; height: 100%; }
+    /* min-height, not height: layout() sizes the board so everything fits
+       the viewport, and if it can't (a board at LAYOUT.minCellPx still too
+       big) the page simply grows and scrolls instead of clipping the pad. */
+    html, body { margin: 0; padding: 0; min-height: 100%; }
     /* Own background on html stops the body gradient propagating to the
        canvas, where it would tile — rubber-band overscroll then shows the
        wrong end of the gradient instead of blending with the page. */
@@ -31,6 +34,8 @@
       font-family: ui-rounded, 'Hiragino Maru Gothic ProN', Quicksand, Comfortaa, 'Arial Rounded MT Bold', 'Varela Round', Calibri, sans-serif;
       background: linear-gradient(180deg, var(--bg1), var(--bg2));
       color: var(--text);
+      min-height: 100vh;
+      min-height: 100dvh;
       display: flex;
       flex-direction: column;
       align-items: center;
@@ -43,7 +48,8 @@
 
     header {
       width: 100%;
-      max-width: 420px;
+      /* Grows with a big tablet board so the buttons line up with its edges. */
+      max-width: max(420px, var(--board-w, 0px));
       display: flex;
       align-items: center;
       justify-content: space-between;
@@ -79,33 +85,53 @@
     .hold-progress { position: absolute; inset: 5px; border-radius: 50%; pointer-events: none; opacity: 0; transition: opacity .1s; }
     .top-btn.holding .hold-progress { opacity: 1; }
 
-    main { width: 100%; max-width: 420px; padding: 8px 16px 18px; display: flex; flex-direction: column; align-items: center; gap: 16px; }
+    /* main takes the height left under the header and centres the board +
+       pad group in it. layout() picks the arrangement and the cell size. */
+    main { width: 100%; flex: 1 0 auto; padding: 8px 12px 18px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px; }
 
+    /* Side layout (body.side, set by layout() when it gives bigger cells —
+       landscape phones and tablets): the header becomes a column on the
+       left, 🏠 still in the top-left corner, and the pad sits right of the
+       board. Scoped to header so the win overlay's .top-btns stay a row. */
+    body.side { flex-direction: row; align-items: stretch; }
+    body.side header { flex-direction: column; width: auto; max-width: none; padding: 12px 0 12px 12px; }
+    body.side header .header-left,
+    body.side header .top-btns { flex-direction: column; }
+    body.side main { flex: 1 1 auto; flex-direction: row; padding: 12px; }
+
+    /* Every cell is the same --cell-size square. Box seams are their own grid
+       tracks (--seam wide, with a .seam line through the middle), so the
+       wider gutter between boxes never eats into a cell. layout() sets
+       --cell-size, init() sets --gap and --seam, and buildGrid() sets the
+       track templates. (--cell is the cell fill colour, in :root.) */
     .grid-wrap {
       touch-action: none; /* keep pointer events flowing during long-press */
-      width: min(92vw, 360px);
-      aspect-ratio: 1 / 1;
+      flex: 0 0 auto;
       background: #fff;
       border: 4px solid #7A8BA6;
       border-radius: 14px;
       padding: 6px;
       box-shadow: 0 8px 22px rgba(0,0,0,0.12);
       display: grid;
-      grid-template-columns: repeat(4, 1fr);
-      grid-template-rows: repeat(4, 1fr);
-      gap: 2px;
+      gap: var(--gap);
     }
+    .seam { background: #5D7290; border-radius: 2px; pointer-events: none; }
+    .seam.v { justify-self: center; width: 4px; }
+    .seam.h { align-self: center; height: 4px; }
 
     .cell {
       position: relative;
       background: var(--cell);
       border: 1px solid var(--border);
-      border-radius: 8px;
+      border-radius: clamp(5px, calc(var(--cell-size) * 0.16), 12px);
       overflow: hidden;
       display: flex;
       align-items: center;
       justify-content: center;
-      font-size: var(--num-font, clamp(1.5rem, 7vw, 2rem));
+      /* Digits scale with the cell: half its side reads at a glance on a
+         32 px phone cell and a 96 px tablet cell alike. */
+      font-size: calc(var(--cell-size) * 0.5);
+      line-height: 1;
       cursor: pointer;
       transition: background .15s, transform .1s;
     }
@@ -116,29 +142,22 @@
     .cell.just-placed { animation: pop .25s ease-out; }
     .cell.cleared { animation: suction .22s ease-in; }
 
-    /* Box regions read at a glance via a wider gutter + a bolder line at
-       each box seam — set per cell from JS (box-l / box-t), since box
-       geometry depends on the board size (2×2, 2×3 or 2×4). Spacing/border
-       only, so no cell's fill color ever changes to convey grouping; the
-       margin opens a visibly wider gap than the plain 2px inter-cell gap,
-       with the thick line running through the middle of it. */
-    .cell.box-l { border-left-width: 5px; border-left-color: #5D7290; margin-left: 7px; }
-    .cell.box-t { border-top-width: 5px; border-top-color: #5D7290; margin-top: 7px; }
-
+    /* layout() sets --pad-cols: one or two rows under the board, or one or
+       two columns beside it, whichever leaves the biggest cells. */
     .pad {
-      display: flex;
+      flex: 0 0 auto;
+      display: grid;
+      grid-template-columns: repeat(var(--pad-cols, 4), var(--tool));
       justify-content: center;
-      gap: 10px;
-      flex-wrap: wrap;
-      width: 100%;
+      gap: var(--tool-gap);
     }
     .tool {
-      width: 64px;
-      height: 64px;
+      width: var(--tool);
+      height: var(--tool);
       border: none;
-      border-radius: 16px;
+      border-radius: calc(var(--tool) * 0.25);
       font-family: inherit;
-      font-size: 1.8rem;
+      font-size: calc(var(--tool) * 0.45);
       font-weight: bold;
       text-shadow: none;
       cursor: pointer;
@@ -211,7 +230,7 @@
       position: fixed;
       left: var(--gx);
       top: var(--gy);
-      font-size: 2rem;
+      font-size: calc(var(--cell-size) * 0.5);
       color: var(--text);
       text-shadow: 0 2px 4px rgba(0,0,0,0.2);
       pointer-events: none;
@@ -376,9 +395,21 @@
     // target keeps ~50% of cells filled at every size — the difficulty step
     // comes from the board itself, not from sparser starts.
     const SIZES = {
-      small:  { n: 4, boxR: 2, boxC: 2, givens: 8,  numFont: 'clamp(1.5rem, 7vw, 2rem)' },
-      medium: { n: 6, boxR: 2, boxC: 3, givens: 18, numFont: 'clamp(1.1rem, 5vw, 1.5rem)' },
-      large:  { n: 8, boxR: 2, boxC: 4, givens: 32, numFont: 'clamp(0.95rem, 4.2vw, 1.25rem)' }
+      small:  { n: 4, boxR: 2, boxC: 2, givens: 8 },
+      medium: { n: 6, boxR: 2, boxC: 3, givens: 18 },
+      large:  { n: 8, boxR: 2, boxC: 4, givens: 32 }
+    };
+
+    // Board and pad geometry for layout(), published as CSS variables.
+    // Cells are always square and sized to the viewport between minCellPx
+    // and maxCellPx; maxBoardPx stops an 8×8 board swallowing a desktop
+    // screen. seamPx is the gutter track between boxes. Pad buttons are
+    // toolPx (principle 4: at least 64 px) and grow with the cells on a big
+    // screen, up to maxToolPx.
+    const LAYOUT = {
+      gapPx: 2, seamPx: 10,
+      minCellPx: 28, maxCellPx: 96, maxBoardPx: 640,
+      toolPx: 64, maxToolPx: 88, toolGapPx: 10, toolShadowPx: 5
     };
 
     // Celebration grows with difficulty — Easy is today's unchanged baseline,
@@ -459,12 +490,18 @@
 
       init() {
         this.cacheDOM();
+        const root = document.documentElement.style;
+        root.setProperty('--gap', LAYOUT.gapPx + 'px');
+        root.setProperty('--seam', LAYOUT.seamPx + 'px');
+        root.setProperty('--tool-gap', LAYOUT.toolGapPx + 'px');
         this.bindEvents();
         this.newGame();
         this.setupPWA();
       },
 
       cacheDOM() {
+        this.header = document.querySelector('header');
+        this.main = document.querySelector('main');
         this.grid = document.getElementById('grid');
         this.pad = document.getElementById('pad');
         this.status = document.getElementById('status');
@@ -587,6 +624,16 @@
           e.preventDefault();
           this.activateCell(parseInt(cell.dataset.r, 10), parseInt(cell.dataset.c, 10));
         });
+
+        // Rotation and resizing re-run layout(), rAF-debounced so a burst of
+        // resize events (an address bar collapsing) solves once.
+        let relayout = null;
+        const onViewportChange = () => {
+          if (relayout) return;
+          relayout = requestAnimationFrame(() => { relayout = null; this.layout(); });
+        };
+        window.addEventListener('resize', onViewportChange);
+        window.addEventListener('orientationchange', onViewportChange);
       },
 
       // New Game requires a deliberate hold (not a quick tap) so an
@@ -943,19 +990,103 @@
         this.n = s.n;
         this.boxR = s.boxR;
         this.boxC = s.boxC;
-        this.grid.style.gridTemplateColumns = `repeat(${this.n}, 1fr)`;
-        this.grid.style.gridTemplateRows = `repeat(${this.n}, 1fr)`;
-        this.grid.style.setProperty('--num-font', s.numFont);
         this.buildPad();
         this.generatePuzzle();
         this.buildGrid();
+        this.layout();
         this.updateStatus('');
+      },
+
+      // Picks where the number pad goes and how big the cells and pad
+      // buttons are. Four arrangements are solved for the largest square
+      // cell that fits the viewport: the pad under the board in one or two
+      // rows (header on top), or beside it in one or two columns (header as
+      // a left column). The biggest cell wins; on a tie the earlier
+      // arrangement wins, so a screen with room to spare keeps the standard
+      // header-on-top layout. A portrait phone stacks, a landscape phone
+      // goes side by side, and nothing needs a scroll.
+      layout() {
+        const L = LAYOUT, n = this.n;
+        // Shrink to the floor before reading the viewport. A board left at
+        // the previous size's cell (a 4×4 cell on a fresh 8×8 board) can be
+        // wider than the screen, and a mobile browser then zooms out and
+        // reports a taller innerHeight than the screen really has.
+        const root = document.documentElement.style;
+        root.setProperty('--cell-size', L.minCellPx + 'px');
+        const vw = document.documentElement.clientWidth;
+        const vh = window.innerHeight;
+        if (!vw || !vh) return;
+
+        // Header size and main's padding/gap differ per arrangement, so
+        // measure each with its class applied.
+        const measure = (side) => {
+          document.body.classList.toggle('side', side);
+          const cs = getComputedStyle(this.main);
+          return {
+            headerW: this.header.offsetWidth,
+            headerH: this.header.offsetHeight,
+            padX: parseFloat(cs.paddingLeft) + parseFloat(cs.paddingRight),
+            padY: parseFloat(cs.paddingTop) + parseFloat(cs.paddingBottom),
+            gap: parseFloat(side ? cs.columnGap : cs.rowGap) || 0
+          };
+        };
+        const m = { stack: measure(false), side: measure(true) };
+
+        // Board outer size for cell side c: n cells, the seam tracks, the
+        // gaps between all tracks, and .grid-wrap's border + padding.
+        const gcs = getComputedStyle(this.grid);
+        const chrome = 2 * (parseFloat(gcs.borderLeftWidth) + parseFloat(gcs.paddingLeft));
+        const seamsV = n / this.boxC - 1, seamsH = n / this.boxR - 1;
+        const fixedW = seamsV * L.seamPx + (n - 1 + seamsV) * L.gapPx + chrome;
+        const fixedH = seamsH * L.seamPx + (n - 1 + seamsH) * L.gapPx + chrome;
+        const cap = Math.min(L.maxCellPx, (L.maxBoardPx - fixedW) / n, (L.maxBoardPx - fixedH) / n);
+        const span = (k, t) => k * t + (k - 1) * L.toolGapPx; // k pad buttons of side t in a line
+
+        // Largest cell for arrangement a with pad buttons of side t, or -1
+        // when the pad alone doesn't fit.
+        const cellFor = (a, t) => {
+          const k = a.side ? m.side : m.stack;
+          const padW = span(a.cols, t), padH = span(a.rows, t) + L.toolShadowPx;
+          let w = vw - k.padX, h = vh - k.padY;
+          if (a.side) {
+            if (padH > h) return -1;
+            w -= k.headerW + k.gap + padW;
+          } else {
+            if (padW > w) return -1;
+            h -= k.headerH + k.gap + padH;
+          }
+          return Math.floor(Math.min(cap, (w - fixedW) / n, (h - fixedH) / n));
+        };
+
+        const arrangements = [
+          ...[1, 2].map(rows => ({ side: false, rows, cols: Math.ceil(n / rows) })),
+          ...[1, 2].map(cols => ({ side: true, cols, rows: Math.ceil(n / cols) }))
+        ];
+        let best = null;
+        for (const a of arrangements) {
+          // Pad buttons match the cells on a big screen: the largest side
+          // up to maxToolPx that still leaves the cells at least as big.
+          let t = L.maxToolPx;
+          while (t > L.toolPx && cellFor(a, t) < t) t--;
+          a.tool = t;
+          a.cell = cellFor(a, t);
+          if (a.cell >= 0 && (!best || a.cell > best.cell)) best = a;
+        }
+        // Nothing fits even at the floor: stack at the floor and let the
+        // page scroll vertically (body has min-height, not a fixed height).
+        if (!best || best.cell < L.minCellPx) {
+          best = { side: false, cols: Math.ceil(n / 2), tool: L.toolPx, cell: L.minCellPx };
+        }
+
+        document.body.classList.toggle('side', best.side);
+        this.pad.style.setProperty('--pad-cols', best.cols);
+        root.setProperty('--tool', best.tool + 'px');
+        root.setProperty('--cell-size', best.cell + 'px');
+        root.setProperty('--board-w', (n * best.cell + fixedW) + 'px');
       },
 
       buildPad() {
         this.pad.innerHTML = '';
-        // cap the pad width so the rows wrap evenly: 4 / 3+3 / 4+4
-        this.pad.style.maxWidth = { 4: '', 6: '236px', 8: '300px' }[this.n];
         for (let i = 1; i <= this.n; i++) {
           const b = document.createElement('button');
           b.className = `tool t${i}`;
@@ -1062,11 +1193,29 @@
 
       buildGrid() {
         // (Re)create the cell elements — only when the board itself changes
-        // (new game / size switch). Static per-board attributes (given, box
-        // borders, tabIndex) are set here once; renderGrid() then mutates only
+        // (new game / size switch). Static per-board attributes (given, grid
+        // position, tabIndex) are set here once; renderGrid() then mutates only
         // dynamic state, never the DOM node, so a focused cell is not destroyed
         // during play and keyboard parity survives placement (design principle 8).
         this.grid.innerHTML = '';
+        // Track templates: a --cell-size track per cell, plus a --seam track
+        // before the first cell of every box after the first. Cell (r, c)
+        // then sits at track c + (boxes to its left), so every cell keeps the
+        // same square size whatever the box shape (2×2, 2×3 or 2×4).
+        const tracks = (box) => Array.from({ length: this.n }, (_, i) =>
+          (i > 0 && i % box === 0 ? 'var(--seam) ' : '') + 'var(--cell-size)').join(' ');
+        this.grid.style.gridTemplateColumns = tracks(this.boxC);
+        this.grid.style.gridTemplateRows = tracks(this.boxR);
+        const seam = (dir, track) => {
+          const el = document.createElement('div');
+          el.className = `seam ${dir}`;
+          el.setAttribute('aria-hidden', 'true');
+          if (dir === 'v') { el.style.gridColumn = track; el.style.gridRow = '1 / -1'; }
+          else { el.style.gridRow = track; el.style.gridColumn = '1 / -1'; }
+          this.grid.appendChild(el);
+        };
+        for (let k = 1; k < this.n / this.boxC; k++) seam('v', k * (this.boxC + 1));
+        for (let k = 1; k < this.n / this.boxR; k++) seam('h', k * (this.boxR + 1));
         for (let r = 0; r < this.n; r++) {
           for (let c = 0; c < this.n; c++) {
             const cell = document.createElement('div');
@@ -1074,10 +1223,8 @@
             cell.dataset.r = r;
             cell.dataset.c = c;
             cell.setAttribute('role', 'gridcell');
-            // thick border + wider gutter on box boundaries (box geometry
-            // varies per size)
-            if (c > 0 && c % this.boxC === 0) cell.classList.add('box-l');
-            if (r > 0 && r % this.boxR === 0) cell.classList.add('box-t');
+            cell.style.gridColumn = c + Math.floor(c / this.boxC) + 1;
+            cell.style.gridRow = r + Math.floor(r / this.boxR) + 1;
             // Givens are fixed for the life of the board, so tabbability never
             // changes during play — set it once here.
             if (this.givenMask[r][c]) {
