@@ -29,7 +29,6 @@ Completed items live in `done.md`.
 
 ## Shape Fit (`shape-fit/index.html`)
 
-- **Feat: horizontal layout for wide screens** — the height-aware layout (2026-09-06) stops the page overflowing, but a landscape phone pays for it in board size: at 844×390 the 5×5 board shrinks to `--cell` ~31 px and 6×6 hits the 30 px floor, while ~60% of the screen width sits empty. The 60 px minimum tray slots (2026-10-19) made this a little worse (Normal went from ~35 to ~31 px). A side-by-side arrangement (board left, tray right) via `@media (orientation: landscape), (min-width: 800px)` would spend that width instead of shrinking the board, and would also let tablets use more than the 360 px `CONFIG.maxBoardPx` cap. Same idiom as Calm Corner's Visual Timer `.timer-layout` flip and Emoji Paint's `body.split` grid. Path Home has the same layout and the same problem (4×4 board at ~46 px cells on 844×390), so build it once and copy it to both.
 - **Feat: add an animated tutorial**.
 
 ## Emoji Paint (`emoji-paint/index.html`)
@@ -56,7 +55,6 @@ Completed items live in `done.md`.
 
 - **Feat: add an animated tutorial** (the ❓ overlay is the suite's "coming soon" placeholder).
 - **Feat: walk-home animation** — on a win, Red (and the rabbit) could walk along the lit road to the door before the confetti, using the tile order `trace()` already computes. Today the path lights up and the friends hop in place.
-- **Feat: horizontal layout** — shared with Fit It!'s item above.
 
 ## Future Games
 

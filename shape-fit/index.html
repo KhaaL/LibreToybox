@@ -52,7 +52,7 @@
     header {
       flex: 0 0 auto;
       width: 100%;
-      max-width: 420px;
+      max-width: max(420px, var(--board-w, 0px));
       display: flex;
       align-items: center;
       justify-content: space-between;
@@ -90,10 +90,29 @@
        board and the tray. min-height: 0 lets it actually shrink below its
        content height, which is what makes the board scale down on a short
        (landscape phone) viewport instead of pushing the tray off screen. */
-    main { width: 100%; max-width: 420px; padding: 8px 16px 18px; display: flex; flex-direction: column; align-items: center; gap: 14px; flex: 1 1 auto; min-height: 0; }
+    main { width: 100%; max-width: max(420px, calc(var(--board-w, 0px) + 32px)); padding: 8px 16px 18px; display: flex; flex-direction: column; align-items: center; gap: 14px; flex: 1 1 auto; min-height: 0; }
     /* Centres the board in whatever vertical space is left over once the
        tray has taken its share. */
     #board-area { flex: 1 1 auto; min-height: 0; width: 100%; display: flex; align-items: center; justify-content: center; }
+
+    /* ===== shared:board-layout-css v1 =====
+       Side arrangement (body.side), picked by BoardLayout.fit() when it
+       gives the bigger board: landscape phones and tablets. The header
+       becomes a left column with 🏠 still top-left, and the tray sits right
+       of the board at the width fit() sets. Scoped to header so the win
+       overlay's .top-btns stay a row. */
+    body.side { flex-direction: row; align-items: stretch; }
+    body.side header { flex-direction: column; width: auto; max-width: none; padding: 12px 0 12px 12px; }
+    body.side header .header-left,
+    body.side header .top-btns { flex-direction: column; }
+    body.side main { flex-direction: row; justify-content: center; max-width: none; padding: 12px; }
+    body.side #board-area { flex: 0 0 auto; width: auto; }
+    body.side .grid-wrap { max-width: none; }
+    body.side #tray { align-content: center; min-width: 0; }
+    /* A header column of up to five buttons plus the logo runs ~330 px tall,
+       so the logo steps aside on the shortest landscape phones. */
+    @media (max-height: 340px) { body.side header .logo { display: none; } }
+    /* ===== end shared:board-layout-css v1 ===== */
 
     .grid-wrap {
       /* Pre-JS fallback only — setCellSize() sets an explicit px width that
@@ -170,7 +189,7 @@
          what's left, so a wrapped tray row can't push the board off screen. */
       flex: 0 0 auto;
       width: 100%;
-      max-width: 400px;
+      max-width: max(400px, var(--board-w, 0px));
       display: flex;
       flex-wrap: wrap;
       align-items: flex-start;
@@ -338,7 +357,8 @@
         { confetti: 130, notes: [523.25, 659.25, 783.99, 1046.50, 1318.51] }
       ],
       trayScale: 0.5,
-      maxBoardPx: 360,   // board never grows past this, however wide the screen
+      maxBoardPx: 560,   // board never grows past this, however wide the screen
+      maxCellPx: 96,     // nor its cells past this, so an Easy board stays in proportion
       minCellPx: 30,     // board shrinks no further; below this the page scrolls instead
       minHitPx: 60,      // every tray slot is at least this big (principle 4)
       dragEdgePx: 4,     // a dragged piece always keeps this much of itself on screen
@@ -896,6 +916,103 @@
     };
     /* ===== end shared:piece-drag v1 ===== */
 
+    /* ===== shared:board-layout v1 =====
+       Board + tray layout for the grid-packing games (shape-fit/ and
+       through-the-woods/), copied into both like piece-drag and checked the
+       same way by scripts/check-design.js. Two arrangements are solved for
+       the largest board that fits the viewport together with its tray:
+         stack : header row on top, tray under the board
+         side  : header as a left column, tray right of the board (body.side)
+       The bigger board wins and a tie keeps stack, so a screen with room to
+       spare keeps the standard layout. If neither fits at cfg.minCellPx,
+       the page stacks at the floor and scrolls (body.cramped).
+       The host provides mainEl, headerEl, gridWrap, board, tray, N and cfg
+       (maxBoardPx, maxCellPx, minCellPx), and sizes its tray slots off
+       --cell. */
+    const BoardLayout = {
+      fit(h) {
+        const body = document.body, root = document.documentElement;
+        // .grid-wrap's border + padding: constant, so measure it rather than
+        // hard-coding a copy of the CSS here.
+        const chrome = Math.max(0, h.gridWrap.offsetWidth - h.board.clientWidth);
+        const floor = h.cfg.minCellPx * h.N + chrome;
+        // Read the viewport with the board at its floor. A board left at the
+        // previous size's cell (a 4×4 cell on a fresh 6×6 board) can be wider
+        // than the screen, and a mobile browser then zooms out and reports a
+        // taller innerHeight than the screen really has.
+        body.classList.remove('cramped');
+        this.apply(h, floor, chrome);
+        const vw = root.clientWidth, vh = window.innerHeight;
+        if (!vw || !vh) return;
+
+        const stack = this.solve(h, false, vw, vh, floor, chrome);
+        const side = this.solve(h, true, vw, vh, floor, chrome);
+        let best = side.ok && (!stack.ok || side.s > stack.s) ? side : stack;
+        if (!best.ok) best = { side: false, s: floor, trayW: '' };
+        body.classList.toggle('side', best.side);
+        h.tray.style.width = best.trayW;
+        this.apply(h, best.s, chrome);
+        body.classList.toggle('cramped', !best.ok);
+      },
+
+      // Largest board side for one arrangement. The tray's height is a
+      // function of --cell, and it steps whenever smaller slots fit more of
+      // them per row; as the board grows the tray never gets shorter (and
+      // in side its column only gets narrower), so "fits" flips exactly
+      // once and a binary search finds it. 10 steps take a 560 px range
+      // below 1 px.
+      solve(h, side, vw, vh, floor, chrome) {
+        document.body.classList.toggle('side', side);
+        h.tray.style.width = '';
+        const cs = getComputedStyle(h.mainEl);
+        const gap = parseFloat(side ? cs.columnGap : cs.rowGap) || 0;
+        // From the viewport, not main's own box: main's height depends on
+        // body.cramped, which fit() sets.
+        const availW = vw - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight)
+          - (side ? h.headerEl.offsetWidth + gap : 0);
+        const availH = vh - parseFloat(cs.paddingTop) - parseFloat(cs.paddingBottom)
+          - (side ? 0 : h.headerEl.offsetHeight);
+        const t = h.tray;
+        let trayW = '';
+        const fitsAt = (s) => {
+          this.apply(h, s, chrome);
+          if (!side) return s <= availW && s + gap + t.offsetHeight <= availH;
+          const w = Math.floor(availW - s);
+          trayW = Math.max(0, w) + 'px';
+          t.style.width = trayW;
+          // Layout sizes (offset*), so a slot mid deal-pop can't skew them.
+          // Compared against w itself: a flex item never shrinks below its
+          // widest child, so the tray's own width can't show the overflow.
+          const widest = Math.max(0, ...[...t.children].map(c => c.offsetWidth));
+          return s <= availH && widest <= w && t.offsetHeight <= availH;
+        };
+        const cap = Math.max(floor, Math.min(h.cfg.maxBoardPx, h.cfg.maxCellPx * h.N + chrome,
+          side ? availH : availW));
+        let s = cap;
+        if (!fitsAt(s)) {
+          let lo = floor, hi = cap;
+          for (let i = 0; i < 10 && hi - lo > 0.5; i++) {
+            const mid = (lo + hi) / 2;
+            if (fitsAt(mid)) lo = mid; else hi = mid;
+          }
+          s = lo;
+        }
+        return { side, s, ok: fitsAt(s), trayW };
+      },
+
+      // Sizes the board to `s` px (outer, including .grid-wrap's chrome) and
+      // publishes the matching --cell that everything else calc()s from, plus
+      // --board-w for the widths that grow with a big board.
+      apply(h, s, chrome) {
+        const cell = Math.max(h.cfg.minCellPx, (s - chrome) / h.N);
+        const w = cell * h.N + chrome;
+        h.gridWrap.style.width = w + 'px';
+        document.documentElement.style.setProperty('--cell', cell + 'px');
+        document.documentElement.style.setProperty('--board-w', w + 'px');
+      }
+    };
+    /* ===== end shared:board-layout v1 ===== */
+
     const App = {
       cfg: CONFIG,
       pieces: [],       // { cells:[{r,c}] normalized, rows, cols, color, placed:{r,c}|null, el, slotEl }
@@ -1218,60 +1335,8 @@
         });
       },
 
-      // The board and the tray share one fixed height budget (the viewport
-      // below the header). The tray's height is a function of --cell, and it
-      // drops in steps whenever smaller slots fit more of them per row, so
-      // this solves for the board side instead of dividing.
-      setCellSize() {
-        const cs = getComputedStyle(this.mainEl);
-        const mainW = this.mainEl.getBoundingClientRect().width;
-        if (!mainW) return; // page not laid out yet
-        const availW = mainW - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight);
-        // The height budget is derived from the VIEWPORT, not from main's own
-        // box: main's height depends on body.cramped, which this function sets,
-        // so measuring it would make the two flip-flop across resizes.
-        const availH = window.innerHeight - this.headerEl.offsetHeight
-          - parseFloat(cs.paddingTop) - parseFloat(cs.paddingBottom);
-        const gap = parseFloat(cs.rowGap) || 0;
-        // .grid-wrap's border + padding: constant, so measure it rather than
-        // hard-coding a copy of the CSS here.
-        const chrome = Math.max(0, this.gridWrap.offsetWidth - this.board.clientWidth);
-        const floorSide = CONFIG.minCellPx * this.N + chrome;
-        const capSide = Math.max(floorSide, Math.min(availW, CONFIG.maxBoardPx));
-
-        // Largest board side whose tray still fits underneath. The tray never
-        // gets taller as the board shrinks, so "fits" flips exactly once and a
-        // binary search finds it; 10 steps take a 360 px range below 1 px.
-        const fitsAt = (s) => {
-          this.applyBoardSide(s, chrome);
-          return s + this.tray.getBoundingClientRect().height + gap <= availH;
-        };
-        let side = capSide;
-        if (!fitsAt(side)) {
-          let lo = floorSide, hi = capSide;
-          for (let i = 0; i < 10 && hi - lo > 0.5; i++) {
-            const mid = (lo + hi) / 2;
-            if (fitsAt(mid)) lo = mid; else hi = mid;
-          }
-          side = lo;
-        }
-        this.applyBoardSide(side, chrome);
-        const trayH = this.tray.getBoundingClientRect().height;
-
-        // Safety valve: if even a minCellPx board plus its tray can't fit, give
-        // the page its scrollbar back — a reachable tray beats a clipped one.
-        // The test is the same arithmetic as the solve, so it can't disagree
-        // with it, and it doesn't depend on the class it toggles.
-        document.body.classList.toggle('cramped', side + trayH + gap > availH + 1);
-      },
-
-      // Sizes the board to `side` px (outer, including .grid-wrap's chrome)
-      // and publishes the matching --cell that everything else calc()s from.
-      applyBoardSide(side, chrome) {
-        const cell = Math.max(CONFIG.minCellPx, (side - chrome) / this.N);
-        this.gridWrap.style.width = (cell * this.N + chrome) + 'px';
-        document.documentElement.style.setProperty('--cell', cell + 'px');
-      },
+      // Board + tray sizing and arrangement: see the shared board-layout block.
+      setCellSize() { BoardLayout.fit(this); },
 
       /* ---------- PieceDrag host: placement rules ---------- */
 
